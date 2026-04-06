@@ -1,0 +1,185 @@
+﻿#include "GameModeBase/Subsystem/Phase/ER_PhaseSubsystem.h"
+#include "GameModeBase/State/ER_GameState.h"
+#include "GameModeBase/GameMode/ER_InGameMode.h"
+#include "GameModeBase/State/ER_PlayerState.h"
+#include "LevelManagement/LevelGraphManager/LevelAreaGameStateComp/LevelAreaGameModeComponent.h"
+#include "LevelManagement/LevelAreaTrackerComponent.h"
+#include "Kismet/GameplayStatics.h"
+
+// GAS Includes
+#include "AbilitySystemComponent.h"
+#include "GameplayEffect.h"
+#include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
+
+void UER_PhaseSubsystem::StartPhaseTimer(AER_GameState& GS, float Duration)
+{
+    UWorld* World = GetWorld();
+    if (!World || World->GetNetMode() == NM_Client)
+    {
+        return;
+    }
+
+    ClearPhaseTimer();
+    GS.PhaseServerTime = GS.GetServerWorldTimeSeconds();
+    GS.PhaseDuration = Duration;
+    GS.ForceNetUpdate();
+
+    // 1초 주기로 사용될 판정 로직을 위해 GameState를 캐싱합니다.
+    CachedGameState = &GS;
+
+    GetWorld()->GetTimerManager().SetTimer(
+        PhaseTimer,
+        this,
+        &UER_PhaseSubsystem::OnPhaseTimeUp,
+        Duration,
+        false
+    );
+
+    GetWorld()->GetTimerManager().SetTimer(
+        PeriodicCheckTimer,
+        this,
+        &UER_PhaseSubsystem::OnPeriodicCheckTick,
+        1.0f,
+        true
+    );
+}
+
+void UER_PhaseSubsystem::StartNoticeTimer(float Duration)
+{
+    UWorld* World = GetWorld();
+    if (!World || World->GetNetMode() == NM_Client)
+    {
+        return;
+    }
+
+    float HalfDuration = Duration / 2;
+
+    GetWorld()->GetTimerManager().SetTimer(
+        NoticeTimer,
+        this,
+        &UER_PhaseSubsystem::OnNoticeTimeUp,
+        HalfDuration,
+        false
+    );
+}
+
+void UER_PhaseSubsystem::ClearPhaseTimer()
+{
+    UWorld* World = GetWorld();
+    if (!World || World->GetNetMode() == NM_Client)
+    {
+        return;
+    }
+
+    World->GetTimerManager().ClearTimer(PhaseTimer);
+    World->GetTimerManager().ClearTimer(PeriodicCheckTimer);
+}
+
+void UER_PhaseSubsystem::OnPhaseTimeUp()
+{
+    UWorld* World = GetWorld();
+    if (!World || World->GetNetMode() == NM_Client)
+    {
+        return;
+    }
+
+    // 다음 페이즈 세팅(HandlePhaseTimeUp)이 시작되기 전에 기존 타이머를 먼저 비워줍니다.
+    // 이 코드가 HandlePhaseTimeUp() 뒤에 있으면, 새로 갱신된(SetTimer) 타이머를 바로 지워버리게 됩니다.
+    World->GetTimerManager().ClearTimer(PeriodicCheckTimer);
+
+    if (AER_InGameMode* GM = Cast<AER_InGameMode>(World->GetAuthGameMode()))
+    {
+        GM->HandlePhaseTimeUp();
+    }
+}
+
+void UER_PhaseSubsystem::OnNoticeTimeUp()
+{
+    UWorld* World = GetWorld();
+    if (!World || World->GetNetMode() == NM_Client)
+    {
+        return;
+    }
+
+    if (AER_InGameMode* GM = Cast<AER_InGameMode>(World->GetAuthGameMode()))
+    {
+        GM->HandleObjectNoticeTimeUp();
+    }
+}
+
+void UER_PhaseSubsystem::OnPeriodicCheckTick()
+{
+    const UWorld* World = GetWorld();
+    if (World == nullptr || World->GetNetMode() == NM_Client)
+    {
+        return;
+    }
+
+    if (AER_InGameMode* GM = Cast<AER_InGameMode>(World->GetAuthGameMode()))
+    {
+        ULevelAreaGameModeComponent* AreaGSComp = GM->GetComponentByClass<ULevelAreaGameModeComponent>();
+        
+        AER_GameState* ERGS = CachedGameState.Get();
+
+        if (AreaGSComp == nullptr || ERGS == nullptr)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[PSS] AreaGSComp = %s, ERGS = %s"), AreaGSComp ? TEXT("True") : TEXT("False"), GM ? TEXT("True") : TEXT("False"));
+            return;
+        }
+
+        for (APlayerState* PS : ERGS->PlayerArray)
+        {
+            if (AER_PlayerState* ERPS = Cast<AER_PlayerState>(PS))
+            {
+                //UE_LOG(LogTemp, Log, TEXT("[PSS] ERPS = %s"), ERPS ? TEXT("True") : TEXT("False"));
+                if (APawn* Pawn = ERPS->GetPawn())
+                {
+                    //UE_LOG(LogTemp, Log, TEXT("[PSS] Pawn = %s"), Pawn ? TEXT("True") : TEXT("False"));
+                    if (ULevelAreaTrackerComponent* Tracker = Pawn->FindComponentByClass<ULevelAreaTrackerComponent>())
+                    {
+                        //UE_LOG(LogTemp, Log, TEXT("[PSS] Tracker = %s"), Tracker ? TEXT("True") : TEXT("False"));
+                        // 활성화되는 금지구역 수량 제한 (Phase * HazardsPerPhase)
+                        if (Tracker->CurrentHazardState == EAreaHazardState::Hazard)
+                        {
+                            //UE_LOG(LogTemp, Log, TEXT("[PSS] Tracker->CurrentHazardState == EAreaHazardState::Hazard"));
+                            if (ERPS->CurrentRestrictedTime <= 1.0f && !ERPS->bIsDead)
+                            {
+                                if (UAbilitySystemComponent* ASC = ERPS->GetAbilitySystemComponent())
+                                {
+                                    UGameplayEffect* DamageEffect = NewObject<UGameplayEffect>(GetTransientPackage(), FName(TEXT("HazardDamage")));
+                                    DamageEffect->DurationPolicy = EGameplayEffectDurationType::Instant;
+
+                                    FGameplayModifierInfo ModInfo;
+                                    ModInfo.ModifierMagnitude = FScalableFloat(999999.0f);
+                                    ModInfo.ModifierOp = EGameplayModOp::Additive;
+                                    ModInfo.Attribute = UBaseAttributeSet::GetIncomingDamageAttribute();
+                                    DamageEffect->Modifiers.Add(ModInfo);
+
+                                    FGameplayEffectContextHandle EffectContext = ASC->MakeEffectContext();
+                                    // 데미지가 자신의 데미지로 판정되어 자살로 인해 킬이 오르는 것을 막기 위해 Instigator를 변경
+                                    EffectContext.AddInstigator(ERGS, ERGS);
+
+                                    ASC->ApplyGameplayEffectToSelf(DamageEffect, 1.0f, EffectContext);
+                                    ERPS->CurrentRestrictedTime = 0.0f;
+                                }
+                            }
+                            if (ERPS->CurrentRestrictedTime >= 1.0f)
+                            {
+                                //UE_LOG(LogTemp, Log, TEXT("[PSS] Reduce CurrentRestrictedTime %f"), ERPS->CurrentRestrictedTime);
+                                ERPS->CurrentRestrictedTime -= 1.0f;
+                                ERPS->setUI_RestrictedTime();   // << UI 처리
+                                UE_LOG(LogTemp, Log, TEXT("[PS] CurrentRestrictedTime: %f"), ERPS->CurrentRestrictedTime);
+                            }
+                            else
+                            {
+                                //UE_LOG(LogTemp, Log, TEXT("[PSS] setUI_RestrictedTime"));
+                                ERPS->setUI_RestrictedTime(); // 0초처리용
+                            }
+                        }
+
+                    }
+                }
+            }
+        }
+    }
+}

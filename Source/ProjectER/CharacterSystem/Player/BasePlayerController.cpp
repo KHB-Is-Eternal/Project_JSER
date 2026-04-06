@@ -1,0 +1,2457 @@
+#include "CharacterSystem/Player/BasePlayerController.h"
+#include "CharacterSystem/Character/BaseCharacter.h"
+#include "CharacterSystem/Data/InputConfig.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
+#include "CharacterSystem/Interface/TargetableInterface.h"
+#include "CharacterSystem/Player/BasePlayerState.h"
+#include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
+#include "Components/WidgetComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Components/DecalComponent.h"
+#include "GameFramework/Character.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
+#include "Engine/World.h"
+#include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "GameplayAbilitySpec.h"
+
+// [김현수 추가분] 상호작용 인터페이스 포함
+#include "ItemSystem/Interface/I_ItemInteractable.h"
+#include "ItemSystem/Actor/BaseItemActor.h"
+#include "ItemSystem/Actor/BaseBoxActor.h"
+#include "ItemSystem/UI/W_LootingPopup.h"
+#include "ItemSystem/Component/BaseInventoryComponent.h"
+#include "ItemSystem/Component/LootableComponent.h"
+#include "ItemSystem/Component/ER_TeleportComponent.h"
+#include "UI/UI_MainHUD.h"
+#include "UI/UI_HUDController.h"
+#include "Components/AudioComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "ItemSystem/Data/ItemRecipeRow.h"
+#include "NavigationSystem.h"
+
+#include "GameModeBase/State/ER_PlayerState.h"
+#include "GameModeBase/GameMode/ER_OutGameMode.h"
+#include "GameModeBase/GameMode/ER_InGameMode.h"
+#include "GameModeBase/State/ER_GameState.h"
+#include "GameModeBase/Subsystem/Preload/ER_AssetPreloadSubsystem.h"
+#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h" // 스팀 세션 파괴를 위해 추가
+#include "Engine/GameInstance.h"
+#include "Blueprint/UserWidget.h"
+#include "CharacterSystem/Data/CharacterData.h"
+
+#include "GlobalUtil/StaticGlobalUtils.h"
+
+//Camera comp added
+#include "Camera/TopDownCameraComp.h"
+
+// UI System
+#include "EngineUtils.h"
+#include "UI/UI_MainHUD.h"
+#include "UI/UI_Scoreboard.h"
+#include "UI/UI_AMiniMapCapture.h"
+#include "UI/UI_ChatSystem.h"
+
+
+//Log
+DEFINE_LOG_CATEGORY(Controller_Camera);
+
+ABasePlayerController::ABasePlayerController()
+{
+	bShowMouseCursor = true;
+	DefaultMouseCursor = EMouseCursor::Default;
+
+	bIsMousePressed = false;
+	bIsAttackInputMode = false;
+	LastRPCUpdateTime = 0.f;
+	CachedDestination = FVector::ZeroVector;
+
+	AttackRangeDecal = CreateDefaultSubobject<UDecalComponent>(TEXT("AttackRangeDecal"));
+	AttackRangeDecal->SetupAttachment(RootComponent);
+	AttackRangeDecal->SetVisibility(false); // 평소엔 꺼둠
+	AttackRangeDecal->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f));
+
+	// [김현수 추가분] 변수 초기화
+	InteractionTarget = nullptr;
+	
+	//Camera comp as null in the constructor. the caching will be done in the runtime --> on possess
+	TopDownCameraComp = nullptr;
+	
+}
+
+void ABasePlayerController::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+	{
+		if (DefaultMappingContext)
+		{
+			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+		}
+	}
+
+	// Get curved world subsystem reference
+	if (UWorld* World = GetWorld())
+	{
+		CurvedWorldSubsystem = World->GetSubsystem<UCurvedWorldSubsystem>();
+		if (!CurvedWorldSubsystem)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("CurvedWorldSubsystem not found!"));
+		}
+	}
+
+	// [김현수 추가분] HUDController 찾기
+	FTimerHandle TimerHandle;
+	GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
+		{
+			TArray<UObject*> FoundControllers;
+			GetObjectsOfClass(UUI_HUDController::StaticClass(), FoundControllers, true, RF_NoFlags);
+
+			if (FoundControllers.Num() > 0)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] HUDController cached!"));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] HUDController not found yet"));
+			}
+		}, 0.5f, false);
+
+	if (IsLocalController())
+	{
+		UGameplayStatics::SetBaseSoundMix(this, SoundMix);
+
+		// 게임 시작시 현황판 생성 후 collapse 처리
+		if (ScoreboardClass)
+		{
+			ScoreboardWidget = CreateWidget<UUI_Scoreboard>(this, ScoreboardClass);
+			if (ScoreboardWidget)
+			{
+				ScoreboardWidget->AddToViewport();
+				ScoreboardWidget->SetVisibility(ESlateVisibility::Collapsed);
+			}
+		}
+	}
+
+
+	if (ChatWidgetClass)
+	{
+		if (!ChatWidgetClass) return;
+
+		ChatWidgetInstance = CreateWidget<UUI_ChatSystem>(this, ChatWidgetClass);
+		if (ChatWidgetInstance)
+		{
+			ChatWidgetInstance->AddToViewport();
+
+			AER_PlayerState* MyPS = GetPlayerState<AER_PlayerState>();
+			if (MyPS)
+			{
+				ChatWidgetInstance->setPlayerState(MyPS);
+			}
+		}
+	}
+
+	// 미니맵 액터 찾기
+	for (TActorIterator<AUI_AMiniMapCapture> It(GetWorld()); It; ++It)
+	{
+		CachedMiniMapActor = *It;
+		break; // 하나만 찾으면 중단
+	}
+}
+
+void ABasePlayerController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+
+	ControlledBaseChar = Cast<ABaseCharacter>(InPawn);
+
+	if (ControlledBaseChar)
+	{
+		// 포제스 할 때 캐릭터의 TopDownCameraComp를 가져오는 게 없었음 그래서 추가
+		TopDownCameraComp = ControlledBaseChar->GetComponentByClass<UTopDownCameraComp>();
+
+		// [김현수 추가분] 인벤토리 델리게이트 바인딩
+		if (UBaseInventoryComponent* InvComp = InPawn->FindComponentByClass<UBaseInventoryComponent>())
+		{
+			InvComp->OnInventoryUpdated.RemoveDynamic(this, &ABasePlayerController::OnInventoryUpdated);
+			InvComp->OnInventoryUpdated.AddDynamic(this, &ABasePlayerController::OnInventoryUpdated);
+			UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] Inventory delegate bound (Server)!"));
+			OnInventoryUpdated();
+		}
+
+		//리슨서버 컨트롤러 설정하고 OnRep_Pawn() 으로 클라이언트 설정
+		if (IsLocalController())
+		{
+			SetAudioListenerOverride(ControlledBaseChar->GetMesh(), FVector::Zero(), PlayerCameraManager->GetCameraRotation());
+		}
+	}
+	else
+	{
+		// UE_LOG(LogTemp, Warning, TEXT("OnPossess: ControlledBaseChar is Null!"));
+	}
+
+}
+
+void ABasePlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
+
+	if (IsLocalController())
+	{
+		UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(InputComponent);
+		if (!EnhancedInputComponent || !InputConfig) return;
+
+		EnhancedInputComponent->BindAction(InputConfig->InputMove, ETriggerEvent::Started, this, &ABasePlayerController::OnMoveStarted);
+		EnhancedInputComponent->BindAction(InputConfig->InputMove, ETriggerEvent::Triggered, this, &ABasePlayerController::OnMoveTriggered);
+		EnhancedInputComponent->BindAction(InputConfig->InputMove, ETriggerEvent::Completed, this, &ABasePlayerController::OnMoveReleased);
+		EnhancedInputComponent->BindAction(InputConfig->InputMove, ETriggerEvent::Canceled, this, &ABasePlayerController::OnMoveReleased);
+
+		EnhancedInputComponent->BindAction(InputConfig->InputAttack, ETriggerEvent::Started, this, &ABasePlayerController::OnAttackModePressed);
+		EnhancedInputComponent->BindAction(InputConfig->StopMove, ETriggerEvent::Triggered, this, &ABasePlayerController::OnStopTriggered);
+
+		EnhancedInputComponent->BindAction(InputConfig->InputConfirm, ETriggerEvent::Started, this, &ABasePlayerController::OnConfirm);
+		EnhancedInputComponent->BindAction(InputConfig->InputCancel, ETriggerEvent::Started, this, &ABasePlayerController::OnCanceled);
+
+		for (const FInputData& Action : InputConfig->AbilityInputAction)
+		{
+			if (Action.InputAction && Action.InputTag.IsValid())
+			{
+				// Pressed 바인딩
+				EnhancedInputComponent->BindAction(Action.InputAction, ETriggerEvent::Started, this, &ABasePlayerController::AbilityInputTagPressed, Action.InputTag);
+
+				// Released 바인딩 (차징 스킬 등을 위해 필요)
+				EnhancedInputComponent->BindAction(Action.InputAction, ETriggerEvent::Completed, this, &ABasePlayerController::AbilityInputTagReleased, Action.InputTag);
+			}
+		}
+
+		//Camera Control binding
+		
+		//   InputCameraPanX  (Axis1D) — A/D, Left/Right Arrow
+		//   InputCameraPanY  (Axis1D) — W/S, Up/Down Arrow
+		//   InputCameraToggle (Digital) — Y key
+		if (InputConfig->InputCameraPanX)
+		{
+			EnhancedInputComponent->BindAction(
+				InputConfig->InputCameraPanX,
+				ETriggerEvent::Triggered,
+				this,
+				&ABasePlayerController::OnCameraPanX);
+		}
+		if (InputConfig->InputCameraPanY)
+		{
+			EnhancedInputComponent->BindAction(
+				InputConfig->InputCameraPanY,
+				ETriggerEvent::Triggered,
+				this, &ABasePlayerController::OnCameraPanY);
+		}
+		if (InputConfig->InputCameraToggle)
+		{
+			EnhancedInputComponent->BindAction(
+				InputConfig->InputCameraToggle,
+				ETriggerEvent::Started,
+				this, &ABasePlayerController::OnCameraToggle);
+		}
+		if (InputConfig->InputCameraHold)
+		{
+			EnhancedInputComponent->BindAction(
+				InputConfig->InputCameraHold,
+				ETriggerEvent::Started,
+				this, &ABasePlayerController::OnCameraHold_Started);
+			EnhancedInputComponent->BindAction(
+				InputConfig->InputCameraHold,
+				ETriggerEvent::Completed,
+				this, &ABasePlayerController::OnCameraHold_Completed);
+		}
+
+		// 아이템 사용 바인딩
+		if (InputConfig->UseItem1)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->UseItem1, ETriggerEvent::Started, this, &ABasePlayerController::UseInventorySlot, 0);
+		}
+		if (InputConfig->UseItem2)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->UseItem2, ETriggerEvent::Started, this, &ABasePlayerController::UseInventorySlot, 1);
+		}
+		if (InputConfig->UseItem3)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->UseItem3, ETriggerEvent::Started, this, &ABasePlayerController::UseInventorySlot, 2);
+		}
+		if (InputConfig->UseItem4)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->UseItem4, ETriggerEvent::Started, this, &ABasePlayerController::UseInventorySlot, 3);
+		}
+		if (InputConfig->UseItem5)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->UseItem5, ETriggerEvent::Started, this, &ABasePlayerController::UseInventorySlot, 4);
+		}
+		if (InputConfig->UseItem6)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->UseItem6, ETriggerEvent::Started, this, &ABasePlayerController::UseInventorySlot, 5);
+		}
+		if (InputConfig->UseItem7)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->UseItem7, ETriggerEvent::Started, this, &ABasePlayerController::UseInventorySlot, 6);
+		}
+		if (InputConfig->UseItem8)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->UseItem8, ETriggerEvent::Started, this, &ABasePlayerController::UseInventorySlot, 7);
+		}
+		// 아이템 조합
+		if (InputConfig->InputCraft)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->InputCraft, ETriggerEvent::Started, this, &ABasePlayerController::TryStartCrafting);
+		}
+		// 현황판 바인딩
+		if (InputConfig->ScoreBoardKey)
+		{
+			// 'IA_Scoreboard'는 에디터에서 만든 Input Action
+			EnhancedInputComponent->BindAction(InputConfig->ScoreBoardKey, ETriggerEvent::Triggered, this, &ABasePlayerController::ShowScoreboard);
+			EnhancedInputComponent->BindAction(InputConfig->ScoreBoardKey, ETriggerEvent::Completed, this, &ABasePlayerController::HideScoreboard);
+		}
+		if (InputConfig->ChatEnterKey)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->ChatEnterKey, ETriggerEvent::Started, this, &ABasePlayerController::OnEnterPressed);
+		}		
+	}
+}
+
+void ABasePlayerController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+
+	// [김현수 추가분] 거리 체크 로직 호출
+	CheckInteractionDistance();
+	
+	// 매 프레임 마우스 아래 액터 아웃라인 갱신
+	CheckHoveredActor();
+	
+	// 마우스를 꾹 누르고 있으면 계속 이동 위치 갱신 
+	if (bIsMousePressed)
+	{
+		// 0.1초 쿨타임 체크
+		if (GetWorld()->GetTimeSeconds() - LastRPCUpdateTime > RPCUpdateInterval)
+		{
+			//MoveToMouseCursor(); 태웅님 기존 코드
+			// [김현수 추가분] 아이템 판별 기능이 포함된 함수로 변경 호출
+			MoveToMouseCursor();
+			LastRPCUpdateTime = GetWorld()->GetTimeSeconds();
+		}
+	}
+
+	if (bIsAttackInputMode && ControlledBaseChar && AttackRangeDecal->IsVisible())
+	{
+		AttackRangeDecal->SetWorldLocation(ControlledBaseChar->GetActorLocation());
+	}
+
+	// [텔레포트 UI 자동 닫기 처리]
+	if (IsValid(TeleportUIInstance) && CurrentTeleportActor.IsValid())
+	{
+		if (APawn* MyPawn = GetPawn())
+		{
+			const float Dist = FVector::Dist(MyPawn->GetActorLocation(), CurrentTeleportActor->GetActorLocation());
+			if (Dist > 300.f)
+			{
+				Client_CloseTeleportUI();
+			}
+		}
+	}
+}
+
+void ABasePlayerController::OnRep_Pawn()
+{
+	Super::OnRep_Pawn();
+
+	ControlledBaseChar = Cast<ABaseCharacter>(GetPawn());
+
+	if (ControlledBaseChar)
+	{
+		TopDownCameraComp = ControlledBaseChar->GetComponentByClass<UTopDownCameraComp>();
+
+		if (IsLocalController())
+		{
+			if (PlayerCameraManager)
+			{
+				SetAudioListenerOverride(ControlledBaseChar->GetMesh(), FVector::Zero(), PlayerCameraManager->GetCameraRotation());
+			}
+		}
+		// 클라이언트에서도 인벤토리 델리게이트 바인딩
+		if (UBaseInventoryComponent* InvComp = ControlledBaseChar->GetComponentByClass<UBaseInventoryComponent>())
+		{
+			InvComp->OnInventoryUpdated.RemoveDynamic(this, &ABasePlayerController::OnInventoryUpdated);
+			InvComp->OnInventoryUpdated.AddDynamic(this, &ABasePlayerController::OnInventoryUpdated);
+			UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] Inventory delegate bound (Client)!"));
+		}
+	}
+}
+
+void ABasePlayerController::CheckHoveredActor()
+{
+	FHitResult Hit;
+	// 마우스 아래 충돌체 확인 
+	if (GetCurvedHitResultUnderCursor(MouseTraceChannel, false, Hit)) 
+	{
+		AActor* HitActor = Hit.GetActor();
+		
+		// [디버그] 현재 마우스가 가리키고 있는 액터의 이름 출력
+		if (GEngine && HitActor)
+		{
+			// Key값을 1로 고정하여 화면에 로그가 도배되지 않고 제자리에서 실시간 갱신되게 합니다.
+			FString NameMsg = FString::Printf(TEXT("Hovered Actor: %s"), *HitActor->GetName());
+			// GEngine->AddOnScreenDebugMessage(1, 0.1f, FColor::Cyan, NameMsg);
+		}
+		
+		// 이전 프레임과 똑같은 액터를 가리키고 있으면 무시
+		if (HitActor == CurrentHoveredActor) return;
+
+		// 기존에 하이라이트된 액터가 있다면 끄기
+		if (CurrentHoveredActor)
+		{
+			if (ITargetableInterface* TargetObj = Cast<ITargetableInterface>(CurrentHoveredActor))
+			{
+				TargetObj->HighlightActor(false);
+			}
+			else if (UMeshComponent* MeshComp = CurrentHoveredActor->FindComponentByClass<UMeshComponent>())
+			{
+				// 인터페이스가 없는 일반 아이템 등
+				MeshComp->SetRenderCustomDepth(false);
+			}
+		}
+
+		// 새롭게 마우스가 올라간 액터 하이라이트 켜기
+		if (IsValid(HitActor))
+		{
+			// 타겟팅 가능한 대상(캐릭터 등)일 경우
+			if (ITargetableInterface* TargetObj = Cast<ITargetableInterface>(HitActor))
+			{
+				int32 StencilValue = 252; // 기본: 흰색 (중립)
+				
+				if (ControlledBaseChar && TargetObj->IsTargetable())
+				{
+					ETeamType MyTeam = ControlledBaseChar->GetTeamType();
+					ETeamType TargetTeam = TargetObj->GetTeamType();
+
+					if (MyTeam != ETeamType::None && TargetTeam != ETeamType::None)
+					{
+						if (MyTeam == TargetTeam) 
+							StencilValue = 251; // 아군: 초록색
+						else 
+							StencilValue = 250; // 적군: 빨간색
+					}
+					else // 타겟이 팀 정보가 없는 경우 (몬스터 등)
+					{
+						StencilValue = 250; // 적군: 빨간색
+					}
+				}
+			
+				// [디버그] 계산된 스텐실 값(색상 암호) 출력
+				if (GEngine)
+				{
+					FColor TextColor = (StencilValue == 250) ? FColor::Red : (StencilValue == 251) ? FColor::Green : FColor::White;
+					FString StencilMsg = FString::Printf(TEXT("Applied Stencil Value: %d"), StencilValue);
+					// GEngine->AddOnScreenDebugMessage(2, 2.0f, TextColor, StencilMsg);
+				}
+				
+				TargetObj->HighlightActor(true, StencilValue);
+			}
+			// 아이템, 상자 등 상호작용 가능한 물체일 경우 (흰색)
+			else if (HitActor->FindComponentByClass<ULootableComponent>() || 
+					 HitActor->FindComponentByClass<UER_TeleportComponent>() ||
+			         HitActor->GetClass()->ImplementsInterface(UI_ItemInteractable::StaticClass()))
+			{
+				if (UMeshComponent* MeshComp = HitActor->FindComponentByClass<UMeshComponent>())
+				{
+					MeshComp->SetRenderCustomDepth(true);
+					MeshComp->SetCustomDepthStencilValue(252); // 흰색
+					
+					// [디버그] 아이템/상자 스텐실 출력
+					if (GEngine)
+					{
+						// GEngine->AddOnScreenDebugMessage(2, 2.0f, FColor::White, TEXT("Applied Stencil Value: 252 (Item/Box)"));
+					}
+				}
+			}
+		}
+		
+		CurrentHoveredActor = HitActor; // 캐싱 갱신
+	}
+	else
+	{
+		// [디버그] 허공에 마우스를 올렸을 때
+		if (GEngine)
+		{
+			// GEngine->AddOnScreenDebugMessage(1, 0.1f, FColor::Silver, TEXT("Hovered Actor: None (허공)"));
+		}
+		
+		// 허공에 마우스를 올렸을 때 기존 하이라이트 지우기
+		if (CurrentHoveredActor)
+		{
+			if (ITargetableInterface* TargetObj = Cast<ITargetableInterface>(CurrentHoveredActor))
+			{
+				TargetObj->HighlightActor(false);
+			}
+			else if (UMeshComponent* MeshComp = CurrentHoveredActor->FindComponentByClass<UMeshComponent>())
+			{
+				MeshComp->SetRenderCustomDepth(false);
+			}
+			CurrentHoveredActor = nullptr;
+		}
+	}
+}
+
+void ABasePlayerController::OnMoveStarted()
+{
+	if (bIsAttackInputMode)
+	{
+		CancelAttackMode();
+	}
+
+	Client_CloseLootUI();
+	Server_EndLoot();
+	Client_CloseTeleportUI();
+
+	// 조합 중이면 취소
+	if (bIsCrafting)
+	{
+		CancelCrafting();
+	}
+
+	bIsMousePressed = true;
+	MoveToMouseCursor();
+}
+
+void ABasePlayerController::OnMoveTriggered()
+{
+
+}
+
+void ABasePlayerController::OnMoveReleased()
+{
+	FHitResult Hit;
+
+	bIsMousePressed = false;
+}
+
+void ABasePlayerController::MoveToMouseCursor()
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn) return;
+
+	if (!ControlledBaseChar)
+	{
+		ControlledBaseChar = Cast<ABaseCharacter>(ControlledPawn);
+	}
+
+	if (!IsValid(ControlledBaseChar))
+	{
+		return;
+	}
+
+	FHitResult Hit;
+	if (GetCurvedHitResultUnderCursor(MouseTraceChannel, false, Hit)) //<- Replaced with a curve world accurate-hit result 추후에 완성되면 이걸로 변경
+	//if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))//
+	{
+		if (Hit.bBlockingHit)
+		{
+			// [디버그 1] 클릭 충돌 성공 (화면에 파란 점 찍기)
+			/*DrawDebugSphere(GetWorld(), Hit.Location, 15.f, 12, FColor::Blue, false, 2.0f);
+			UE_LOG(LogTemp, Warning, TEXT("마우스 클릭 성공 좌표: %s"), *Hit.Location.ToString());*/
+			
+			AActor* HitActor = Hit.GetActor();
+
+			// [디버깅] 클릭 대상 확인
+#if WITH_EDITOR
+			if (HitActor)
+			{
+				// UE_LOG(LogTemp, Log, TEXT("Clicked Actor: %s"), *HitActor->GetName());
+			}
+#endif
+
+			if (ITargetableInterface* TargetObj = Cast<ITargetableInterface>(HitActor))
+			{
+				if (TargetObj->IsTargetable())
+				{
+					ETeamType MyTeam = ControlledBaseChar->GetTeamType();
+					ETeamType TargetTeam = TargetObj->GetTeamType();
+
+					bool bIsEnemy = (MyTeam != TargetTeam) &&
+						(MyTeam != ETeamType::None) &&
+						(TargetTeam != ETeamType::None);
+
+					if (bIsEnemy)
+					{
+						/* === 공격 로직 === */
+						ControlledBaseChar->SetTarget(HitActor); // 타겟 지정
+#if WITH_EDITOR
+						/*UE_LOG(LogTemp, Warning, TEXT("[%s] Set Target Actor -> %s"),
+							*ControlledBaseChar->GetName(),
+							HitActor ? *HitActor->GetName() : TEXT("None"));*/
+#endif
+						return;
+					}
+					else if (ABaseCharacter* HitChar = Cast<ABaseCharacter>(HitActor))
+					{
+						// [1-2] 타겟팅 불가능한데 만약 내 아군이고 빈사(Down) 상태라면? -> 부활 로직
+						bool bIsAlly = (HitChar->GetTeamType() == ControlledBaseChar->GetTeamType());
+						bool bIsDown = false;
+					
+						if (UAbilitySystemComponent* TargetASC = HitChar->GetAbilitySystemComponent())
+						{
+							bIsDown = TargetASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+						}
+
+						if (bIsAlly && HitChar != ControlledBaseChar && bIsDown)
+						{
+							InteractionTargetDistance = FVector::Dist(ControlledBaseChar->GetActorLocation(), HitActor->GetActorLocation());
+							InteractionTarget = HitActor; 
+						
+							ControlledBaseChar->SetTarget(nullptr); // 공격 타겟 초기화
+				
+							ControlledBaseChar->MoveToLocation(HitActor->GetActorLocation());
+							return; 
+						}
+					}	
+				}
+			}
+			
+			/*if (HitActor->GetComponentByClass<ULootableComponent>())
+			{
+				InteractionTargetDistance = FVector::Dist(ControlledBaseChar->GetActorLocation(), HitActor->GetActorLocation());
+				InteractionTarget = HitActor; 
+			}
+			else if (HitActor->GetClass()->ImplementsInterface(UI_ItemInteractable::StaticClass()))
+			{
+				InteractionTargetDistance = FVector::Dist(ControlledBaseChar->GetActorLocation(), HitActor->GetActorLocation());
+				InteractionTarget = HitActor; 
+			}
+			else
+			{
+				// 아무것도 아니면 (땅바닥 클릭) 타겟 초기화
+				InteractionTarget = nullptr;
+			}*/
+
+			bool bShouldMoveToApproachLocation = false;
+			FVector DesiredMoveLocation = Hit.Location;
+
+
+			//2026/03/01 no safety check for the hit actor being nullptr. added the safety net
+			if (IsValid(HitActor))
+			{
+				// 바닥 아이템은 bounds 기반 접근을 쓰면 InteractionSphere 때문에 너무 일찍 멈출 수 있으므로
+				// 별도로 actor 중심으로 이동시킨다
+				if (ABaseItemActor* ItemActor = Cast<ABaseItemActor>(HitActor))
+				{
+					InteractionTargetDistance =
+						FVector::Dist2D(ControlledBaseChar->GetActorLocation(), ItemActor->GetActorLocation());
+					InteractionTarget = ItemActor;
+					bShouldMoveToApproachLocation = false;
+					DesiredMoveLocation = ItemActor->GetActorLocation();
+				}
+				else if (HitActor->FindComponentByClass<ULootableComponent>())
+				{
+					InteractionTargetDistance =
+						UStaticGlobalUtils::GetDistanceToActorBounds2D(HitActor, ControlledBaseChar->GetActorLocation());
+					InteractionTarget = HitActor;
+					bShouldMoveToApproachLocation = true;
+				}
+				else if (HitActor->FindComponentByClass<UER_TeleportComponent>())
+				{
+					InteractionTargetDistance =
+						UStaticGlobalUtils::GetDistanceToActorBounds2D(HitActor, ControlledBaseChar->GetActorLocation());
+					InteractionTarget = HitActor;
+					bShouldMoveToApproachLocation = true;
+				}
+				else if (HitActor->GetClass()->ImplementsInterface(UI_ItemInteractable::StaticClass()))
+				{
+					InteractionTargetDistance =
+						UStaticGlobalUtils::GetDistanceToActorBounds2D(HitActor, ControlledBaseChar->GetActorLocation());
+					InteractionTarget = HitActor;
+					bShouldMoveToApproachLocation = true;
+				}
+				else
+				{
+					InteractionTarget = nullptr;
+				}
+			}
+			else
+			{
+				InteractionTarget = nullptr;
+			}
+			
+			// 바닥(또는 아군) 클릭 시 이동
+			UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledBaseChar);
+			if (IsValid(ASC))
+			{
+				FGameplayTagContainer CancelTags;
+				CancelTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Action.AutoAttack")));
+				ASC->CancelAbilities(&CancelTags);
+			}
+
+			ControlledBaseChar->SetTarget(nullptr);
+
+			if (bShouldMoveToApproachLocation && IsValid(HitActor))
+			{
+				ControlledBaseChar->MoveToLocation(
+					UStaticGlobalUtils::GetApproachLocationForActor(GetWorld(), HitActor, ControlledBaseChar->GetActorLocation()));
+			}
+			else
+			{
+				ControlledBaseChar->MoveToLocation(DesiredMoveLocation);
+			}
+		}
+		else
+		{
+			// UE_LOG(LogTemp, Error, TEXT("마우스 클릭 실패: Blocking Hit가 아님 (바닥 콜리전 확인 필요)"));
+		}
+	}
+}
+
+// [김현수 추가분] 아이템 상호작용 프로세스 (기존 MoveToMouseCursor 로직 기반)
+void ABasePlayerController::ProcessMouseInteraction()
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn) return;
+
+	if (!ControlledBaseChar) ControlledBaseChar = Cast<ABaseCharacter>(ControlledPawn);
+	if (!IsValid(ControlledBaseChar)) return;
+
+	FHitResult Hit;
+	if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
+	{
+		if (Hit.bBlockingHit)
+		{
+			// 마우스 아래 액터가 인터페이스를 구현했는지 확인
+			AActor* HitActor = Hit.GetActor();
+
+			// LootableComponent가 있고 상호작용 가능한지 체크
+			if (ULootableComponent* LootComp = HitActor->GetComponentByClass<ULootableComponent>())
+			{
+				// 몬스터인 경우 IsTargetable 체크 (살아있으면 루팅 불가)
+				if (ITargetableInterface* TargetableActor = Cast<ITargetableInterface>(HitActor))
+				{
+					if (TargetableActor->IsTargetable())
+					{
+						// 몬스터가 살아있음 - 루팅 불가
+						InteractionTarget = nullptr;
+					}
+					else
+					{
+						// 몬스터가 사망함 - 루팅 가능
+						InteractionTargetDistance = FVector::Dist(ControlledBaseChar->GetActorLocation(), HitActor->GetActorLocation());
+						InteractionTarget = HitActor;
+					}
+				}
+				else
+				{
+					// 몬스터가 아닌 경우 (박스, 플레이어 시체 등) - 루팅 가능
+					InteractionTargetDistance = FVector::Dist(ControlledBaseChar->GetActorLocation(), HitActor->GetActorLocation());
+					InteractionTarget = HitActor;
+				}
+			}
+			else if (HitActor && HitActor->GetComponentByClass<UER_TeleportComponent>())
+			{
+				InteractionTargetDistance = FVector::Dist(ControlledBaseChar->GetActorLocation(), HitActor->GetActorLocation());
+				InteractionTarget = HitActor;
+			}
+			else if (HitActor && HitActor->GetClass()->ImplementsInterface(UI_ItemInteractable::StaticClass()))
+			{
+				// 멀리서 클릭해도 상호작용되도록 목표 거리 계산
+				InteractionTargetDistance = FVector::Dist(ControlledBaseChar->GetActorLocation(), HitActor->GetActorLocation());
+				InteractionTarget = HitActor; // 바닥에 떨어진 아이템 줍는용도
+			}
+			else
+			{
+				InteractionTarget = nullptr;
+			}
+
+
+			/*if (HitActor && HitActor->GetClass()->ImplementsInterface(UI_ItemInteractable::StaticClass()))
+			{
+				InteractionTarget = HitActor;
+			}
+			else
+			{
+				InteractionTarget = nullptr;
+			}*/
+
+			ControlledBaseChar->MoveToLocation(Hit.Location);
+		}
+	}
+}
+
+// [김현수 추가분] 거리 체크 및 실제 습득 함수
+void ABasePlayerController::CheckInteractionDistance()
+{
+	if (!IsValid(InteractionTarget) || !IsValid(ControlledBaseChar))
+	{
+		InteractionTarget = nullptr;
+		return;
+	}
+
+	// 바닥 아이템은 bounds 기준이 아니라 actor 중심 기준 200으로 체크
+	if (ABaseItemActor* ItemActor = Cast<ABaseItemActor>(InteractionTarget))
+	{
+		constexpr float ItemPickupDistance = 200.f;
+		const float CurrentDistance =
+			FVector::Dist2D(ControlledBaseChar->GetActorLocation(), ItemActor->GetActorLocation());
+
+		if (CurrentDistance > ItemPickupDistance)
+		{
+			return;
+		}
+
+		ControlledBaseChar->StopMove();
+		Server_RequestPickup(ItemActor);
+		InteractionTarget = nullptr;
+		return;
+	}
+
+	const float CurrentDistance =
+		UStaticGlobalUtils::GetDistanceToActorBounds2D(InteractionTarget, ControlledBaseChar->GetActorLocation());
+
+	if (CurrentDistance > LOOT_INTERACT_DISTANCE)
+	{
+		return;
+	}
+
+	ControlledBaseChar->StopMove();
+
+	// 캐릭터면 상태를 먼저 판별
+	if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(InteractionTarget))
+	{
+		const bool bSameTeam =
+			(TargetChar->GetTeamType() == ControlledBaseChar->GetTeamType());
+
+		bool bIsDown = false;
+		bool bIsDead = false;
+
+		if (UAbilitySystemComponent* TargetASC = TargetChar->GetAbilitySystemComponent())
+		{
+			bIsDown = TargetASC->HasMatchingGameplayTag(
+				FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+
+			bIsDead = TargetASC->HasMatchingGameplayTag(
+				FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
+		}
+
+		// 아군 다운 -> 부활
+		if (bSameTeam && bIsDown)
+		{
+			if (UAbilitySystemComponent* ASC = ControlledBaseChar->GetAbilitySystemComponent())
+			{
+				const FGameplayTag ReviveTag =
+					FGameplayTag::RequestGameplayTag(FName("Ability.Action.Revive"));
+				ASC->TryActivateAbilitiesByTag(FGameplayTagContainer(ReviveTag));
+			}
+
+			InteractionTarget = nullptr;
+			return;
+		}
+
+		// 죽은 캐릭터 -> 루팅
+		if (bIsDead && TargetChar->FindComponentByClass<ULootableComponent>())
+		{
+			Server_BeginLoot(TargetChar);
+			InteractionTarget = nullptr;
+			return;
+		}
+
+		// 살아있는 캐릭터는 여기서 상호작용 없음
+		InteractionTarget = nullptr;
+		return;
+	}
+
+	// 바닥 아이템
+	if (ABaseItemActor* ItemActor = Cast<ABaseItemActor>(InteractionTarget))
+	{
+		Server_RequestPickup(ItemActor);
+		InteractionTarget = nullptr;
+		return;
+	}
+
+	// 박스처럼 인터페이스 기반 상호작용 액터
+	if (II_ItemInteractable* Interactable = Cast<II_ItemInteractable>(InteractionTarget))
+	{
+		Interactable->PickupItem(ControlledBaseChar);
+		InteractionTarget = nullptr;
+		return;
+	}
+
+	// 몬스터 시체 등 LootableComponent 기반 액터
+	if (InteractionTarget->FindComponentByClass<ULootableComponent>())
+	{
+		Server_BeginLoot(InteractionTarget);
+		InteractionTarget = nullptr;
+		return;
+	}
+
+	// 텔레포트 컴포넌트 처리
+	if (UER_TeleportComponent* TeleportComp = InteractionTarget->FindComponentByClass<UER_TeleportComponent>())
+	{
+		Server_BeginTeleportInteract(TeleportComp);
+		InteractionTarget = nullptr;
+		return;
+	}
+
+	InteractionTarget = nullptr;
+}
+
+void ABasePlayerController::OnConfirm()
+{
+	if (!bIsAttackInputMode)
+	{
+		APawn* ControlledPawn = GetPawn();
+		if (!ControlledPawn) return;
+
+		UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn);
+		if (IsValid(ASC)) {
+			ASC->LocalInputConfirm();
+		}
+
+		return;
+	}
+
+	FHitResult Hit;
+	if (GetCurvedHitResultUnderCursor(MouseTraceChannel, false, Hit))
+	{
+		if (Hit.bBlockingHit)
+		{
+			RequestAttackMove(Hit);
+		}
+	}
+
+	CancelAttackMode();
+}
+
+void ABasePlayerController::OnCanceled() {
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn) return;
+
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn);
+	if (IsValid(ASC)) {
+		//UE_LOG(LogTemp, Log, TEXT("OnCanceled"));
+		ASC->LocalInputCancel();
+	}
+
+	Client_CloseLootUI();
+	Server_EndLoot();
+	Client_CloseTeleportUI();
+}
+
+void ABasePlayerController::OnAttackModePressed()
+{
+	if (!ControlledBaseChar) return;
+
+	bIsAttackInputMode = true; // 공격 모드 활성화
+
+	// 사거리 가져오기 (Stat 컴포넌트나 AttributeSet에서)
+	float AttackRange = ControlledBaseChar->GetAttackRange();
+
+	// 데칼 크기 조절 (X, Y는 반지름, Z는 두께)
+	AttackRangeDecal->DecalSize = FVector(100.0f, AttackRange, AttackRange);
+
+	// 캐릭터 위치로 데칼 이동 (바닥에 붙이기)
+	AttackRangeDecal->SetWorldLocation(ControlledBaseChar->GetActorLocation());
+	AttackRangeDecal->SetVisibility(true);
+
+	// (선택) 마우스 커서를 공격 전용 커서로 변경
+	// CurrentMouseCursor = EMouseCursor::Crosshairs;
+}
+
+void ABasePlayerController::CancelAttackMode()
+{
+	if (bIsAttackInputMode)
+	{
+		bIsAttackInputMode = false;
+		if (AttackRangeDecal)
+		{
+			AttackRangeDecal->SetVisibility(false);
+		}
+		// CurrentMouseCursor = DefaultMouseCursor;
+	}
+}
+
+void ABasePlayerController::RequestAttackMove(const FHitResult& Hit)
+{
+	if (!ControlledBaseChar) return;
+
+	AActor* HitActor = Hit.GetActor();
+
+	// Case A: 적을 직접 클릭함 -> 타겟팅 공격
+	if (ITargetableInterface* TargetObj = Cast<ITargetableInterface>(HitActor))
+	{
+		if (TargetObj->IsTargetable()) // 적군인지 확인하는 로직 추가 필요 (기존 코드 참고)
+		{
+			ETeamType MyTeam = ControlledBaseChar->GetTeamType();
+			ETeamType TargetTeam = TargetObj->GetTeamType();
+
+			if (MyTeam != TargetTeam && TargetTeam != ETeamType::None)
+			{
+				ControlledBaseChar->SetTarget(HitActor); // 타겟 설정
+				return;
+			}
+		}
+	}
+
+	// Case B: 땅을 클릭함 -> 어택 땅 (이동하다가 적 만나면 공격)
+	// 기존 MoveToLocation은 무시하고 이동만 하므로, 새로운 함수 필요
+	ControlledBaseChar->Server_AttackMoveToLocation(Hit.Location);
+}
+
+void ABasePlayerController::OnCameraPanX(const FInputActionValue& Value)
+{
+	if (IsValid(TopDownCameraComp))
+	{
+		FVector2D PanXValue=FVector2D(0.f, Value.Get<float>());
+		TopDownCameraComp->AddKeyPanInput(PanXValue);
+		
+		UE_LOG(Controller_Camera, Warning,
+			TEXT("ABasePlayerController::OnCameraPanX >> CameraPanX[%s]"),
+			*PanXValue.ToString());
+	}
+}
+
+void ABasePlayerController::OnCameraPanY(const FInputActionValue& Value)
+{
+	if (IsValid(TopDownCameraComp))
+	{
+		FVector2D PanYValue=FVector2D(Value.Get<float>(), 0.f);
+		TopDownCameraComp->AddKeyPanInput(PanYValue);
+
+		UE_LOG(Controller_Camera, Warning,
+			TEXT("ABasePlayerController::OnCameraPanY >> CameraPanX[%s]"),
+			*PanYValue.ToString());
+	}
+}
+
+void ABasePlayerController::OnCameraToggle()
+{
+	if (IsValid(TopDownCameraComp))
+	{
+		TopDownCameraComp->ToggleCameraMode();
+
+		FString ModeString=TopDownCameraComp->IsCameraPanFreeMode()? TEXT("Free") : TEXT("AttachedMode");
+		
+		UE_LOG(Controller_Camera, Warning,
+			TEXT("ABasePlayerController::OnCameraToggle >> Toggled to %s"),
+			*ModeString);
+	}
+}
+
+void ABasePlayerController::OnCameraHold_Started()
+{
+	if (IsValid(TopDownCameraComp))
+	{
+		TopDownCameraComp->SetFreeCamMode(true);
+	}
+}
+
+void ABasePlayerController::OnCameraHold_Completed()
+{
+	if (IsValid(TopDownCameraComp))
+	{
+		TopDownCameraComp->SetFreeCamMode(false);
+	}
+}
+
+void ABasePlayerController::OnMinimapClicked(FVector _TargetWorldPos)
+{
+	bIsMousePressed = false;
+	InteractionTarget = nullptr;
+	if (ControlledBaseChar)
+	{
+		ControlledBaseChar->SetTarget(nullptr);
+		ControlledBaseChar->MoveToLocation(_TargetWorldPos);
+	}
+	
+}
+
+
+
+
+/*void ABasePlayerController::Test_ChangeTeamToA()
+{
+	if (ControlledBaseChar)
+	{
+		ControlledBaseChar->Server_SetTeamID(ETeamType::Team_A);
+		UE_LOG(LogTemp, Log, TEXT("Request Change Team to A"));
+	}
+}*/
+
+/*void ABasePlayerController::Test_ChangeTeamToB()
+{
+	if (ControlledBaseChar)
+	{
+		ControlledBaseChar->Server_SetTeamID(ETeamType::Team_B);
+		UE_LOG(LogTemp, Log, TEXT("Request Change Team to B"));
+	}
+}*/
+
+/*void ABasePlayerController::Test_ReviveInput()
+{
+	if (ControlledBaseChar)
+	{
+		FVector CurrentLocation = ControlledBaseChar->GetActorLocation();
+
+		// 서버에게 부활 요청
+		ControlledBaseChar->Server_Revive(CurrentLocation);
+	}
+}*/
+
+/*void ABasePlayerController::Test_GainXP()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[Client] Zero Key Pressed!"));
+
+	Server_TestGainXP();
+}*/
+
+/*void ABasePlayerController::Server_TestGainXP_Implementation()
+{
+	if (ControlledBaseChar)
+	{
+		if (UAbilitySystemComponent* ASC = ControlledBaseChar->GetAbilitySystemComponent())
+		{
+			if (ABasePlayerState* PS = ControlledBaseChar->GetPlayerState<ABasePlayerState>())
+			{
+				UBaseAttributeSet* AS = PS->GetAttributeSet();
+				if (AS)
+				{
+					ASC->ApplyModToAttribute(AS->GetIncomingXPAttribute(), EGameplayModOp::Additive, 100.0f);
+
+					UE_LOG(LogTemp, Log, TEXT("[Server] Gained 100 XP"));
+				}
+			}
+		}
+	}
+}*/
+
+void ABasePlayerController::OnStopTriggered()
+{
+	bIsMousePressed = false;
+
+	// [김현수 추가분] 정지 시 상호작용 타겟 초기화
+	InteractionTarget = nullptr;
+
+	if (ControlledBaseChar)
+	{
+		ControlledBaseChar->SetTarget(nullptr);
+		ControlledBaseChar->StopMove();
+	}
+}
+
+void ABasePlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn) return;
+
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn);
+	if (!ASC) return;
+
+	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	{
+		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
+		{
+			if (Spec.IsActive())
+			{
+				// [방법 2 핵심] 태그를 담은 이벤트를 어빌리티에 직접 쏩니다.
+				FGameplayEventData Payload;
+				Payload.EventTag = InputTag; // 전달할 태그
+				Payload.Instigator = this;   // 보낸 사람
+
+				// 활성화된 어빌리티에게 이벤트를 전달합니다.
+				ASC->HandleGameplayEvent(InputTag, &Payload);
+				UE_LOG(LogTemp, Log, TEXT("Gameplay Event Sent: %s"), *InputTag.ToString());
+			}
+			else
+			{
+				ASC->TryActivateAbility(Spec.Handle);
+			}
+		}
+	}
+
+	// GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, FString::Printf(TEXT("Input Tag Pressed: %s"), *InputTag.ToString()));
+}
+
+void ABasePlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
+{
+}
+
+// ------------------------------------------------------------
+// [전민성 추가분]
+void ABasePlayerController::ConnectToDedicatedServer(const FString& Ip, int32 Port, const FString& PlayerName)
+{
+	if (!IsLocalController())
+		return;
+
+	const FString Address = FString::Printf(TEXT("%s:%d?PlayerName=%s"), *Ip, Port, *PlayerName);
+
+	UE_LOG(LogTemp, Log, TEXT("[PC] Connecting to server: %s"), *Address);
+
+	ClientTravel(Address, TRAVEL_Absolute);
+}
+
+void ABasePlayerController::Client_SetLose_Implementation()
+{
+	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+	PS->bIsLose = true;
+	ShowLoseUI();
+}
+
+void ABasePlayerController::Client_SetWin_Implementation()
+{
+	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+	PS->bIsWin = true;
+	ShowWinUI();
+}
+
+void ABasePlayerController::Client_SetDead_Implementation()
+{
+	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+	PS->bIsDead = true;
+}
+
+void ABasePlayerController::Client_StartRespawnTimer_Implementation()
+{
+	ShowRespawnTimerUI();
+}
+
+void ABasePlayerController::Client_StopRespawnTimer_Implementation()
+{
+	HideRespawnTimerUI();
+}
+
+void ABasePlayerController::Client_OutGameInputMode_Implementation()
+{
+	FInputModeUIOnly InputMode;
+	SetInputMode(InputMode);
+	bShowMouseCursor = true;
+}
+
+void ABasePlayerController::Client_InGameInputMode_Implementation()
+{
+	FInputModeGameAndUI InputMode;
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetHideCursorDuringCapture(false);
+	SetInputMode(InputMode);
+	bShowMouseCursor = true;
+}
+
+void ABasePlayerController::Client_ReturnToMainMenu_Implementation(const FString& Reason)
+{
+	UE_LOG(LogTemp, Warning, TEXT("ReturnToMainMenu: %s"), *Reason);
+
+	// 메인 메뉴로 돌아가기 전 스팀 세션 파괴 (본인 세션 탈퇴)
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UER_SessionSubsystem* SessionSubsystem = GI->GetSubsystem<UER_SessionSubsystem>())
+		{
+			SessionSubsystem->DestroyGameSession();
+		}
+	}
+
+	UGameplayStatics::OpenLevel(this, FName(TEXT("/Game/Level/Level_MainMenu")));
+}
+
+void ABasePlayerController::Client_StartPreload_Implementation()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[Client] Client_StartPreload_Implementation called."));
+
+	//Client_OpenLoadingUI();
+
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UER_AssetPreloadSubsystem* PSS = GI->GetSubsystem<UER_AssetPreloadSubsystem>())
+		{
+			// 이벤트 바인딩
+			PSS->OnPreloadComplete.AddDynamic(this, &ABasePlayerController::OnPreloadComplete);
+			// 로드 요청
+			PSS->StartPreloadMonsterAssets();
+		}
+	}
+}
+
+void ABasePlayerController::OnPreloadComplete()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[Client] OnPreloadComplete: All assets loaded. Notifying Server..."));
+	Server_NotifyLoadComplete();
+}
+
+void ABasePlayerController::Server_NotifyLoadComplete_Implementation()
+{
+	if (AER_InGameMode* GM = Cast<AER_InGameMode>(GetWorld()->GetAuthGameMode()))
+	{
+		GM->HandlePlayerLoadComplete(this);
+	}
+}
+
+void ABasePlayerController::Server_StartGame_Implementation()
+{
+	auto OutGameMode = Cast<AER_OutGameMode>(GetWorld()->GetAuthGameMode());
+	OutGameMode->StartGame();
+}
+
+void ABasePlayerController::Server_DisConnectServer_Implementation()
+{
+	if (AER_InGameMode* InGameMode = Cast<AER_InGameMode>(GetWorld()->GetAuthGameMode()))
+	{
+		// 이 코드가 서버(호스트) 본인의 컨트롤러에서 실행된 것이라면 안전한 서버 종료를 트리거합니다.
+		if (IsLocalController())
+		{
+			InGameMode->ShutdownServerForHost();
+		}
+		else
+		{
+			// 클라이언트인 경우 기존의 단일 퇴장 로직을 수행합니다.
+			InGameMode->DisConnectClient(this);
+		}
+	}
+}
+
+void ABasePlayerController::Server_MoveTeam_Implementation(int32 TeamIdx)
+{
+	auto OutGameMode = Cast<AER_OutGameMode>(GetWorld()->GetAuthGameMode());
+	OutGameMode->MoveTeam(this, TeamIdx);
+}
+
+void ABasePlayerController::Server_RequestPickup_Implementation(ABaseItemActor* Item)
+{ // 바닥에 있는 아이템 줍기
+	if (!Item) return;
+
+	APawn* PlayerPawn = GetPawn();
+	if (!PlayerPawn) return;
+
+	constexpr float MaxDist = 200.f;
+	if (FVector::DistSquared(PlayerPawn->GetActorLocation(), Item->GetActorLocation()) > FMath::Square(MaxDist))
+		return;
+
+	Item->PickupItem(PlayerPawn);
+}
+
+// 박스 아이템 루팅 RPC 시작
+void ABasePlayerController::Server_BeginLoot_Implementation(AActor* Actor)
+{
+	if (!IsValid(Actor)) return;
+
+	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
+	if (!IsValid(Char)) return;
+
+	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+	if (!PS) return;
+
+	const float Dist = UStaticGlobalUtils::GetDistanceToActorBounds2D(Actor, Char->GetActorLocation());
+	if (Dist > LOOT_INTERACT_DISTANCE) return;
+
+	// 루팅 시작 시 캐릭터 정지
+	Char->StopMove();
+
+	// Target에 Actor를 담는다
+	FGameplayEventData Payload;
+	Payload.Instigator = Char;
+	Payload.Target = Actor;
+
+	const FGameplayTag EventTag = FGameplayTag::RequestGameplayTag(TEXT("Event.Interact.OpenBox"));
+
+	// GA 트리거: Char(Avatar)에게 이벤트 보냄
+	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PS, EventTag, Payload);
+}
+
+void ABasePlayerController::Server_EndLoot_Implementation()
+{
+
+	// GA_OpenBox 종료
+	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+	if (PS)
+	{
+		UAbilitySystemComponent* ASC = PS->GetAbilitySystemComponent();
+		if (ASC)
+		{
+			FGameplayTagContainer CancelTags;
+			CancelTags.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Event.Interact.OpenBox")));
+			ASC->CancelAbilities(&CancelTags);
+
+			UE_LOG(LogTemp, Log, TEXT("Server_EndLoot: Cancelled OpenBox ability"));
+		}
+	}
+}
+
+void ABasePlayerController::Server_TakeItem_Implementation(ABaseBoxActor* Box, int32 SlotIndex)
+{
+	////box->TryTakeItem 예정
+	//UBaseInventoryComponent* Inv = GetPawn()->FindComponentByClass<UBaseInventoryComponent>();
+	//UBaseItemData* TargetItem = Box->GetItemData(SlotIndex);
+	////Inv->AddItem(TargetItem);
+	//// 여기서 아이템 인벤에 넣기
+	//Box->ReduceItem(SlotIndex);
+
+	// 유효성 검증
+	if (!Box || !GetPawn())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server_TakeItem: Invalid Box or Pawn"));
+		return;
+	}
+
+	// 슬롯 범위 체크
+	if (SlotIndex < 0 || SlotIndex >= Box->CurrentItemList.Num())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server_TakeItem: Invalid SlotIndex %d"), SlotIndex);
+		return;
+	}
+
+	// 빈 슬롯 체크
+	if (Box->CurrentItemList[SlotIndex].ItemId == -1)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server_TakeItem: Empty slot at index %d"), SlotIndex);
+		return;
+	}
+
+	// 인벤토리 컴포넌트 찾기
+	UBaseInventoryComponent* Inv = GetPawn()->FindComponentByClass<UBaseInventoryComponent>();
+	if (!Inv)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Server_TakeItem: No InventoryComponent found"));
+		return;
+	}
+
+	// 아이템 데이터 가져오기 (범위 체크 포함)
+	UBaseItemData* TargetItem = Box->GetItemData(SlotIndex);
+	if (!TargetItem)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Server_TakeItem: Failed to get item data"));
+		return;
+	}
+
+	// 인벤토리에 추가 (주석 해제!)
+	if (Inv->AddItem(TargetItem))
+	{
+		// 성공 시에만 박스에서 제거
+		Box->ReduceItem(SlotIndex);
+	}
+	else
+	{
+		// 인벤토리가 꽉 찬 경우
+		UE_LOG(LogTemp, Warning, TEXT("Server_TakeItem: Inventory full, cannot add item"));
+	}
+}
+
+void ABasePlayerController::Client_OpenLootUI_Implementation(const AActor* Box)
+{
+	UE_LOG(LogTemp, Log, TEXT("Client_OpenLootUI START"));
+
+	if (!Box || !LootWidgetClass) return;
+
+	// 중복 방지
+	if (IsValid(LootWidgetInstance))
+	{
+		LootWidgetInstance->RemoveFromParent();
+		LootWidgetInstance = nullptr;
+	}
+
+	LootWidgetInstance = CreateWidget<UW_LootingPopup>(this, LootWidgetClass);
+
+	if (IsValid(LootWidgetInstance))
+	{
+		LootWidgetInstance->InitPopup(Box);
+		LootWidgetInstance->AddToViewport(10);
+		LootWidgetInstance->UpdateLootingSlots(Box);
+		LootWidgetInstance->Refresh();
+	}
+
+	// If the loot source will auto-destroy on empty, bind a small lambda
+	if (Box)
+	{
+		AActor* Actor = const_cast<AActor*>(Box);
+		if (ULootableComponent* LootComp = Actor->FindComponentByClass<ULootableComponent>())
+		{
+			// 클라이언트 로컬에서만 사운드 재생
+			LootComp->PlayOpenSoundLocally(this);
+
+			if (LootComp->bDestroyOwnerWhenEmpty)
+			{
+				// Capture a weak pointer to the widget; when loot depleted fires, close the popup locally.
+				TWeakObjectPtr<UW_LootingPopup> WeakPopup = LootWidgetInstance;
+				LootComp->OnLootDepleted.AddLambda([WeakPopup]() {
+					if (WeakPopup.IsValid())
+					{
+						WeakPopup->HideTooltip();
+						WeakPopup->RemoveFromParent();
+					}
+					});
+			}
+		}
+	}
+
+}
+
+void ABasePlayerController::Client_CloseLootUI_Implementation()
+{
+	if (!IsValid(LootWidgetInstance))
+	{
+		return;
+	}
+	/// 25.02.18. mpyi _ 루팅창 꺼질 때 툴팁도 꺼지도록 추가
+	LootWidgetInstance->HideTooltip();
+	LootWidgetInstance->RemoveFromParent();
+	LootWidgetInstance = nullptr;
+}
+
+void ABasePlayerController::Client_OpenLoadingUI_Implementation()
+{
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UER_AssetPreloadSubsystem* PSS = GI->GetSubsystem<UER_AssetPreloadSubsystem>())
+		{
+			PSS->ShowLoadingScreen(LoadingUIClass);
+		}
+	}
+}
+
+void ABasePlayerController::Client_CloseLoadingUI_Implementation()
+{
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UER_AssetPreloadSubsystem* PSS = GI->GetSubsystem<UER_AssetPreloadSubsystem>())
+		{
+			PSS->HideLoadingScreen();
+		}
+	}
+}
+
+void ABasePlayerController::Server_BeginTeleportInteract_Implementation(UER_TeleportComponent* TeleportComp)
+{
+	if (!TeleportComp) return;
+	
+	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
+	if (!Char) return;
+
+	float Dist = FVector::Dist(Char->GetActorLocation(), TeleportComp->GetOwner()->GetActorLocation());
+	if (Dist > 500.f) return;
+
+	Char->StopMove();
+	TeleportComp->Interact(this);
+}
+
+void ABasePlayerController::Client_OpenTeleportUI_Implementation(AActor* TeleportActor)
+{
+	if (!TeleportUIClass) return;
+
+	CurrentTeleportActor = TeleportActor;
+
+	if (IsValid(TeleportUIInstance))
+	{
+		TeleportUIInstance->RemoveFromParent();
+		TeleportUIInstance = nullptr;
+	}
+
+	TeleportUIInstance = CreateWidget<UUserWidget>(this, TeleportUIClass);
+
+	if (IsValid(TeleportUIInstance))
+	{
+		TeleportUIInstance->AddToViewport(15);
+	}
+}
+
+void ABasePlayerController::Client_CloseTeleportUI_Implementation()
+{
+	if (IsValid(TeleportUIInstance))
+	{
+		TeleportUIInstance->RemoveFromParent();
+		TeleportUIInstance = nullptr;
+	}
+	CurrentTeleportActor = nullptr;
+}
+
+void ABasePlayerController::Client_OpenRespawnTeleportUI_Implementation()
+{
+	if (!RespawnTeleportUIClass) return;
+
+	if (IsValid(RespawnTeleportUIInstance))
+	{
+		RespawnTeleportUIInstance->RemoveFromParent();
+		RespawnTeleportUIInstance = nullptr;
+	}
+
+	RespawnTeleportUIInstance = CreateWidget<UUserWidget>(this, RespawnTeleportUIClass);
+
+	if (IsValid(RespawnTeleportUIInstance))
+	{
+		RespawnTeleportUIInstance->AddToViewport(15);
+	}
+}
+
+void ABasePlayerController::Client_CloseRespawnTeleportUI_Implementation()
+{
+	if (IsValid(RespawnTeleportUIInstance))
+	{
+		RespawnTeleportUIInstance->RemoveFromParent();
+		RespawnTeleportUIInstance = nullptr;
+	}
+}
+
+void ABasePlayerController::Server_RequestTeleport_Implementation(int32 RegionIndex)
+{
+	Client_CloseTeleportUI();
+	Client_CloseRespawnTeleportUI();
+
+	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
+	if (PS && Char)
+	{
+		FGameplayEventData Payload;
+		Payload.Instigator = Char;
+		Payload.Target = Char;
+		Payload.EventMagnitude = RegionIndex;
+
+		const FGameplayTag EventTag = ProjectER::Event::Interact::Teleport;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PS, EventTag, Payload);
+		UE_LOG(LogTemp, Log, TEXT("[Teleport] Server sent GameplayEvent %s with Magnitude %d"), *EventTag.ToString(), RegionIndex);
+	}
+}
+
+void ABasePlayerController::Server_BeginLootFromActor_Implementation(AActor* TargetActor)
+{
+	if (!IsValid(TargetActor))
+		return;
+
+	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
+	if (!IsValid(Char))
+		return;
+
+	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+	if (!PS)
+		return;
+
+	ULootableComponent* LootComp = TargetActor->FindComponentByClass<ULootableComponent>();
+	if (!LootComp)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server_BeginLootFromActor: No LootableComponent found"));
+		return;
+	}
+
+	const float Dist = UStaticGlobalUtils::GetDistanceToActorBounds2D(TargetActor, Char->GetActorLocation());
+	if (Dist > LOOT_INTERACT_DISTANCE)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server_BeginLootFromActor: Too far (%.1f)"), Dist);
+		return;
+	}
+
+	// 루팅 가능한지 확인
+	if (!LootComp->HasLootRemaining())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server_BeginLootFromActor: No loot remaining"));
+		return;
+	}
+
+	// 루팅 시작 시 캐릭터 정지
+	Char->StopMove();
+
+	// GA 트리거
+	FGameplayEventData Payload;
+	Payload.Instigator = Char;
+	Payload.Target = TargetActor;
+
+	const FGameplayTag EventTag = FGameplayTag::RequestGameplayTag(TEXT("Event.Interact.OpenBox"));
+	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PS, EventTag, Payload);
+
+	UE_LOG(LogTemp, Log, TEXT("Server_BeginLootFromActor: Opening loot for %s"), *TargetActor->GetName());
+}
+
+void ABasePlayerController::Server_TakeItemFromActor_Implementation(const AActor* TargetActor, int32 SlotIndex)
+{
+	if (!TargetActor || !GetPawn())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server_TakeItemFromActor: Invalid actor or pawn"));
+		return;
+	}
+
+	// LootableComponent 찾기
+	ULootableComponent* LootComp = TargetActor->FindComponentByClass<ULootableComponent>();
+	if (!LootComp)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server_TakeItemFromActor: No LootableComponent found"));
+		return;
+	}
+
+	// LootableComponent의 TakeItem 호출
+	if (LootComp->TakeItem(SlotIndex, GetPawn()))
+	{
+		UE_LOG(LogTemp, Log, TEXT("Server_TakeItemFromActor: Item taken successfully"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server_TakeItemFromActor: Failed to take item"));
+	}
+}
+
+void ABasePlayerController::UI_RespawnStart(float RespawnTime)
+{
+	if (IsValid(MainHUD))
+	{
+		MainHUD->StartRespawn(RespawnTime);
+	}
+}
+
+void ABasePlayerController::UI_KillCountUpdate_Implementation(int32 KillCount)
+{
+	if (IsValid(MainHUD))
+	{
+		MainHUD->SetKillCount(KillCount);
+	}
+}
+
+void ABasePlayerController::UI_DeathCountUpdate_Implementation(int32 DeathCount)
+{
+	if (IsValid(MainHUD))
+	{
+		MainHUD->SetDeathCount(DeathCount);
+	}
+}
+
+void ABasePlayerController::UI_AssistCountUpdate_Implementation(int32 AssistCount)
+{
+	if (IsValid(MainHUD))
+	{
+		MainHUD->SetAssistCount(AssistCount);
+	}
+}
+
+void ABasePlayerController::ShowScoreboard()
+{
+	if (!NoShowScoreBoard)
+	{
+		NoShowScoreBoard = true;
+		if (IsValid(ScoreboardWidget))
+		{
+			if (CachedMiniMapActor)
+			{
+				CachedMiniMapActor->UpdateMiniMap();
+			}
+
+			ScoreboardWidget->SetVisibility(ESlateVisibility::Visible);
+			// 실시간 데이터 갱신 함수 호출 추가? 해야 됨?
+			ScoreboardWidget->UpdateScoreboard();
+		}
+	}
+}
+
+void ABasePlayerController::HideScoreboard()
+{
+	if (IsValid(ScoreboardWidget))
+	{
+		ScoreboardWidget->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	NoShowScoreBoard = false;
+}
+
+void ABasePlayerController::ShowWinUI()
+{
+	if (!WinUIClass)
+		return;
+
+	if (IsValid(WinUIInstance))
+		return;
+
+	UE_LOG(LogTemp, Log, TEXT("[PC] : ShowWinUI"));
+	WinUIInstance = CreateWidget<UUserWidget>(this, WinUIClass);
+	WinUIInstance->AddToViewport();
+}
+
+void ABasePlayerController::ShowLoseUI()
+{
+	if (!LoseUIClass)
+		return;
+
+	if (IsValid(LoseUIInstance))
+		return;
+
+	UE_LOG(LogTemp, Log, TEXT("[PC] : ShowLoseUI"));
+	LoseUIInstance = CreateWidget<UUserWidget>(this, LoseUIClass);
+	LoseUIInstance->AddToViewport();
+}
+
+void ABasePlayerController::ShowRespawnTimerUI()
+{
+	if (!RespawnUIClass)
+		return;
+
+	if (IsValid(RespawnUIInstance))
+		return;
+
+	UE_LOG(LogTemp, Log, TEXT("[PC] : ShowRespawnUI"));
+	RespawnUIInstance = CreateWidget<UUserWidget>(this, RespawnUIClass);
+	RespawnUIInstance->AddToViewport();
+}
+
+void ABasePlayerController::HideRespawnTimerUI()
+{
+	if (IsValid(RespawnUIInstance))
+	{
+		RespawnUIInstance->RemoveFromParent();
+		RespawnUIInstance = nullptr;
+	}
+}
+
+bool ABasePlayerController::GetCurvedHitResultUnderCursor(ECollisionChannel TraceChannel, bool bTraceComplex,
+	FHitResult& OutHitResult)
+{
+	return GetHitResultUnderCursor(TraceChannel, bTraceComplex, OutHitResult);
+
+	//Temp lock till it is finished
+	/*if (!CurvedWorldSubsystem)
+	{
+		// Fallback to normal trace if subsystem not available
+		return GetHitResultUnderCursor(TraceChannel, bTraceComplex, OutHitResult);
+	}
+
+	// Use curved world corrected trace -> for now, just do the z height only modification
+	return FCurvedWorldUtil::GetHitResultUnderCursorCorrected(
+		   this,
+		   CurvedWorldSubsystem,
+		   OutHitResult,
+		   TraceChannel);*/
+}
+
+
+
+
+
+
+// [김현수 추가분] 인벤토리 업데이트 핸들러
+void ABasePlayerController::OnInventoryUpdated()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] OnInventoryUpdated called!"));
+
+	// MainHUD 인스턴스가 유효한지 확인하고 바로 접근!
+	if (IsValid(MainHUD))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] Calling UpdateInventoryUI via MainHUD!"));
+		MainHUD->UpdateInventoryUI();
+		return;
+	}
+	else
+		UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] Failed to find valid MainHUD!"));
+}
+
+// 인벤토리 슬롯 사용
+void ABasePlayerController::UseInventorySlot(int32 SlotIndex)
+{
+	UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] UseInventorySlot called: Slot %d"), SlotIndex);
+
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] No pawn to use item!"));
+		return;
+	}
+
+	UBaseInventoryComponent* InventoryComp = ControlledPawn->FindComponentByClass<UBaseInventoryComponent>();
+	if (!InventoryComp)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] No inventory component found!"));
+		return;
+	}
+
+	// 슬롯 인덱스 사용 (0부터 시작)
+	InventoryComp->UseItem(SlotIndex);
+}
+
+void ABasePlayerController::SetSoundMix(EAudioType AudioType, float Volume)
+{
+	if (!SoundClassMap.Contains(AudioType))
+		return;
+
+	USoundClass* SoundClass = SoundClassMap[AudioType];
+
+	UGameplayStatics::SetSoundMixClassOverride(
+		this,
+		SoundMix,
+		SoundClass,
+		Volume,
+		1.f,
+		0.f,
+		true
+	);
+}
+void ABasePlayerController::UseInventoryForUI(int32 _ind)
+{
+	UseInventorySlot(_ind);
+}
+
+void ABasePlayerController::setChatMessage(const FString& Message)
+{
+	if (ChatWidgetInstance)
+	{
+		ChatWidgetInstance->AddMessageToScrollBox(Message);
+	}
+}
+
+void ABasePlayerController::OnEnterPressed()
+{
+	UE_LOG(LogTemp, Error, TEXT("1"));
+
+	if (ChatWidgetInstance)
+	{
+		UE_LOG(LogTemp, Error, TEXT("OnEnterPressed: Showing chat input"));
+		ChatWidgetInstance->SetChatInputVisible(true);		
+
+		// 입력 모드를 UI로 변경
+		//FInputModeGameAndUI InputMode;
+		//InputMode.SetWidgetToFocus(ChatWidgetInstance->TakeWidget());
+		//InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+		//SetInputMode(InputMode);
+		// bShowMouseCursor = true; // 필요에 따라 설정
+	}
+}
+
+bool ABasePlayerController::Server_SendMessage_Validate(const FString& Message)
+{
+	return !Message.IsEmpty() && Message.Len() < 200;
+}
+void ABasePlayerController::Multicast_DisplayMessage_Implementation(const FString& Message)
+{
+	//if (ChatWidgetInstance)
+	//{
+	//	ChatWidgetInstance->AddMessageToScrollBox(Message);
+	//}
+	//// UE_LOG(LogTemp, Log, TEXT("Multicast_DisplayMessage: %s"), *Message);
+
+	//if (AER_GameState* GS = GetWorld()->GetGameState<AER_GameState>())
+	//{
+	//	GS->Multicast_BroadcastChatMessage(Message);
+	//}
+}
+void ABasePlayerController::Server_SendMessage_Implementation(const FString& Message)
+{
+	Multicast_DisplayMessage(Message);
+
+	//if (ChatWidgetInstance)
+	//{
+	//	ChatWidgetInstance->AddMessageToScrollBox(Message);
+	//}
+	// UE_LOG(LogTemp, Log, TEXT("Multicast_DisplayMessage: %s"), *Message);
+
+	if (AER_GameState* GS = GetWorld()->GetGameState<AER_GameState>())
+	{
+		GS->Multicast_BroadcastChatMessage(Message);
+	}
+}
+
+
+void ABasePlayerController::PawnLeavingGame()
+{
+    UE_LOG(LogTemp, Warning, TEXT("[PC] PawnLeavingGame Before | PC=%s | Pawn=%s"),
+        *GetNameSafe(this),
+        *GetNameSafe(GetPawn()));
+
+	APawn* OwnedPawn = GetPawn();
+	if (OwnedPawn == nullptr)
+	{
+		return;
+	}
+
+	UnPossess();
+
+	    UE_LOG(LogTemp, Warning, TEXT("[PC] PawnLeavingGame After | PC=%s | Pawn=%s"),
+        *GetNameSafe(this),
+        *GetNameSafe(GetPawn()));
+}
+
+
+void ABasePlayerController::Server_RequestCharacterSelection_Implementation()
+{
+	if (AER_OutGameMode* OutGameMode = Cast<AER_OutGameMode>(GetWorld()->GetAuthGameMode()))
+	{
+		OutGameMode->ShowCharacterSelectionToAll();
+	}
+}
+
+void ABasePlayerController::Server_ToggleReadyState_Implementation()
+{
+	if (AER_PlayerState* ER_PS = GetPlayerState<AER_PlayerState>())
+	{
+		// 현재 상태를 반전시켜 줌 (레디 -> 취소, 취소 -> 레디)
+		ER_PS->SetReadyState(!ER_PS->bIsReady);
+	}
+}
+
+void ABasePlayerController::Server_SelectCharacter_Implementation(const TSoftObjectPtr<UCharacterData>& SelectedData)
+{
+	if (AER_PlayerState* ERPS = GetPlayerState<AER_PlayerState>())
+	{
+		ERPS->SetSelectedCharacterData(SelectedData);
+	}
+}
+
+void ABasePlayerController::Client_ShowCharacterSelectionUI_Implementation()
+{
+	UE_LOG(LogTemp, Log, TEXT("[PC] : Client_ShowCharacterSelectionUI"));
+	// 블루프린트로 이벤트 전달
+	OnShowCharacterSelectionUI();
+}
+
+
+// [김현수 추가분]
+void ABasePlayerController::RequestDropInventoryItemFromUI(int32 SlotIndex, const FVector2D& ScreenSpacePosition)
+{
+	APawn* PlayerPawn = GetPawn();
+	if (!PlayerPawn)
+	{
+		return;
+	}
+
+	FHitResult HitResult;
+	FVector DropLocation = PlayerPawn->GetActorLocation() + PlayerPawn->GetActorForwardVector() * 120.f;
+	DropLocation.Z = PlayerPawn->GetActorLocation().Z + 20.f;
+
+	// UI 드래그 끝난 마우스 좌표를 월드 히트로 변환
+	if (GetHitResultAtScreenPosition(ScreenSpacePosition, MouseTraceChannel, true, HitResult) && HitResult.bBlockingHit)
+	{
+		DropLocation = HitResult.Location + FVector(0.f, 0.f, 10.f);
+	}
+
+	Server_DropInventoryItem(SlotIndex, DropLocation);
+}
+
+void ABasePlayerController::Server_DropInventoryItem_Implementation(int32 SlotIndex, FVector_NetQuantize DropLocation)
+{
+	APawn* PlayerPawn = GetPawn();
+	if (!PlayerPawn)
+	{
+		return;
+	}
+
+	UBaseInventoryComponent* InventoryComp = PlayerPawn->FindComponentByClass<UBaseInventoryComponent>();
+	if (!InventoryComp)
+	{
+		return;
+	}
+
+	if (SlotIndex < 0 || SlotIndex >= InventoryComp->MaxSlots)
+	{
+		return;
+	}
+
+	// 서버에서 한번 더 안전 위치 보정
+	FVector SafeDropLocation = FVector(DropLocation);
+	const FVector PawnLocation = PlayerPawn->GetActorLocation();
+
+	FVector ToDrop = SafeDropLocation - PawnLocation;
+	ToDrop.Z = 0.f;
+
+	constexpr float MaxDropDistance = 250.f;
+	if (ToDrop.SizeSquared() > FMath::Square(MaxDropDistance))
+	{
+		SafeDropLocation = PawnLocation + ToDrop.GetSafeNormal() * 120.f;
+		SafeDropLocation.Z = PawnLocation.Z + 20.f;
+	}
+
+	InventoryComp->DropItemFromSlot(SlotIndex, SafeDropLocation, DroppedItemActorClass, PlayerPawn);
+}
+
+
+void ABasePlayerController::Server_NotifyCraftingUI_Implementation(bool bIsCraftingStarted)
+{
+	if (ABaseCharacter* const BaseChar = Cast<ABaseCharacter>(GetPawn()))
+	{
+		BaseChar->Multicast_ToggleCraftingUI(bIsCraftingStarted);
+	}
+}
+
+// ===== 아이템 조합 시스템 =====
+
+void ABasePlayerController::TryStartCrafting()
+{
+	// 이미 조합 중이면 무시
+	if (bIsCrafting)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Crafting] Already crafting"));
+		return;
+	}
+
+	// Down/Death 상태 체크
+	APawn* const MyPawn = GetPawn();
+	if (MyPawn)
+	{
+		UBaseInventoryComponent* const InvComp = MyPawn->FindComponentByClass<UBaseInventoryComponent>();
+		if (InvComp && !InvComp->CanUseItemsInCurrentLifeState())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Crafting] Cannot craft while Down/Death"));
+			return;
+		}
+	}
+
+	// 조합 가능한 레시피 찾기 (우선순위 높은 순)
+	FItemRecipeRow* BestRecipe = FindBestAvailableRecipe();
+	if (BestRecipe == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Crafting] No available recipes"));
+		return;
+	}
+
+	// 조합 시작
+	StartCrafting(BestRecipe);
+}
+
+FItemRecipeRow* ABasePlayerController::FindBestAvailableRecipe()
+{
+	if (ItemRecipeTable == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Crafting] ItemRecipeTable is null"));
+		return nullptr;
+	}
+
+	APawn* const MyPawn = GetPawn();
+	if (MyPawn == nullptr) return nullptr;
+
+	UBaseInventoryComponent* const InvComp = MyPawn->FindComponentByClass<UBaseInventoryComponent>();
+	if (InvComp == nullptr) return nullptr;
+
+	// 모든 레시피 가져오기
+	TArray<FItemRecipeRow*> AllRecipes;
+	ItemRecipeTable->GetAllRows<FItemRecipeRow>(TEXT("FindBestAvailableRecipe"), AllRecipes);
+
+	// 조합 가능한 레시피 필터링
+	FItemRecipeRow* BestRecipe = nullptr;
+	int32 HighestPriority = TNumericLimits<int32>::Min();
+
+	for (FItemRecipeRow* Recipe : AllRecipes)
+	{
+		if (Recipe == nullptr) continue;
+
+		// 재료 확인
+		int32 Mat1Index, Mat2Index;
+		if (!HasMaterialsInInventory(Recipe, Mat1Index, Mat2Index))
+		{
+			continue;
+		}
+
+		// 우선순위 비교
+		if (Recipe->Priority > HighestPriority)
+		{
+			HighestPriority = Recipe->Priority;
+			BestRecipe = Recipe;
+		}
+	}
+
+	return BestRecipe;
+}
+
+bool ABasePlayerController::HasMaterialsInInventory(const FItemRecipeRow* Recipe, int32& OutMat1Index, int32& OutMat2Index)
+{
+	if (Recipe == nullptr) return false;
+
+	APawn* const MyPawn = GetPawn();
+	if (MyPawn == nullptr) return false;
+
+	UBaseInventoryComponent* const InvComp = MyPawn->FindComponentByClass<UBaseInventoryComponent>();
+	if (InvComp == nullptr) return false;
+
+	// 재료 로드
+	UBaseItemData* const Mat1 = Recipe->Material1.LoadSynchronous();
+	UBaseItemData* const Mat2 = Recipe->Material2.LoadSynchronous();
+	if (Mat1 == nullptr || Mat2 == nullptr) return false;
+
+	OutMat1Index = -1;
+	OutMat2Index = -1;
+
+	// 인벤토리 순회
+	for (int32 i = 0; i < InvComp->MaxSlots; ++i)
+	{
+		UBaseItemData* const SlotItem = InvComp->GetItemAt(i);
+		if (SlotItem == nullptr) continue;
+
+		// 재료 1 매칭
+		if (OutMat1Index == -1 && SlotItem == Mat1)
+		{
+			OutMat1Index = i;
+			continue;
+		}
+
+		// 재료 2 매칭
+		if (OutMat2Index == -1 && SlotItem == Mat2)
+		{
+			OutMat2Index = i;
+			continue;
+		}
+
+		// 둘 다 찾으면 종료
+		if (OutMat1Index != -1 && OutMat2Index != -1)
+		{
+			break;
+		}
+	}
+
+	return (OutMat1Index != -1 && OutMat2Index != -1);
+}
+
+void ABasePlayerController::StartCrafting(FItemRecipeRow* Recipe)
+{
+	if (Recipe == nullptr)
+	{
+		return;
+	}
+
+	APawn* const MyPawn = GetPawn();
+	if (MyPawn == nullptr)
+	{
+		return;
+	}
+
+	UBaseInventoryComponent* const InvComp = MyPawn->FindComponentByClass<UBaseInventoryComponent>();
+	if (InvComp == nullptr)
+	{
+		return;
+	}
+
+	// 결과 아이템이 스택 가능한지 확인
+	UBaseItemData* const ResultItem = Recipe->ResultItem.LoadSynchronous();
+	if (ResultItem == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Crafting] Result item is null"));
+		return;
+	}
+
+	// 스택 가능한 슬롯이 있는지 OR 빈 슬롯이 있는지 확인
+	bool bCanAddResult = false;
+
+	// 1) 기존 스택에 추가 가능한지 확인
+	for (int32 i = 0; i < InvComp->MaxSlots; ++i)
+	{
+		UBaseItemData* const SlotItem = InvComp->GetItemAt(i);
+		if (SlotItem == ResultItem)
+		{
+			const int32 StackCount = InvComp->GetStackCountAt(i);
+			if (StackCount > 0 && StackCount < InvComp->MaxStackPerSlot)
+			{
+				bCanAddResult = true;
+				break;
+			}
+		}
+	}
+
+	// 2) 빈 슬롯이 있는지 확인
+	if (!bCanAddResult)
+	{
+		const int32 EmptySlot = FindFirstEmptySlot();
+		if (EmptySlot != -1)
+		{
+			bCanAddResult = true;
+		}
+	}
+
+	if (!bCanAddResult)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Crafting] No space for result item"));
+		return;
+	}
+
+	// 조합 상태 설정
+	bIsCrafting = true;
+	CurrentCraftingRecipe = Recipe;
+
+	// 움직임 정지
+	if (ABaseCharacter* const BaseChar = Cast<ABaseCharacter>(MyPawn))
+	{
+		BaseChar->StopMove();
+	}
+
+	// 조합 사운드 재생
+	USoundBase* const CraftSound = Recipe->CraftSound.LoadSynchronous();
+	if (CraftSound)
+	{
+		CraftingSoundComponent = UGameplayStatics::SpawnSound2D(
+			this,
+			CraftSound,
+			1.0f,
+			1.0f,
+			0.0f
+		);
+	}
+
+	// 서버에 위젯 생성 알림
+	Server_NotifyCraftingUI(true);
+
+	// 타이머 설정
+	GetWorld()->GetTimerManager().SetTimer(
+		CraftingTimerHandle,
+		this,
+		&ABasePlayerController::CompleteCrafting,
+		Recipe->CraftTime,
+		false
+	);
+
+	UE_LOG(LogTemp, Log, TEXT("[Crafting] Started crafting, duration: %.2f sec"), Recipe->CraftTime);
+}
+
+void ABasePlayerController::CompleteCrafting()
+{
+	if (!bIsCrafting || CurrentCraftingRecipe == nullptr)
+	{
+		return;
+	}
+
+	APawn* const MyPawn = GetPawn();
+	if (MyPawn == nullptr)
+	{
+		CancelCrafting();
+		return;
+	}
+
+	UBaseInventoryComponent* const InvComp = MyPawn->FindComponentByClass<UBaseInventoryComponent>();
+	if (InvComp == nullptr)
+	{
+		CancelCrafting();
+		return;
+	}
+
+	// Down/Death 상태 체크
+	if (!InvComp->CanUseItemsInCurrentLifeState())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Crafting] Cannot complete craft while Down/Death"));
+		CancelCrafting();
+		return;
+	}
+
+	// 재료 확인 (혹시 조합 중 재료가 사라졌을 수도)
+	int32 Mat1Index, Mat2Index;
+	if (!HasMaterialsInInventory(CurrentCraftingRecipe, Mat1Index, Mat2Index))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Crafting] Materials missing during craft"));
+		CancelCrafting();
+		return;
+	}
+
+	// 서버 RPC 호출 (클라이언트/서버 모두)
+	Server_CompleteCrafting(*CurrentCraftingRecipe, Mat1Index, Mat2Index);
+
+	// 사운드 정지 (로컬)
+	if (CraftingSoundComponent)
+	{
+		CraftingSoundComponent->Stop();
+		CraftingSoundComponent = nullptr;
+	}
+
+	// 서버에 위젯 삭제 알림
+	Server_NotifyCraftingUI(false);
+
+	// 조합 상태 종료 (로컬)
+	bIsCrafting = false;
+	CurrentCraftingRecipe = nullptr;
+
+	UE_LOG(LogTemp, Log, TEXT("[Crafting] Crafting completed!"));
+}
+
+void ABasePlayerController::CancelCrafting()
+{
+	if (!bIsCrafting) return;
+
+	UE_LOG(LogTemp, Log, TEXT("[Crafting] Cancelled"));
+
+	// 타이머 취소
+	GetWorld()->GetTimerManager().ClearTimer(CraftingTimerHandle);
+
+	// 사운드 정지
+	if (CraftingSoundComponent)
+	{
+		CraftingSoundComponent->Stop();
+		CraftingSoundComponent = nullptr;
+	}
+
+	// 서버에 위젯 삭제 알림
+	Server_NotifyCraftingUI(false);
+
+	// 조합 상태 종료
+
+	// 조합 상태 종료
+	bIsCrafting = false;
+	CurrentCraftingRecipe = nullptr;
+}
+
+int32 ABasePlayerController::FindFirstEmptySlot()
+{
+	APawn* const MyPawn = GetPawn();
+	if (MyPawn == nullptr) return -1;
+
+	UBaseInventoryComponent* const InvComp = MyPawn->FindComponentByClass<UBaseInventoryComponent>();
+	if (InvComp == nullptr) return -1;
+
+	for (int32 i = 0; i < InvComp->MaxSlots; ++i)
+	{
+		if (InvComp->GetItemAt(i) == nullptr)
+		{
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+void ABasePlayerController::Server_CompleteCrafting_Implementation(FItemRecipeRow Recipe, int32 Mat1Index, int32 Mat2Index)
+{
+	APawn* const MyPawn = GetPawn();
+	if (MyPawn == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Crafting Server] Pawn is null"));
+		return;
+	}
+
+	UBaseInventoryComponent* const InvComp = MyPawn->FindComponentByClass<UBaseInventoryComponent>();
+	if (InvComp == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Crafting Server] InventoryComponent is null"));
+		return;
+	}
+
+	// 서버에서 재료 재확인 (치트 방지)
+	UBaseItemData* const Mat1 = Recipe.Material1.LoadSynchronous();
+	UBaseItemData* const Mat2 = Recipe.Material2.LoadSynchronous();
+
+	if (Mat1 == nullptr || Mat2 == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Crafting Server] Invalid materials in recipe"));
+		return;
+	}
+
+	// 재료가 맞는지 검증
+	if (!InvComp->InventoryContents.IsValidIndex(Mat1Index) || !InvComp->InventoryContents.IsValidIndex(Mat2Index))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Crafting Server] Invalid slot indices"));
+		return;
+	}
+
+	UBaseItemData* const SlotItem1 = InvComp->GetItemAt(Mat1Index);
+	UBaseItemData* const SlotItem2 = InvComp->GetItemAt(Mat2Index);
+
+	if (SlotItem1 != Mat1 || SlotItem2 != Mat2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Crafting Server] Material mismatch - possible cheat attempt"));
+		return;
+	}
+
+	// 재료 소모 (서버 권위)
+	InvComp->ConsumeItemAtSlot(Mat1Index);
+	InvComp->ConsumeItemAtSlot(Mat2Index);
+
+	// 결과 아이템 생성 (서버 권위)
+	UBaseItemData* const ResultItem = Recipe.ResultItem.LoadSynchronous();
+	if (ResultItem)
+	{
+		const bool bAdded = InvComp->AddItem(ResultItem);
+		if (bAdded)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[Crafting Server] Successfully crafted '%s' for player %s"),
+				*ResultItem->ItemName.ToString(),
+				*MyPawn->GetName());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[Crafting Server] Failed to add result item to inventory"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Crafting Server] Result item is null"));
+	}
+}

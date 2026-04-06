@@ -1,0 +1,308 @@
+#pragma once
+
+//HLSL Raymarching for getting "shadow" from obstacle
+//#include "/Plugin/TopDownVision/Shaders/RayMarch/RayMarchHLSL.ush" -> include this path to the custom node (on bottom)
+// Plugins/TopDownVision/Shaders/RayMarch/RayMarchHLSL.ush
+
+float Test()
+{
+	return 1.0f;
+}
+
+/*
+//======= BigChange!!! -> No more Device Depth for the height.
+//--> Scene Depth has actual distance value, so no more de_normalizing the distance, the texture has the value
+
+float CalculateLineOfSight(
+	Texture2D Tex, 
+	SamplerState TexSampler, //auto generated
+	float2 UV, 
+	float2 PawnUV, //0.5, 0.5 . center location
+	float MaxSteps, //32 for low
+	float CamDepth, // pass it by param. the distance from scene cpature comp to the ground right below comp
+	float Bias, //threshold for the detection
+	float EyeOffset // the world distance(from ground) of the actual eye sight
+)
+{
+	float2 RayDir = UV - PawnUV; 
+	float Visibility = 1.0;
+
+	// 1. Get raw values and convert to CM
+	float FloorAtPawnRaw = Tex.SampleLevel(TexSampler, PawnUV, 0).g;
+	float FloorAtTargetRaw = Tex.SampleLevel(TexSampler, UV, 0).g;
+    
+	float FloorAtPawn = FloorAtPawnRaw * CamDepth;
+	float FloorAtTarget = FloorAtTargetRaw * CamDepth;
+
+	// 2. Eye Level in CM (e.g., if floor is 1000cm and eye is 150cm, eyes are at 850cm)
+	float EyeLevel = FloorAtPawn - EyeOffset; 
+
+	[loop]//Must hint the gpu that this is loops!!!!! 
+	for (int i = 1; i <= (int)MaxSteps; i++)//() cast to int for loop
+	{
+		float Progress = (float)i / (float)MaxSteps;//cast back to float for value
+		float2 SampleUV = PawnUV + (RayDir * lerp(0.02, 1.0, Progress));
+        
+		// 3. Sample and convert to world height 
+		float SampleHeight = Tex.SampleLevel(TexSampler, SampleUV, 0).g * CamDepth;
+
+		// 4. Sloped vision line
+		float VisionLine = lerp(EyeLevel, FloorAtTarget, Progress);
+
+		// 5. Check against Bias
+		if (SampleHeight < VisionLine - Bias)
+		{
+			Visibility = 0.0;
+			break; 
+		}
+	}
+	return Visibility;
+}
+
+
+float CalculateLineOfSight_V2(
+	Texture2D Tex, 
+	SamplerState TexSampler, // auto generated
+	float2 UV, 
+	float2 PawnUV,// 0.5, 0.5, center location
+	float MaxSteps,// maximum steps for farthest pixel
+	float MinSteps,// minimum steps for closest pixel
+	float CamDepth,// distance from capture to floor in world units
+	float Bias,// threshold for detection
+	float EyeOffset// world distance from ground of the actual eye sight
+)
+{
+	float2 RayDir = UV - PawnUV; 
+	float Distance = length(RayDir);           // distance from center
+	float Visibility = 1.0;
+
+	// 1. Get raw values and convert to world height
+	float FloorAtPawn = Tex.SampleLevel(TexSampler, PawnUV, 0).g * CamDepth;
+	float FloorAtTarget = Tex.SampleLevel(TexSampler, UV, 0).g * CamDepth;
+
+	// 2. Eye level in world units
+	float EyeLevel = FloorAtPawn - EyeOffset;
+
+	// 3. Compute distance-dependent steps
+	float DistanceFraction = saturate(Distance);               // normalize 0..1 assuming UV range is 0..1
+	float StepsF = lerp(MinSteps, MaxSteps, DistanceFraction); // interpolate steps
+	int StepsI = max(1, (int)StepsF);                          // ensure at least 1 step
+
+	// 4. Ray march loop
+	[loop]
+	for (int i = 1; i <= StepsI; i++)
+	{
+		float Progress = (float)i / StepsF;                           // normalized progress along ray
+		float2 SampleUV = PawnUV + RayDir * lerp(0.02, 1.0, Progress);
+
+		// Sample world height
+		float SampleHeight = Tex.SampleLevel(TexSampler, SampleUV, 0).g * CamDepth;
+
+		// Compute sloped vision line
+		float VisionLine = lerp(EyeLevel, FloorAtTarget, Progress);
+
+		// Check if obstacle blocks vision
+		if (SampleHeight < VisionLine - Bias)
+		{
+			Visibility = 0.0;
+			break;
+		}
+	}
+
+	return Visibility;
+}
+
+
+
+//This one is for SceneDepth. no need for De normalizing distance. just compare
+float CalculateLineOfSight_V3(
+	Texture2D Tex, 
+	SamplerState TexSampler, 
+	float2 UV, 
+	float2 PawnUV,
+	float MaxSteps,
+	float MinSteps,
+	float Bias,
+	float EyeOffset )
+{
+	float2 RayDir = UV - PawnUV; 
+	float Distance = length(RayDir);
+	float Visibility = 1.0;
+
+	//  SceneDepth is already in World Units (cm). No CamDepth multiplier needed.
+	// Use .r because RTF_R32f is a single-channel format.
+	float DepthAtPawn = Tex.SampleLevel(TexSampler, PawnUV, 0).r;
+	float DepthAtTarget = Tex.SampleLevel(TexSampler, UV, 0).r;
+
+	// Eye Level Calculation
+	// Remember: Depth is distance from camera. 
+	// To be "higher" than the floor, the depth value must be SMALLER.
+	float EyeDepth = DepthAtPawn - EyeOffset;
+
+	// 3. Step logic (stays the same)
+	float DistanceFraction = saturate(Distance); 
+	float StepsF = lerp(MinSteps, MaxSteps, DistanceFraction);
+	int StepsI = max(1, (int)StepsF);
+
+	[loop]
+	for (int i = 1; i <= StepsI; i++)
+	{
+		float Progress = (float)i / (float)StepsI;
+		float2 SampleUV = PawnUV + RayDir * Progress;
+
+		// Sample current world depth
+		float SampledDepth = Tex.SampleLevel(TexSampler, SampleUV, 0).r;
+
+		// The line of sight path from EyeDepth to the Target Depth
+		float VisionLine = lerp(EyeDepth, DepthAtTarget, Progress);
+
+		// 4. Blockage Check
+		// If SampledDepth (the wall) is SMALLER than VisionLine, 
+		// it means the geometry is closer to the camera than our ray.
+		if (SampledDepth < VisionLine - Bias)
+		{
+			Visibility = 0.0;
+			break;
+		}
+	}
+
+	return Visibility;
+}
+
+
+//Scene Depth + Radial Mask as internal funciton
+float CalculateLineOfSight_V4(
+	Texture2D Tex, 
+	SamplerState TexSampler, 
+	float2 UV, 
+	float2 PawnUV,
+	float Radius01,
+	float MaxSteps,
+	float MinSteps,
+	float Bias,
+	float EyeOffset
+)
+{
+	// Radial Mask
+	float2 Radial = LOS_RadialMask(UV, PawnUV, Radius01);
+
+	// Outside vision radius → early exit
+	if (Radial.x == 0.0)
+		return 0.0;
+
+	float DistanceFraction = Radial.y;
+	
+	//  Ray direction
+	float2 RayDir = UV - PawnUV;
+	float Visibility = 1.0;
+	
+	// Scene Depth Sampling (cm)
+	float DepthAtPawn   = Tex.SampleLevel(TexSampler, PawnUV, 0).r;
+	float DepthAtTarget = Tex.SampleLevel(TexSampler, UV, 0).r;
+
+	float EyeDepth = DepthAtPawn - EyeOffset;
+	
+	// Distance-based step count
+	float StepsF = lerp(MinSteps, MaxSteps, DistanceFraction);
+	int   StepsI = max(1, (int)StepsF);
+	
+	// Ray March
+	[loop]
+	for (int i = 1; i <= StepsI; i++)
+	{
+		float Progress = (float)i / (float)StepsI;
+		float2 SampleUV = PawnUV + RayDir * Progress;
+
+		float SampledDepth = Tex.SampleLevel(TexSampler, SampleUV, 0).r;
+		float VisionLine   = lerp(EyeDepth, DepthAtTarget, Progress);
+
+		if (SampledDepth < VisionLine - Bias)
+		{
+			Visibility = 0.0;
+			break;
+		}
+	}
+
+	return Visibility;
+}
+*/
+
+//Internal function for radial mask
+float2 LOS_RadialMask(
+	float2 UV,
+	float2 CenterUV,
+	float Radius)// normalized distance (VisionRange/MaxVisionRange/2)
+{
+	float2 Delta = UV - CenterUV;
+	float Distance = length(Delta);
+
+	// Outside radius
+	if (Distance > Radius)
+	{
+		return float2(0.0, 0.0);
+	}
+
+	// Normalize distance within radius
+	float DistanceFrac = saturate(Distance / Radius);
+	return float2(1.0, DistanceFrac);
+}
+
+//Final. this wont use Depth, but only masks. R for obstacle which can cast shadow, and G for no shadow casting
+
+// LOS calculation using only pre-sampled R and G mask values
+// R = normal obstacle (casts shadow)
+// G = low obstacle (no shadow cast, still blocks vision)
+float CalculateLineOfSight_V5(
+	Texture2D MaskTex,       // Combined R/G mask texture
+	SamplerState MaskSampler, 
+	float2 UV,// pixel UV
+	float2 PawnUV,// usually center (0.5,0.5)
+	float Radius,// radial vision mask
+	float MaxSteps, 
+	float MinSteps
+)
+{
+	// Radial Mask
+	float2 Radial = LOS_RadialMask(UV, PawnUV, Radius);
+
+	// Outside vision radius → early exit
+	if (Radial.x == 0.0)
+		return 0.0;
+
+	float DistanceFraction = Radial.y;
+
+	// Ray direction
+	float2 RayDir = UV - PawnUV;
+	float Visibility = 1.0;
+
+	// Distance-based step count
+	float StepsF = lerp(MinSteps, MaxSteps, DistanceFraction);
+	int StepsI = max(1, (int)StepsF);
+
+	// Ray march along the line -> ShadowCast Obstacle -> ray march
+	[loop]
+	for (int i = 1; i <= StepsI; i++)
+	{
+		float Progress = (float)i / (float)StepsI;
+		float2 SampleUV = PawnUV + RayDir * Progress;
+
+		// Sample mask texture
+		float NormalObstacle = MaskTex.SampleLevel(MaskSampler, SampleUV, 0).r;
+
+		// NormalObstacle → casts shadow
+		if (NormalObstacle > 0.0)
+		{
+			Visibility = 0.0;
+			break; // stop shadow ray
+		}
+	}
+
+	// mask out the area -> Low Obstacle type, no RayMarch for shadow casting
+	float LowObstacle = MaskTex.SampleLevel(MaskSampler, UV, 0).g;
+	if (LowObstacle > 0.0)
+	{
+		Visibility = 0.0;
+	}
+
+	return Visibility;
+}

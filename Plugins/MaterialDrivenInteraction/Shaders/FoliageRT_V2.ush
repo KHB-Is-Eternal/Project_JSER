@@ -1,0 +1,57 @@
+﻿#pragma once
+
+#include "TargetBrush.ush"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRT_InCellMask
+// 1.0 if WorldXY is inside this slot's active cell, 0.0 otherwise.
+// SlotData: .xy = CellOriginWS  .z = IsActive  .w = SlotIndex
+// ─────────────────────────────────────────────────────────────────────────────
+float FRT_InCellMask(float2 WorldXY, float4 SlotData, float CellSize)
+{
+    float2 CellOrigin = SlotData.xy;
+    float  IsActive   = SlotData.z;
+    float2 UV         = (WorldXY - CellOrigin) / CellSize;
+
+    float  Feather  = 0.01;
+    float2 EdgeMask = smoothstep(0.0, Feather, UV)
+                    * smoothstep(1.0, 1.0 - Feather, UV);
+    float  Mask     = EdgeMask.x * EdgeMask.y;
+
+    return (IsActive > 0.5) ? Mask : 0.0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRT_WorldToSlotUV
+// ─────────────────────────────────────────────────────────────────────────────
+float2 FRT_WorldToSlotUV(float2 TexCoord, float4 SlotData, float CellSize)
+{
+    return (TexCoord - SlotData.xy) / CellSize;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRT_SampleSlot
+// Decodes one slot RT sample, applies cell mask.
+// ─────────────────────────────────────────────────────────────────────────────
+void FRT_SampleSlot(
+    float4 RTSample,
+    float2 WorldXY,
+    float4 SlotData,
+    float  CellSize,
+    out float2 OutPushDir,
+    out float2 OutVelocity,
+    out float  OutHeightMask,
+    out float  OutProgression)
+{
+    float Mask = FRT_InCellMask(WorldXY, SlotData, CellSize);
+
+    float PushDirX, PushDirY, VelX, VelY, HeightMask, Progression;
+    FRT_Decode(RTSample, PushDirX, PushDirY, VelX, VelY, HeightMask, Progression);
+
+    if (Progression < 0.005) Progression = 0.0;
+
+    OutPushDir     = float2((PushDirX * 2.0 - 1.0), (PushDirY * 2.0 - 1.0)) * HeightMask * Mask;
+    OutVelocity    = float2((VelX * 2.0 - 1.0), (VelY * 2.0 - 1.0)) * HeightMask * Mask;
+    OutHeightMask  = HeightMask * Mask;
+    OutProgression = Progression * Mask;
+}

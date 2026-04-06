@@ -1,0 +1,96 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/GameStateBase.h"
+#include "ER_GameState.generated.h"
+
+
+class AER_PlayerState;
+class UCharacterData;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPhaseChangedBP, int32, NewPhase);
+
+// this is for the mpc update
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHazardZonesChanged, const TArray<int32>&, NewDangerZoneIDs);
+
+UCLASS()
+class PROJECTER_API AER_GameState : public AGameStateBase
+{
+	GENERATED_BODY()
+	
+public:
+	
+	AER_GameState();
+	
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	void BuildTeamCache();
+	void RemoveTeamCache();
+
+	TArray<FString>& GetTeamArray(int32 TeamIdx);
+
+	// 재접속 호환: UniqueId 문자열로 PlayerState 찾기
+	UFUNCTION(BlueprintPure)
+	AER_PlayerState* GetPlayerStateByUniqueId(const FString& InUniqueIdStr) const;
+
+	bool GetTeamEliminate(int32 idx);
+
+	int32 GetLastTeamIdx();
+
+	UFUNCTION()
+	void OnRep_Phase();
+
+	float GetPhaseRemainingTime() const;
+
+	UFUNCTION(BlueprintCallable)
+	int32 GetCurrentPhase() { return CurrentPhase; }
+
+	UFUNCTION(BlueprintCallable)
+	void SetCurrentPhase(int32 input) { CurrentPhase = input; }
+
+	// 사용 가능한 캐릭터 데이터 목록 반환
+	UFUNCTION(BlueprintPure, Category = "Character Selection")
+	const TArray<TSoftObjectPtr<UCharacterData>>& GetAvailableCharacterData() const;
+
+	// MPC Update Reaction purpsoe
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_OnHazardPhaseChanged(const TArray<int32>& NewDangerZoneIDs);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Hazard")
+	void OnDangerZonesReceived(const TArray<int32>& NewDangerZoneIDs);
+
+
+public:
+	UPROPERTY(BlueprintReadOnly)
+	TMap<int32, bool> TeamElimination;
+
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Phase)
+	float PhaseServerTime = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Replicated)
+	float PhaseDuration = 10.f;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnPhaseChangedBP OnPhaseChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "Hazard")
+	FOnHazardZonesChanged OnHazardZonesChanged;
+
+protected:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Selection")
+	TArray<TSoftObjectPtr<UCharacterData>> AvailableCharacterData;
+
+
+private:
+	TArray<TArray<FString>> TeamCache;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Phase)
+	int32 CurrentPhase = 0;
+
+// chat
+public:
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_BroadcastChatMessage(const FString& Message);
+
+};
+

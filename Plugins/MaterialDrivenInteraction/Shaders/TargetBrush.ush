@@ -1,0 +1,141 @@
+#pragma once
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRT_Pack8x2
+// Pack two [0,1] values into one 16-bit float channel using 8 bits each.
+// 256 levels per value.
+// ─────────────────────────────────────────────────────────────────────────────
+float FRT_Pack8x2(float Hi, float Lo)
+{
+    float hi = floor(saturate(Hi) * 255.0 + 0.5);
+    float lo = floor(saturate(Lo) * 255.0 + 0.5);
+    return (hi * 256.0 + lo) / 65535.0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRT_Unpack8x2
+// Unpack one 16-bit float channel into two [0,1] values.
+// ─────────────────────────────────────────────────────────────────────────────
+void FRT_Unpack8x2(float Packed, out float Hi, out float Lo)
+{
+    float v = floor(Packed * 65535.0 + 0.5);
+    Hi = floor(v / 256.0) / 255.0;
+    Lo = fmod(v, 256.0) / 255.0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRT_Encode
+// Packs all interaction data into RGBA16f.
+//   R = Pack(PushDirX, VelX)
+//   G = Pack(PushDirY, VelY)
+//   B = Pack(HeightMask, Progression)
+//   A = unused
+// ─────────────────────────────────────────────────────────────────────────────
+float4 FRT_Encode(
+    float PushDirX,
+    float PushDirY,
+    float VelX,
+    float VelY,
+    float HeightMask,
+    float Progression)
+{
+    return float4(
+        FRT_Pack8x2(PushDirX,   VelX),
+        FRT_Pack8x2(PushDirY,   VelY),
+        FRT_Pack8x2(HeightMask, Progression),
+        0.0
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRT_Decode
+// Unpacks RGBA16f into all interaction values.
+// ─────────────────────────────────────────────────────────────────────────────
+void FRT_Decode(
+    float4 Packed,
+    out float PushDirX,
+    out float PushDirY,
+    out float VelX,
+    out float VelY,
+    out float HeightMask,
+    out float Progression)
+{
+    FRT_Unpack8x2(Packed.r, PushDirX,   VelX);
+    FRT_Unpack8x2(Packed.g, PushDirY,   VelY);
+    FRT_Unpack8x2(Packed.b, HeightMask, Progression);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TB_InteractionBrush
+// Draws interaction data into the RT.
+// Outside brush radius — decays Progression, preserves direction.
+// Inside brush radius — writes fresh push direction and resets Progression to 1.
+//
+// DecayRate: value per frame e.g. 0.95 = 5% decay per frame
+// ─────────────────────────────────────────────────────────────────────────────
+float4 TB_InteractionBrush(
+    float4 Previous,
+    float2 TexCoord,
+    float2 CentreUV,
+    float2 UVExtent,
+    float  VelocityX,
+    float  VelocityY,
+    float  Weight,
+    float  Softness,
+    float  DecayRate)
+{
+    // Decode previous
+    float PrevDirX, PrevVelX, PrevDirY, PrevVelY, PrevHeight, PrevProgression;
+    FRT_Decode(Previous, PrevDirX, PrevDirY, PrevVelX, PrevVelY, PrevHeight, PrevProgression);
+
+    float2 Delta  = TexCoord - CentreUV;
+    float  Dist   = length(Delta);
+    float  Radius = UVExtent.x;
+
+    // Outside brush — decay progression, preserve everything else
+    if (Dist > Radius)
+    {
+        return FRT_Encode(
+            PrevDirX, PrevDirY,
+            PrevVelX, PrevVelY,
+            PrevHeight,
+            PrevProgression * DecayRate
+        );
+    }
+
+    float HardEdge = 1.0 - step(Radius, Dist);
+    float SoftEdge = 1.0 - smoothstep(Radius * (1.0 - Softness), Radius, Dist);
+    float Mask     = lerp(HardEdge, SoftEdge, saturate(Softness));
+
+    if (Mask <= 0.0001)
+    {
+        return FRT_Encode(
+            PrevDirX, PrevDirY,
+            PrevVelX, PrevVelY,
+            PrevHeight,
+            PrevProgression * DecayRate
+        );
+    }
+
+    // Push direction — radial outward from brush center
+    float2 Dir    = (Dist > 0.0001) ? normalize(Delta) : float2(0.0, 0.0);
+    float2 DirEnc = Dir * 0.5 + 0.5;
+    float  CurMag = Weight * Mask;
+
+    // Blend continuous — MAX by magnitude
+    float WinDirX  = CurMag > PrevHeight ? DirEnc.x  : PrevDirX;
+    float WinDirY  = CurMag > PrevHeight ? DirEnc.y  : PrevDirY;
+    float WinVelX  = CurMag > PrevHeight ? VelocityX : PrevVelX;
+    float WinVelY  = CurMag > PrevHeight ? VelocityY : PrevVelY;
+    float WinMag   = max(CurMag, PrevHeight);
+
+    // Progression resets to 1 while invoker is present
+    float WinProg  = 1.0;
+
+    return FRT_Encode(
+        WinDirX, WinDirY,
+        WinVelX, WinVelY,
+        WinMag,
+        WinProg
+    );
+}
