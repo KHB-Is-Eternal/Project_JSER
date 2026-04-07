@@ -689,8 +689,9 @@ void ABaseMonster::SendAttackRangeEvent(float AttackRange)
 	
 	const float Distance = FVector::DistSquared(
 			TargetPlayer->GetActorLocation(), GetActorLocation());
+	float SquaAttackRange = AttackRange * AttackRange;
 
-	if (Distance <= AttackRange * AttackRange)
+	if (Distance <= SquaAttackRange)
 	{
 		// 공격
 		SendStateTreeEvent(MonsterTags.AttackEventTag);
