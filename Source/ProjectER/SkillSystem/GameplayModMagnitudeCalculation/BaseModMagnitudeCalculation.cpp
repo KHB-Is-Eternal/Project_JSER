@@ -3,7 +3,6 @@
 
 #include "SkillSystem/GameplayModMagnitudeCalculation/BaseModMagnitudeCalculation.h"
 #include "SkillSystem/SkillDataAsset.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
 #include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
 #include "GameplayEffectExecutionCalculation.h" // GAS Attribute Capture macros (DECLARE_ATTRIBUTE_CAPTUREDEF, etc.)
 
@@ -84,83 +83,8 @@ UBaseModMagnitudeCalculation::UBaseModMagnitudeCalculation()
 
 float UBaseModMagnitudeCalculation::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-    // 1. 소스 오브젝트(SkillDataAsset) 확인
-    const USkillEffectDataAsset* SkillDataAsset = Cast<USkillEffectDataAsset>(Spec.GetContext().GetSourceObject());
-    if (IsValid(SkillDataAsset) == false)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("MMC: [%s] SkillDataAsset is INVALID! (SourceObject not set)"), *GetName());
-        return 0.f;
-    }
-
-    // 2. 인덱스 태그(IndexTag) 및 매그니튜드 확인
-    const FGameplayTag IndexTag = SkillDataAsset->GetIndexTag();
-    if (IndexTag.IsValid() == false)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("MMC: [%s] IndexTag is INVALID in DataAsset!"), *GetName());
-        return 0.f;
-    }
-
-    float IndexMagnitude = Spec.GetSetByCallerMagnitude(IndexTag, false, -1.f);
-    if (IndexMagnitude == -1.f)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("MMC: [%s] IndexTag [%s] not found in Spec!"), *GetName(), *IndexTag.ToString());
-        return 0.f;
-    }
-
-    int32 DataIndex = FMath::RoundToInt(IndexMagnitude);
-    const FSkillEffectContainer& Container = SkillDataAsset->GetData();
-
-    // 3. 인덱스 범위 확인
-    if (Container.SkillEffectDefinition.IsValidIndex(DataIndex) == false)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("MMC: [%s] Invalid DataIndex: %d"), *GetName(), DataIndex);
-        return 0.f;
-    }
-
-    const FSkillEffectDefinition& MyDef = Container.SkillEffectDefinition[DataIndex];
-    const EDecreaseBy DecreaseBy = MyDef.DamageType;
-    float AbilityLevel = FMath::Max(1.0f, Spec.GetLevel()); // 레벨이 0일 경우 방지
-
-    // 4. 기반 수치 계산
-    float TotalCalculatedValue = ReturnCalculatedValue(Spec, MyDef, AbilityLevel, MMCAttributeStatics().SourceAttributeMap);
-
-    if (TotalCalculatedValue != 0.f)
-    {
-        float FinalValue = 0;
-
-        switch (DecreaseBy)
-        {
-        case EDecreaseBy::Noting:
-        {
-            FinalValue = TotalCalculatedValue;
-            break;
-        }
-        case EDecreaseBy::Defense:
-        {
-            float Defense = FindValueByAttribute(Spec, UBaseAttributeSet::GetDefenseAttribute(), MMCAttributeStatics().TargetAttributeMap);
-            float Mitigation = 100.0f / (100.0f + Defense);
-            FinalValue = TotalCalculatedValue * Mitigation;
-            break;
-        }
-        case EDecreaseBy::Tenacity:
-        {
-            float Tenacity = FindValueByAttribute(Spec, UBaseAttributeSet::GetTenacityAttribute(), MMCAttributeStatics().TargetAttributeMap);
-            float ResistanceMultiplier = FMath::Max<float>(1.0f - Tenacity, 0.0f);
-            FinalValue = TotalCalculatedValue * ResistanceMultiplier;
-            break;
-        }
-        default:
-            FinalValue = TotalCalculatedValue;
-            break;
-        }
-
-        const EAdjustmentType AdjustmentType = MyDef.Adjustment;
-        FinalValue *= (AdjustmentType == EAdjustmentType::Add ? 1.0f : -1.0f);
-        
-        // UE_LOG(LogTemp, Log, TEXT("MMC: [%s] Calculated Final Magnitude: %f"), *GetName(), FinalValue);
-        return FinalValue;
-    }
-
+    // TODO: Implement calculation logic using native GE Modifiers and captured attributes
+    // e.g., float BaseValue = Spec.GetSetByCallerMagnitude(...);
     return 0.f;
 }
 
@@ -179,19 +103,3 @@ float UBaseModMagnitudeCalculation::FindValueByAttribute(const FGameplayEffectSp
     return FoundValue;
 }
 
-float UBaseModMagnitudeCalculation::ReturnCalculatedValue(const FGameplayEffectSpec& Spec, const FSkillEffectDefinition& SkillEffectDefinition, const float Level, const TMap<FGameplayAttribute, FGameplayEffectAttributeCaptureDefinition>& SelectedMap) const
-{
-    float TotalCalculatedValue = 0.f;
-
-    for (const FSkillAttributeData& AttrData : SkillEffectDefinition.SkillAttributeData)
-    {
-        const float StatValue = FindValueByAttribute(Spec, AttrData.SourceAttribute, SelectedMap);
-
-        const float Coeff = AttrData.Coefficients.GetValueAtLevel(Level);
-        const float BaseVal = AttrData.BasedValues.GetValueAtLevel(Level);
-
-        TotalCalculatedValue += (StatValue * Coeff) + BaseVal;
-    }
-
-    return TotalCalculatedValue;
-}

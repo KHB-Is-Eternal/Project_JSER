@@ -7,7 +7,7 @@
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "SkillSystem/GameplayAbilityTargetActor/TargetActor.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -37,7 +37,7 @@ void UMouseTargetSkill::ExecuteSkill()
 	UMouseTargetSkillConfig* Config = Cast<UMouseTargetSkillConfig>(CachedConfig);
 	if (!IsValid(Config)) return;
 
-	const TArray<TObjectPtr<USkillEffectDataAsset>>& EffectDataAssets = Config->GetEffectsToApply();
+	const TArray<TSubclassOf<UBaseGameplayEffect>>& EffectDataAssets = Config->GetEffectsToApply();
 	if (EffectDataAssets.Num() <= 0) return;
 	ApplyEffectsTarget(TargetActor, EffectDataAssets);
 }
@@ -250,7 +250,7 @@ void UMouseTargetSkill::RotateToTarget(AActor* Actor)
 	Avatar->SetActorRotation(NewRotation);
 }
 
-void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TObjectPtr<USkillEffectDataAsset>>& SkillEffectDataAssets)
+void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets)
 {
 	UAbilitySystemComponent* const SourceASC = GetAbilitySystemComponentFromActorInfo();
 	AActor* const Avatar = GetAvatarActorFromActorInfo();
@@ -267,14 +267,14 @@ void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TOb
 	UAbilitySystemComponent* const TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
 	if (!IsValid(TargetASC)) return;
 
-	for (USkillEffectDataAsset* const Effect : SkillEffectDataAssets)
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : SkillEffectDataAssets)
 	{
-		if (!IsValid(Effect)) continue;
+		if (!IsValid(EffectClass)) continue;
 
-		for (FGameplayEffectSpecHandle& Spec : Effect->MakeSpecs(SourceASC, this, Avatar, ContextHandle))
+		FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), ContextHandle);
+		if (SpecHandle.IsValid())
 		{
-			if (!Spec.IsValid() || !Spec.Data.IsValid()) continue;
-			SourceASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
+			SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 		}
 	}
 }

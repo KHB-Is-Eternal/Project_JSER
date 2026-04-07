@@ -101,15 +101,14 @@ void UMouseClickSkill::ExecuteSkill()
 			return;
 		}
 
-		const TArray<TObjectPtr<USkillEffectDataAsset>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
-		for (USkillEffectDataAsset* EffectData : ExecutionEffects)
+		const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
+		for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : ExecutionEffects)
 		{
-			if (!EffectData) continue;
+			if (!IsValid(EffectClass)) continue;
 
-			TArray<FGameplayEffectSpecHandle> SpecHandles = EffectData->MakeSpecs(InstigatorASC, this, Avatar, TargetLocationEffectContext);
-			for (FGameplayEffectSpecHandle& SpecHandle : SpecHandles)
+			FGameplayEffectSpecHandle SpecHandle = InstigatorASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), TargetLocationEffectContext);
+			if (SpecHandle.IsValid())
 			{
-				if (!SpecHandle.IsValid()) continue;
 				InstigatorASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get(), InstigatorASC->GetPredictionKeyForNewAction());
 			}
 		}

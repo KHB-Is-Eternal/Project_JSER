@@ -12,36 +12,27 @@
 
 UTeleportMoveGEC::UTeleportMoveGEC()
 {
-	ConfigClass = UTeleportMoveGECConfig::StaticClass();
 }
 
-TSubclassOf<UBaseGECConfig> UTeleportMoveGEC::GetRequiredConfigClass() const
-{
-	return UTeleportMoveGECConfig::StaticClass();
-}
-
-float UTeleportMoveGEC::CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config) const
+float UTeleportMoveGEC::CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const
 {
 	return 0.15f;
 }
 
-void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config, const FGameplayEffectSpec& GESpec) const
+void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const
 {
-	const UTeleportMoveGECConfig* const TeleportConfig = Cast<UTeleportMoveGECConfig>(Config);
-	if (!IsValid(TeleportConfig)) return;
-
 	UWorld* const World = Instigator->GetWorld();
 	if (!IsValid(World)) return;
 
 	const FVector StartLoc = Instigator->GetActorLocation();
-	FVector Destination = CalculateDestination(GESpec, Instigator, Direction, TeleportConfig);
+	FVector Destination = CalculateDestination(GESpec, Instigator, Direction);
 
 	// ── 1. 공통 안전성 검증 (네브메쉬 투사 및 경로 도달 가능성 확인) ──
 	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
 	if (NavSys)
 	{
 		FNavLocation NavLoc;
-		if (NavSys->ProjectPointToNavigation(Destination, NavLoc, FVector(TeleportConfig->NavProjectionRadius)))
+		if (NavSys->ProjectPointToNavigation(Destination, NavLoc, FVector(this->NavProjectionRadius)))
 		{
 			Destination = NavLoc.Location;
 
@@ -78,7 +69,7 @@ void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, con
 	FHitResult HitResult;
 	bool bHitWall = false;
 
-	if (TeleportConfig->bSweep)
+	if (this->bSweep)
 	{
 		// bSweep 모드: 벽 충돌 감지 및 벽꿍 효과 처리
 		FCollisionQueryParams WallQueryParams;
@@ -93,12 +84,12 @@ void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, con
 			}
 		}
 
-		const FVector FinalDest = StartLoc + Direction * TeleportConfig->MoveDistance;
+		const FVector FinalDest = StartLoc + Direction * this->MoveDistance;
 		bHitWall = World->SweepSingleByChannel(HitResult, StartLoc, FinalDest, FQuat::Identity, ECC_WorldStatic, WallShape, WallQueryParams);
 
-		if (bHitWall && TeleportConfig->bDetectWallHit)
+		if (bHitWall && this->bDetectWallHit)
 		{
-			HandleWallHit(Instigator, HitResult, TeleportConfig, GESpec);
+			HandleWallHit(Instigator, HitResult, GESpec);
 		}
 	}
 
@@ -106,23 +97,23 @@ void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, con
 	Instigator->SetActorLocation(Destination, false, nullptr, ETeleportType::TeleportPhysics);
 	UpdateLevelTracker(Instigator);
 
-	ExecuteMoveCue(TeleportConfig->EndVfx, GESpec, Instigator, Destination);
-	ExecuteMoveSound(TeleportConfig->EndSound, GESpec, Instigator, Destination);
-	RemoveMovingCue(TeleportConfig->MovingVfx, Instigator);
-	RemoveMovingSoundCue(TeleportConfig->MovingSound, Instigator);
+	ExecuteMoveCue(this->EndVfx, GESpec, Instigator, Destination);
+	ExecuteMoveSound(this->EndSound, GESpec, Instigator, Destination);
+	RemoveMovingCue(this->MovingVfx, Instigator);
+	RemoveMovingSoundCue(this->MovingSound, Instigator);
 }
 
-FVector UTeleportMoveGEC::CalculateDestination(const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Direction, const UTeleportMoveGECConfig* Config) const
+FVector UTeleportMoveGEC::CalculateDestination(const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Direction) const
 {
-	if (!IsValid(Instigator) || !IsValid(Config))
+	if (!IsValid(Instigator))
 	{
-		return IsValid(Instigator) ? Instigator->GetActorLocation() : FVector::ZeroVector;
+		return FVector::ZeroVector;
 	}
 
 	const FVector StartLoc = Instigator->GetActorLocation();
-	const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator, Config);
+	const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator);
 
-	if (!Config->bSweep)
+	if (!this->bSweep)
 	{
 		return TargetLoc;
 	}
@@ -149,7 +140,7 @@ FVector UTeleportMoveGEC::CalculateDestination(const FGameplayEffectSpec& GESpec
 	if (World->SweepSingleByChannel(HitResult, StartLoc, TargetLoc, FQuat::Identity, ECC_WorldStatic, CapsuleShape, QueryParams))
 	{
 		// 벽 끼임 방지를 위해 노멀 방향으로 약간 물러남
-		return HitResult.Location + HitResult.Normal * Config->TeleportSafetyOffset;
+		return HitResult.Location + HitResult.Normal * this->TeleportSafetyOffset;
 	}
 
 	return TargetLoc;

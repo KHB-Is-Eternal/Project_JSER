@@ -10,55 +10,47 @@
 
 ULaunchMoveGEC::ULaunchMoveGEC()
 {
-	ConfigClass = ULaunchMoveGECConfig::StaticClass();
 }
 
-TSubclassOf<UBaseGECConfig> ULaunchMoveGEC::GetRequiredConfigClass() const
+float ULaunchMoveGEC::CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const
 {
-	return ULaunchMoveGECConfig::StaticClass();
-}
-
-float ULaunchMoveGEC::CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config) const
-{
-	const ULaunchMoveGECConfig* const LaunchConfig = Cast<ULaunchMoveGECConfig>(Config);
 	const ACharacter* const Character = Cast<ACharacter>(Instigator);
-	if (!IsValid(LaunchConfig) || !IsValid(Character))
+	if (!IsValid(Character))
 	{
 		return 0.25f;
 	}
 
-	const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator, LaunchConfig);
+	const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator);
 	const float Distance = FVector::Dist(Instigator->GetActorLocation(), TargetLoc);
 
-	if (LaunchConfig->VerticalLaunchSpeed > 0.0f)
+	if (this->VerticalLaunchSpeed > 0.0f)
 	{
 		const UCharacterMovementComponent* const CMC = Character->GetCharacterMovement();
 		const float Gravity = IsValid(CMC) ? -CMC->GetGravityZ() : 980.0f;
 		if (Gravity > 0.0f)
 		{
 			// t = 2 * Vz / g
-			return (2.0f * LaunchConfig->VerticalLaunchSpeed) / Gravity;
+			return (2.0f * this->VerticalLaunchSpeed) / Gravity;
 		}
 	}
 
 	return 0.25f; // 지면 발사 기본 예상 시간
 }
 
-void ULaunchMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config, const FGameplayEffectSpec& GESpec) const
+void ULaunchMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const
 {
-	const ULaunchMoveGECConfig* const LaunchConfig = Cast<ULaunchMoveGECConfig>(Config);
 	ACharacter* const Character = Cast<ACharacter>(Instigator);
-	if (!IsValid(LaunchConfig) || !IsValid(Character))
+	if (!IsValid(Character))
 	{
 		return;
 	}
 
 	// 발사 속도 계산
-	const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator, LaunchConfig);
+	const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator);
 	const float Distance = FVector::Dist(Instigator->GetActorLocation(), TargetLoc);
 
 	float HorizontalSpeed = 0.0f;
-	const float VerticalSpeed = LaunchConfig->VerticalLaunchSpeed;
+	const float VerticalSpeed = this->VerticalLaunchSpeed;
 
 	if (VerticalSpeed > 0.0f)
 	{
@@ -87,7 +79,7 @@ void ULaunchMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const
 	const float PredictDuration = (HorizontalSpeed > 0.0f) ? (Distance / HorizontalSpeed) : 0.5f;
 
 	// 유닛 충돌 무시 (예상 이동 시간 동안)
-	if (LaunchConfig->bIgnoreUnitCollision)
+	if (this->bIgnoreUnitCollision)
 	{
 		SetPawnCollisionIgnore(Character, true);
 
@@ -96,23 +88,20 @@ void ULaunchMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const
 		FTimerHandle RestoreTimer;
 		Character->GetWorld()->GetTimerManager().SetTimer(
 			RestoreTimer,
-			[WeakThis, WeakChar, GESpec, LaunchConfig]()
+			[WeakThis, WeakChar, GESpec]()
 			{
 				if (WeakThis.IsValid() && WeakChar.IsValid())
 				{
-					if (LaunchConfig)
-					{
-						// 도착(착지) 큐 실행 및 Moving 루핑 종료
-						WeakThis->ExecuteMoveCue(LaunchConfig->EndVfx, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
-						WeakThis->ExecuteMoveSound(LaunchConfig->EndSound, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
-						WeakThis->RemoveMovingCue(LaunchConfig->MovingVfx, WeakChar.Get());
-						WeakThis->RemoveMovingSoundCue(LaunchConfig->MovingSound, WeakChar.Get());
+					// 도착(착지) 큐 실행 및 Moving 루핑 종료
+					WeakThis->ExecuteMoveCue(WeakThis->EndVfx, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
+					WeakThis->ExecuteMoveSound(WeakThis->EndSound, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
+					WeakThis->RemoveMovingCue(WeakThis->MovingVfx, WeakChar.Get());
+					WeakThis->RemoveMovingSoundCue(WeakThis->MovingSound, WeakChar.Get());
 
-						// 충돌 무시는 서버에서만 제어
-						if (LaunchConfig->bIgnoreUnitCollision && WeakChar->HasAuthority())
-						{
-							WeakThis->SetPawnCollisionIgnore(WeakChar.Get(), false);
-						}
+					// 충돌 무시는 서버에서만 제어
+					if (WeakThis->bIgnoreUnitCollision && WeakChar->HasAuthority())
+					{
+						WeakThis->SetPawnCollisionIgnore(WeakChar.Get(), false);
 					}
 				}
 			},
@@ -127,14 +116,14 @@ void ULaunchMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const
 		FTimerHandle EndVfxTimer;
 		Character->GetWorld()->GetTimerManager().SetTimer(
 			EndVfxTimer,
-			[WeakThis, WeakChar, GESpec, LaunchConfig]()
+			[WeakThis, WeakChar, GESpec]()
 			{
-				if (WeakThis.IsValid() && WeakChar.IsValid() && LaunchConfig)
+				if (WeakThis.IsValid() && WeakChar.IsValid())
 				{
-					WeakThis->ExecuteMoveCue(LaunchConfig->EndVfx, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
-					WeakThis->ExecuteMoveSound(LaunchConfig->EndSound, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
-					WeakThis->RemoveMovingCue(LaunchConfig->MovingVfx, WeakChar.Get());
-					WeakThis->RemoveMovingSoundCue(LaunchConfig->MovingSound, WeakChar.Get());
+					WeakThis->ExecuteMoveCue(WeakThis->EndVfx, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
+					WeakThis->ExecuteMoveSound(WeakThis->EndSound, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
+					WeakThis->RemoveMovingCue(WeakThis->MovingVfx, WeakChar.Get());
+					WeakThis->RemoveMovingSoundCue(WeakThis->MovingSound, WeakChar.Get());
 				}
 			},
 			PredictDuration,
@@ -142,7 +131,7 @@ void ULaunchMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const
 	}
 
     // 캐릭터 상태 변경 (확실히 뜨게 함)
-    if (VerticalSpeed > 0.0f || LaunchConfig->bZOverride)
+    if (VerticalSpeed > 0.0f || this->bZOverride)
     {
         if (UCharacterMovementComponent *CMC = Character->GetCharacterMovement())
         {
@@ -150,5 +139,5 @@ void ULaunchMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const
         }
     }
 
-    Character->LaunchCharacter(LaunchVelocity, LaunchConfig->bXYOverride, LaunchConfig->bZOverride);
+    Character->LaunchCharacter(LaunchVelocity, this->bXYOverride, this->bZOverride);
 }

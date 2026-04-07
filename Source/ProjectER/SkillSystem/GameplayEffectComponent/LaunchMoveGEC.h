@@ -6,10 +6,20 @@
 #include "SkillSystem/GameplayEffectComponent/MoveBaseGEC.h"
 #include "LaunchMoveGEC.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
-class PROJECTER_API ULaunchMoveGECConfig : public UMoveBaseConfig
+
+
+UCLASS()
+class PROJECTER_API ULaunchMoveGEC : public UMoveBaseGEC
 {
 	GENERATED_BODY()
+
+public:
+	ULaunchMoveGEC();
+
+	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const override;
+
+protected:
+	virtual void Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const override;
 
 public:
 	// 수직 발사 속도 (Z축)
@@ -23,19 +33,4 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Launch")
 	bool bZOverride = true;
-};
-
-UCLASS()
-class PROJECTER_API ULaunchMoveGEC : public UMoveBaseGEC
-{
-	GENERATED_BODY()
-
-public:
-	ULaunchMoveGEC();
-	virtual TSubclassOf<UBaseGECConfig> GetRequiredConfigClass() const override;
-
-	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config) const override;
-
-protected:
-	virtual void Execute(AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config, const FGameplayEffectSpec& GESpec) const override;
 };

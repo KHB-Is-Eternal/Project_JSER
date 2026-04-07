@@ -11,18 +11,9 @@
  */
 
 class ABaseRangeOverlapEffectActor;
-class USkillEffectDataAsset;
+
 struct FGameplayEffectContextHandle;
 struct FGameplayCueParameters;
-
-UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
-class PROJECTER_API USummonRangeByWorldOriginGECConfig : public USummonRangeBaseConfig
-{
-	GENERATED_BODY()
-public:
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Rotation")
-	bool bLookAtTargetLocation = false;
-};
 
 UCLASS()
 class PROJECTER_API USummonRangeGEC : public USummonRangeBaseGEC
@@ -32,8 +23,11 @@ class PROJECTER_API USummonRangeGEC : public USummonRangeBaseGEC
 public:
 	USummonRangeGEC();
 
-	virtual TSubclassOf<UBaseGECConfig> GetRequiredConfigClass() const override;
 protected:
 	virtual FTransform CalculateOriginTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const override;
 	FVector GetAnyLocation(const FGameplayEffectContextHandle& ContextHandle) const;
+
+public:
+	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Rotation")
+	bool bLookAtTargetLocation = false;
 };

@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 enum class ETargetRelationship : uint8;
 class USkillDataAsset;
-class USkillEffectDataAsset;
+class UBaseGameplayEffect;
 class UBaseSkillConfig;
 
 UCLASS()
@@ -40,7 +40,7 @@ protected:
 	void SetWaitEventActiveTag();
 	void SetWaitEventCastingTag();
 	void PrepareToActiveSkill();
-	void ApplyExcutionEffectToSelf(const TArray<TObjectPtr<USkillEffectDataAsset>>& SkillEffectDataAssets);
+	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets);
 	bool TryExecuteSkill();
 	FGameplayTag GetInputTag();
 	ETargetRelationship GetSkillTargetRelationship();

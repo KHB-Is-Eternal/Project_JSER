@@ -3,7 +3,6 @@
 
 #include "SkillSystem/GameplayEffectExecutionCalculation/BaseExecutionCalculation.h"
 #include "SkillSystem/SkillDataAsset.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
 #include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
 
 #define ATTRIBUTE_CLASS UBaseAttributeSet
@@ -103,71 +102,8 @@ void UBaseExecutionCalculation::Execute_Implementation(const FGameplayEffectCust
 {
 	Super::Execute_Implementation(ExecutionParams, OutExecutionOutput);
 
-    const FGameplayEffectSpec& Spec = ExecutionParams.GetOwningSpec();
-    const USkillEffectDataAsset* SkillDataAsset = Cast<USkillEffectDataAsset>(Spec.GetContext().GetSourceObject());
-
-    if (IsValid(SkillDataAsset) == false) return;    
-    //SetByCaller에서 인덱스 추출
-    const FGameplayTag IndexTag = SkillDataAsset->GetIndexTag();
-    // 값이 없을 경우를 대비해 기본값 -1
-    int32 DataIndex = FMath::RoundToInt(Spec.GetSetByCallerMagnitude(IndexTag, false, -1.f));
-
-    FGameplayAttribute TargetAttr = SkillDataAsset->GetTargetAttribute();
-    const FSkillEffectContainer& Container = SkillDataAsset->GetData();
-
-    if (Container.TargetAttribute.IsValid() == false)
-    {
-        //UE_LOG(LogTemp, Warning, TEXT("[%s] TargetAttribute is INVALID in DataAsset: %s"), *GetName(), *SkillDataAsset->GetName());
-        return;
-    }
-
-    // 2. 인덱스 유효성 검사 후 해당 데이터 추출
-    if (Container.SkillEffectDefinition.IsValidIndex(DataIndex))
-    {
-        const FSkillEffectDefinition& MyDef = Container.SkillEffectDefinition[DataIndex];
-        const EDecreaseBy DecreaseBy = MyDef.DamageType;
-        float AbilityLevel = Spec.GetLevel();
-        
-        float TotalCalculatedValue = ReturnCalculatedValue(ExecutionParams, MyDef, AbilityLevel, AttributeStatics().SourceAttributeMap);
-
-        if (TotalCalculatedValue != 0.f && Container.TargetAttribute.IsValid())
-        {
-            float FinalValue = 0;
-
-            switch (DecreaseBy)
-            {
-            case EDecreaseBy::Noting:
-            {
-                FinalValue = TotalCalculatedValue;
-                break;
-            }
-            case EDecreaseBy::Defense:
-            {
-                float Defense = FindValueByAttribute(ExecutionParams, UBaseAttributeSet::GetDefenseAttribute(), AttributeStatics().TargetAttributeMap);
-                float Mitigation = 100.0f / (100.0f + Defense);
-                FinalValue = TotalCalculatedValue * Mitigation;
-				break;
-            }
-            case EDecreaseBy::Tenacity:
-            {
-                float Tenacity = FindValueByAttribute(ExecutionParams, UBaseAttributeSet::GetTenacityAttribute(), AttributeStatics().TargetAttributeMap);
-                float ResistanceMultiplier = FMath::Max<float>(1.0f - Tenacity, 0.0f);
-                FinalValue = TotalCalculatedValue * ResistanceMultiplier;
-				break;
-            }
-            default:
-                break;
-            }
-
-            //값을 더할건지 뺄건지 결정
-            const EAdjustmentType AdjustmentType = MyDef.Adjustment;
-            FinalValue *= AdjustmentType == EAdjustmentType::Add ? 1 : -1;
-            OutExecutionOutput.AddOutputModifier(FGameplayModifierEvaluatedData(Container.TargetAttribute, EGameplayModOp::Additive, FinalValue));
-        }
-    }
-    else {
-        //UE_LOG(LogTemp, Warning, TEXT("[%s] Invalid DataIndex: %d in DataAsset: %s"), *GetName(), DataIndex, *SkillDataAsset->GetName());
-    }
+    // TODO: Implement calculation logic using native GE Modifiers and captured attributes
+    // FindValueByAttribute(ExecutionParams, UBaseAttributeSet::GetDefenseAttribute(), AttributeStatics().TargetAttributeMap);
 }
 
 float UBaseExecutionCalculation::FindValueByAttribute(const FGameplayEffectCustomExecutionParameters& ExecutionParams, const FGameplayAttribute& Attribute, const TMap<FGameplayAttribute, FGameplayEffectAttributeCaptureDefinition>& TargetMap) const
@@ -187,20 +123,3 @@ float UBaseExecutionCalculation::FindValueByAttribute(const FGameplayEffectCusto
     return FoundValue;
 }
 
-float UBaseExecutionCalculation::ReturnCalculatedValue(const FGameplayEffectCustomExecutionParameters& ExecutionParams, const FSkillEffectDefinition& SkillEffectDefinition, const float Level, const TMap<FGameplayAttribute, FGameplayEffectAttributeCaptureDefinition>& SelectedMap) const
-{
-    float TotalCalculatedValue = 0.f;
-
-    for (const FSkillAttributeData& AttrData : SkillEffectDefinition.SkillAttributeData)
-    {
-        // 넘겨받은 맵을 사용하여 스탯 값 추출
-        const float StatValue = FindValueByAttribute(ExecutionParams, AttrData.SourceAttribute, SelectedMap);
-
-        const float Coeff = AttrData.Coefficients.GetValueAtLevel(Level);
-        const float BaseVal = AttrData.BasedValues.GetValueAtLevel(Level);
-
-        TotalCalculatedValue += (StatValue * Coeff) + BaseVal;
-    }
-
-    return TotalCalculatedValue;
-}

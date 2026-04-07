@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "SkillSystem/SkillData.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "BaseSkillConfig.generated.h"
 
 /**
@@ -46,10 +46,10 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Config", meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<USkillBase> AbilityClass;
 
-	FORCEINLINE const TArray<TObjectPtr<USkillEffectDataAsset>>& GetExecutionEffects() const { return ExecutionEffects; }
+	FORCEINLINE const TArray<TSubclassOf<UBaseGameplayEffect>>& GetExecutionEffects() const { return ExecutionEffects; }
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Config")
-	TArray<TObjectPtr<USkillEffectDataAsset>> ExecutionEffects;
+	TArray<TSubclassOf<UBaseGameplayEffect>> ExecutionEffects;
 
 public:
 	UGameplayEffect* CreateCostGameplayEffect(UObject* Outer);
@@ -66,13 +66,13 @@ class PROJECTER_API UMouseTargetSkillConfig : public UBaseSkillConfig
 public:
 	UMouseTargetSkillConfig();
 	FORCEINLINE float GetRange() const { return Range; }
-	FORCEINLINE const TArray<TObjectPtr<USkillEffectDataAsset>>& GetEffectsToApply() const { return EffectsToApply; }
+	FORCEINLINE const TArray<TSubclassOf<UBaseGameplayEffect>>& GetEffectsToApply() const { return EffectsToApply; }
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Config", meta = (AllowPrivateAccess = "true"))
 	float Range;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Config")
-	TArray<TObjectPtr<USkillEffectDataAsset>> EffectsToApply;
+	TArray<TSubclassOf<UBaseGameplayEffect>> EffectsToApply;
 };
 
 UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
@@ -83,13 +83,9 @@ class PROJECTER_API UMouseClickSkillConfig : public UBaseSkillConfig
 public:
 	UMouseClickSkillConfig();
 	FORCEINLINE float GetRange() const { return Range; }
-	//FORCEINLINE const TArray<TObjectPtr<USkillEffectDataAsset>>& GetEffectsToApply() const { return EffectsToApply; }
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Config", meta = (AllowPrivateAccess = "true"))
 	float Range;
-
-	//UPROPERTY(EditDefaultsOnly, Category = "Config")
-	//TArray<TObjectPtr<USkillEffectDataAsset>> EffectsToApply;
 };
 
 UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)

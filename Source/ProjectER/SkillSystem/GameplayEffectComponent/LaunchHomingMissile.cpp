@@ -3,7 +3,7 @@
 
 #include "SkillSystem/GameplayEffectComponent/LaunchHomingMissile.h"
 #include "SkillSystem/Actor/BaseMissileActor/BaseMissileActor.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "SkillSystem/GameAbility/SkillBase.h"
 #include "SkillSystem/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/SkillSoundSpawnConfig.h"
@@ -15,45 +15,11 @@
 #include "Components/SkeletalMeshComponent.h"
 
 // ============================================================================
-// Config
-// ============================================================================
-
-FText ULaunchHomingMissileConfig::BuildTooltipDescription(float InLevel) const
-{
-	TArray<FString> Descriptions;
-	for (const USkillEffectDataAsset* const EffectData : Applied)
-	{
-		if (!IsValid(EffectData))
-		{
-			continue;
-		}
-		const FString Desc = EffectData->BuildEffectDescription(InLevel).ToString();
-		if (!Desc.IsEmpty())
-		{
-			Descriptions.Add(Desc);
-		}
-	}
-
-	if (Descriptions.IsEmpty())
-	{
-		return FText::GetEmpty();
-	}
-
-	return FText::FromString(FString::Join(Descriptions, TEXT("\n")));
-}
-
-// ============================================================================
 // GEC
 // ============================================================================
 
 ULaunchHomingMissile::ULaunchHomingMissile()
 {
-	ConfigClass = ULaunchHomingMissileConfig::StaticClass();
-}
-
-TSubclassOf<UBaseGECConfig> ULaunchHomingMissile::GetRequiredConfigClass() const
-{
-	return ULaunchHomingMissileConfig::StaticClass();
 }
 
 void ULaunchHomingMissile::OnGameplayEffectApplied(
@@ -85,9 +51,8 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 		return;
 	}
 
-	// --- Config 검증 ---
-	const ULaunchHomingMissileConfig* const MissileConfig = ResolveTypedConfigFromSpec<ULaunchHomingMissileConfig>(GESpec);
-	if (!IsValid(MissileConfig) || !IsValid(MissileConfig->MissileActorClass))
+	// --- 클래스 세팅 검증 ---
+	if (!IsValid(this->MissileActorClass))
 	{
 		return;
 	}
@@ -110,12 +75,12 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 		return;
 	}
 
-	const FTransform SpawnTransform = CalculateSpawnTransform(MissileConfig, Instigator, TargetActor);
+	const FTransform SpawnTransform = CalculateSpawnTransform(Instigator, TargetActor);
 
 	// --- 미사일 액터 지연 생성 ---
 	APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
 	ABaseMissileActor* const MissileActor = World->SpawnActorDeferred<ABaseMissileActor>(
-		MissileConfig->MissileActorClass,
+		this->MissileActorClass,
 		SpawnTransform,
 		Instigator,
 		SpawnInstigator,
@@ -132,11 +97,15 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 	TArray<FGameplayEffectSpecHandle> EffectSpecs;
 	if (IsValid(CauserASC) && IsValid(Skill))
 	{
-		for (USkillEffectDataAsset* const EffectData : MissileConfig->Applied)
+		for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : this->Applied)
 		{
-			if (IsValid(EffectData))
+			if (IsValid(EffectClass))
 			{
-				EffectSpecs.Append(EffectData->MakeSpecs(CauserASC, Skill, MissileActor, ContextHandle));
+				FGameplayEffectSpecHandle SpecHandle = CauserASC->MakeOutgoingSpec(EffectClass, GESpec.GetLevel(), ContextHandle);
+				if (SpecHandle.IsValid())
+				{
+					EffectSpecs.Add(SpecHandle);
+				}
 			}
 		}
 
@@ -146,24 +115,24 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 	
 	// --- 적중 효과(VFX, Sound) 큐 파라미터 구성 ---
 	FGameplayCueParameters HitVfxCueParams(GESpec);
-	if (IsValid(MissileConfig->ImpactVfx) && MissileConfig->ImpactVfx->CueTag.IsValid())
+	if (IsValid(this->ImpactVfx) && this->ImpactVfx->CueTag.IsValid())
 	{
-		HitVfxCueParams.OriginalTag = MissileConfig->ImpactVfx->CueTag;
+		HitVfxCueParams.OriginalTag = this->ImpactVfx->CueTag;
 		HitVfxCueParams.Instigator = ContextHandle.GetInstigator();
 		HitVfxCueParams.EffectCauser = MissileActor;
 		HitVfxCueParams.Location = SpawnTransform.GetLocation();
-		HitVfxCueParams.SourceObject = MissileConfig->ImpactVfx;
+		HitVfxCueParams.SourceObject = this->ImpactVfx;
 		HitVfxCueParams.GameplayEffectLevel = GESpec.GetLevel();
 	}
 
 	FGameplayCueParameters HitSoundCueParams(GESpec);
-	if (IsValid(MissileConfig->ImpactSound) && MissileConfig->ImpactSound->CueTag.IsValid())
+	if (IsValid(this->ImpactSound) && this->ImpactSound->CueTag.IsValid())
 	{
-		HitSoundCueParams.OriginalTag = MissileConfig->ImpactSound->CueTag;
+		HitSoundCueParams.OriginalTag = this->ImpactSound->CueTag;
 		HitSoundCueParams.Instigator = ContextHandle.GetInstigator();
 		HitSoundCueParams.EffectCauser = MissileActor;
 		HitSoundCueParams.Location = SpawnTransform.GetLocation();
-		HitSoundCueParams.SourceObject = MissileConfig->ImpactSound;
+		HitSoundCueParams.SourceObject = this->ImpactSound;
 		HitSoundCueParams.GameplayEffectLevel = GESpec.GetLevel();
 	}
 
@@ -177,29 +146,28 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 		TargetActor,
 		HitVfxCueParams,
 		HitSoundCueParams,
-		MissileConfig->InitialSpeed,
-		MissileConfig->MaxSpeed,
-		MissileConfig->HomingAccelerationMagnitude,
-		MissileConfig->ReachThreshold,
-		MissileConfig->bDestroyOnHit,
+		this->InitialSpeed,
+		this->MaxSpeed,
+		this->HomingAccelerationMagnitude,
+		this->ReachThreshold,
+		this->bDestroyOnHit,
 		InitialDirection
 	);
-	MissileActor->SetLifeSpan(MissileConfig->LifeSpan);
+	MissileActor->SetLifeSpan(this->LifeSpan);
 
 	// --- 스폰 완료 ---
 	MissileActor->FinishSpawning(SpawnTransform);
 
 	// --- Summoner / Missile VFX & Sound 실행 ---
-	ExecuteVfx(GESpec, ContextHandle, Instigator, MissileActor, MissileConfig);
-	ExecuteSound(GESpec, ContextHandle, Instigator, MissileActor, MissileConfig);
+	ExecuteVfx(GESpec, ContextHandle, Instigator, MissileActor);
+	ExecuteSound(GESpec, ContextHandle, Instigator, MissileActor);
 }
 
 FTransform ULaunchHomingMissile::CalculateSpawnTransform(
-	const ULaunchHomingMissileConfig* Config,
 	const AActor* Instigator,
 	const AActor* TargetActor) const
 {
-	if (!IsValid(Config) || !IsValid(Instigator))
+	if (!IsValid(Instigator))
 	{
 		return FTransform::Identity;
 	}
@@ -208,16 +176,16 @@ FTransform ULaunchHomingMissile::CalculateSpawnTransform(
 	FRotator SpawnRotation = Instigator->GetActorRotation();
 
 	// 1. 본(Bone) 위치 사용
-	if (!Config->BoneName.IsNone())
+	if (!this->BoneName.IsNone())
 	{
 		const ACharacter* Character = Cast<ACharacter>(Instigator);
 		const USkeletalMeshComponent* Mesh = Character
 			? Character->GetMesh()
 			: Instigator->FindComponentByClass<USkeletalMeshComponent>();
 
-		if (IsValid(Mesh) && Mesh->DoesSocketExist(Config->BoneName))
+		if (IsValid(Mesh) && Mesh->DoesSocketExist(this->BoneName))
 		{
-			SpawnLocation = Mesh->GetSocketLocation(Config->BoneName);
+			SpawnLocation = Mesh->GetSocketLocation(this->BoneName);
 		}
 	}
 
@@ -248,11 +216,10 @@ void ULaunchHomingMissile::ExecuteVfx(
 	const FGameplayEffectSpec& GESpec,
 	const FGameplayEffectContextHandle& ContextHandle,
 	AActor* Instigator,
-	ABaseMissileActor* MissileActor,
-	const ULaunchHomingMissileConfig* Config) const
+	ABaseMissileActor* MissileActor) const
 {
 	UAbilitySystemComponent* const InstigatorASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Instigator);
-	if (!IsValid(InstigatorASC) || !IsValid(Config))
+	if (!IsValid(InstigatorASC))
 	{
 		return;
 	}
@@ -261,34 +228,34 @@ void ULaunchHomingMissile::ExecuteVfx(
 		FScopedPredictionWindow ForcedWindow(InstigatorASC, FPredictionKey(), false);
 
 		// Summoner VFX (시전자 위치에 재생)
-		if (IsValid(Config->SummonerVfx) && Config->SummonerVfx->CueTag.IsValid())
+		if (IsValid(this->SummonerVfx) && this->SummonerVfx->CueTag.IsValid())
 		{
 			FGameplayCueParameters SummonerParams(GESpec);
-			SummonerParams.OriginalTag = Config->SummonerVfx->CueTag;
+			SummonerParams.OriginalTag = this->SummonerVfx->CueTag;
 			SummonerParams.Instigator = ContextHandle.GetInstigator();
 			SummonerParams.EffectCauser = MissileActor;
 			SummonerParams.Location = Instigator->GetActorLocation();
-			SummonerParams.SourceObject = Config->SummonerVfx;
+			SummonerParams.SourceObject = this->SummonerVfx;
 			SummonerParams.GameplayEffectLevel = GESpec.GetLevel();
-			InstigatorASC->ExecuteGameplayCue(Config->SummonerVfx->CueTag, SummonerParams);
+			InstigatorASC->ExecuteGameplayCue(this->SummonerVfx->CueTag, SummonerParams);
 		}
 
 		// Missile VFX (미사일 본체에 부착되어 이동하며 재생)
-		if (IsValid(Config->MissileVfx) && Config->MissileVfx->CueTag.IsValid())
+		if (IsValid(this->MissileVfx) && this->MissileVfx->CueTag.IsValid())
 		{
 			FGameplayCueParameters MissileParams(GESpec);
-			MissileParams.OriginalTag = Config->MissileVfx->CueTag;
+			MissileParams.OriginalTag = this->MissileVfx->CueTag;
 			MissileParams.Instigator = ContextHandle.GetInstigator();
 			MissileParams.EffectCauser = MissileActor;
 			MissileParams.Location = MissileActor->GetActorLocation();
 			MissileParams.Normal = MissileActor->GetActorForwardVector();
-			MissileParams.SourceObject = Config->MissileVfx;
+			MissileParams.SourceObject = this->MissileVfx;
 			MissileParams.GameplayEffectLevel = GESpec.GetLevel();
 			if (IsValid(MissileActor))
 			{
 				MissileParams.TargetAttachComponent = MissileActor->GetRootComponent();
 			}
-			InstigatorASC->ExecuteGameplayCue(Config->MissileVfx->CueTag, MissileParams);
+			InstigatorASC->ExecuteGameplayCue(this->MissileVfx->CueTag, MissileParams);
 		}
 	}
 }
@@ -297,11 +264,10 @@ void ULaunchHomingMissile::ExecuteSound(
 	const FGameplayEffectSpec& GESpec,
 	const FGameplayEffectContextHandle& ContextHandle,
 	AActor* Instigator,
-	ABaseMissileActor* MissileActor,
-	const ULaunchHomingMissileConfig* Config) const
+	ABaseMissileActor* MissileActor) const
 {
 	UAbilitySystemComponent* const InstigatorASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Instigator);
-	if (!IsValid(InstigatorASC) || !IsValid(Config))
+	if (!IsValid(InstigatorASC))
 	{
 		return;
 	}
@@ -310,34 +276,34 @@ void ULaunchHomingMissile::ExecuteSound(
 		FScopedPredictionWindow ForcedWindow(InstigatorASC, FPredictionKey(), false);
 
 		// Summoner Sound
-		if (IsValid(Config->SummonerSound) && Config->SummonerSound->CueTag.IsValid())
+		if (IsValid(this->SummonerSound) && this->SummonerSound->CueTag.IsValid())
 		{
 			FGameplayCueParameters SummonerParams(GESpec);
-			SummonerParams.OriginalTag = Config->SummonerSound->CueTag;
+			SummonerParams.OriginalTag = this->SummonerSound->CueTag;
 			SummonerParams.Instigator = ContextHandle.GetInstigator();
 			SummonerParams.EffectCauser = MissileActor;
 			SummonerParams.Location = Instigator->GetActorLocation();
-			SummonerParams.SourceObject = Config->SummonerSound;
+			SummonerParams.SourceObject = this->SummonerSound;
 			SummonerParams.GameplayEffectLevel = GESpec.GetLevel();
-			InstigatorASC->ExecuteGameplayCue(Config->SummonerSound->CueTag, SummonerParams);
+			InstigatorASC->ExecuteGameplayCue(this->SummonerSound->CueTag, SummonerParams);
 		}
 
 		// Missile Sound
-		if (IsValid(Config->MissileSound) && Config->MissileSound->CueTag.IsValid())
+		if (IsValid(this->MissileSound) && this->MissileSound->CueTag.IsValid())
 		{
 			FGameplayCueParameters MissileParams(GESpec);
-			MissileParams.OriginalTag = Config->MissileSound->CueTag;
+			MissileParams.OriginalTag = this->MissileSound->CueTag;
 			MissileParams.Instigator = ContextHandle.GetInstigator();
 			MissileParams.EffectCauser = MissileActor;
 			MissileParams.Location = MissileActor->GetActorLocation();
 			MissileParams.Normal = MissileActor->GetActorForwardVector();
-			MissileParams.SourceObject = Config->MissileSound;
+			MissileParams.SourceObject = this->MissileSound;
 			MissileParams.GameplayEffectLevel = GESpec.GetLevel();
 			if (IsValid(MissileActor))
 			{
 				MissileParams.TargetAttachComponent = MissileActor->GetRootComponent();
 			}
-			InstigatorASC->ExecuteGameplayCue(Config->MissileSound->CueTag, MissileParams);
+			InstigatorASC->ExecuteGameplayCue(this->MissileSound->CueTag, MissileParams);
 		}
 	}
 }

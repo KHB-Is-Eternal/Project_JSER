@@ -9,22 +9,10 @@
 
 USummonRangeGEC::USummonRangeGEC()
 {
-	ConfigClass = USummonRangeByWorldOriginGECConfig::StaticClass();
-}
-
-TSubclassOf<UBaseGECConfig> USummonRangeGEC::GetRequiredConfigClass() const
-{
-	return USummonRangeByWorldOriginGECConfig::StaticClass();
 }
 
 FTransform USummonRangeGEC::CalculateOriginTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const
 {
-	const USummonRangeByWorldOriginGECConfig* const WorldConfig = ResolveTypedConfigFromSpec<USummonRangeByWorldOriginGECConfig>(GESpec);
-	if (!IsValid(WorldConfig))
-	{
-		return FTransform::Identity;
-	}
-
 	const FGameplayEffectContextHandle& EffectContext = GESpec.GetEffectContext();
 	const FGameplayEffectContext* const ContextData = EffectContext.Get();
 	if (ContextData == nullptr) return FTransform::Identity;
@@ -32,7 +20,7 @@ FTransform USummonRangeGEC::CalculateOriginTransform(const FGameplayEffectSpec& 
 	FVector TargetLocation = GetAnyLocation(EffectContext);
 	FRotator CombinedRotation = FRotator::ZeroRotator;
 
-	if (WorldConfig->bLookAtTargetLocation && IsValid(Instigator))
+	if (this->bLookAtTargetLocation && IsValid(Instigator))
 	{
 		const FVector InstigatorLocation = Instigator->GetActorLocation();
 		CombinedRotation = FRotationMatrix::MakeFromX(TargetLocation - InstigatorLocation).Rotator();

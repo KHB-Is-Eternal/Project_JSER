@@ -6,16 +6,6 @@
 #include "SkillSystem/GameplayEffectComponent/MoveBaseGEC.h"
 #include "ConstantForceMoveGEC.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
-class PROJECTER_API UConstantForceMoveGECConfig : public UMoveBaseConfig
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditDefaultsOnly, Category = "ConstantForce")
-	float MoveSpeed = 1500.0f;
-};
-
 UCLASS()
 class PROJECTER_API UConstantForceMoveGEC : public UMoveBaseGEC
 {
@@ -23,10 +13,13 @@ class PROJECTER_API UConstantForceMoveGEC : public UMoveBaseGEC
 
 public:
 	UConstantForceMoveGEC();
-	virtual TSubclassOf<UBaseGECConfig> GetRequiredConfigClass() const override;
 
-	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config) const override;
+	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const override;
 
 protected:
-	virtual void Execute(AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config, const FGameplayEffectSpec& GESpec) const override;
+	virtual void Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const override;
+
+public:
+	UPROPERTY(EditDefaultsOnly, Category = "ConstantForce")
+	float MoveSpeed = 1500.0f;
 };

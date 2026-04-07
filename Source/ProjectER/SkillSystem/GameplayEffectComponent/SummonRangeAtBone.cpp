@@ -11,12 +11,6 @@
 
 USummonRangeAtBone::USummonRangeAtBone()
 {
-	ConfigClass = USummonRangeByBoneGECConfig::StaticClass();
-}
-
-TSubclassOf<UBaseGECConfig> USummonRangeAtBone::GetRequiredConfigClass() const
-{
-	return USummonRangeByBoneGECConfig::StaticClass();
 }
 
 bool USummonRangeAtBone::ShouldProcessOnInstigator(const AActor* Instigator) const
@@ -31,8 +25,7 @@ bool USummonRangeAtBone::ShouldProcessOnInstigator(const AActor* Instigator) con
 
 FTransform USummonRangeAtBone::CalculateOriginTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const
 {
-	const USummonRangeByBoneGECConfig* const BoneConfig = ResolveTypedConfigFromSpec<USummonRangeByBoneGECConfig>(GESpec);
-	if (!IsValid(BoneConfig) || !IsValid(Instigator))
+	if (!IsValid(Instigator))
 	{
 		return FTransform::Identity;
 	}
@@ -42,15 +35,15 @@ FTransform USummonRangeAtBone::CalculateOriginTransform(const FGameplayEffectSpe
 
 	if (const USkeletalMeshComponent* const Mesh = Instigator->FindComponentByClass<USkeletalMeshComponent>())
 	{
-		if (Mesh->DoesSocketExist(BoneConfig->BoneName))
+		if (Mesh->DoesSocketExist(this->BoneName))
 		{
-			BaseLocation = Mesh->GetSocketLocation(BoneConfig->BoneName);
-			BaseRotation = Mesh->GetSocketRotation(BoneConfig->BoneName);
+			BaseLocation = Mesh->GetSocketLocation(this->BoneName);
+			BaseRotation = Mesh->GetSocketRotation(this->BoneName);
 		}
 	}
 
 	FRotator CombinedRotation = BaseRotation;
-	if (BoneConfig->bUseInstigatorRotation)
+	if (this->bUseInstigatorRotation)
 	{
 		CombinedRotation = Instigator->GetActorRotation();
 	}
@@ -58,21 +51,20 @@ FTransform USummonRangeAtBone::CalculateOriginTransform(const FGameplayEffectSpe
 	return FTransform(CombinedRotation, BaseLocation);
 }
 
-void USummonRangeAtBone::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, const USummonRangeBaseConfig* Config, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
+void USummonRangeAtBone::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
 {
-	Super::InitializeRangeActor(RangeActor, Config, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
+	Super::InitializeRangeActor(RangeActor, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
 
-	const USummonRangeByBoneGECConfig* const BoneConfig = Cast<USummonRangeByBoneGECConfig>(Config);
-	if (!IsValid(BoneConfig) || !BoneConfig->bAttachToBone || !IsValid(Instigator) || !IsValid(RangeActor))
+	if (!this->bAttachToBone || !IsValid(Instigator) || !IsValid(RangeActor))
 	{
 		return;
 	}
 
 	if (USkeletalMeshComponent* const Mesh = Instigator->FindComponentByClass<USkeletalMeshComponent>())
 	{
-		if (Mesh->DoesSocketExist(BoneConfig->BoneName))
+		if (Mesh->DoesSocketExist(this->BoneName))
 		{
-			RangeActor->AttachToComponent(Mesh, FAttachmentTransformRules::KeepWorldTransform, BoneConfig->BoneName);
+			RangeActor->AttachToComponent(Mesh, FAttachmentTransformRules::KeepWorldTransform, this->BoneName);
 		}
 	}
 }

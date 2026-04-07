@@ -11,37 +11,13 @@
 #include "GameFramework/Pawn.h"
 #include "SkillSystem/Actor/BaseRangeOverlapEffectActor/BaseRangeOverlapEffectActor.h"
 #include "SkillSystem/GameAbility/SkillBase.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+
 #include "SkillSystem/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/SkillSoundSpawnConfig.h"
 #include "SkillSystem/GameplayEffectComponent/SummonRangeAtBone.h"
 
-FText USummonRangeBaseConfig::BuildTooltipDescription(float InLevel) const
-{
-	TArray<FString> AppliedDescriptions;
-	for (const USkillEffectDataAsset* const SkillEffectDataAsset : Applied)
-	{
-		if (!IsValid(SkillEffectDataAsset))
-		{
-			continue;
-		}
 
-		const FString Description = SkillEffectDataAsset->BuildEffectDescription(InLevel).ToString();
-		if (Description.IsEmpty())
-		{
-			continue;
-		}
-
-		AppliedDescriptions.Add(Description);
-	}
-
-	if (AppliedDescriptions.IsEmpty())
-	{
-		return FText::GetEmpty();
-	}
-
-	return FText::FromString(FString::Join(AppliedDescriptions, TEXT("\n")));
-}
 
 void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const
 {
@@ -73,8 +49,7 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 		return;
 	}
 
-	const USummonRangeBaseConfig* const SpawnConfig = ResolveTypedConfigFromSpec<USummonRangeBaseConfig>(GESpec);
-	if (!IsValid(SpawnConfig) || !SpawnConfig->IsA(GetRequiredConfigClass()) || !IsValid(SpawnConfig->RangeActorClass))
+	if (!IsValid(this->RangeActorClass))
 	{
 		return;
 	}
@@ -82,13 +57,13 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 	// 1. 타겟 식별 및 위치 계산
 	AActor* const TargetActor = GetTargetActorFromContainer(ActiveGEContainer);
 	const FTransform OriginTransform = CalculateOriginTransform(GESpec, EffectInstigator, TargetActor);
-	const FTransform SpawnTransform = ApplyCommonSpawnOptionsToTransform(OriginTransform, SpawnConfig, EffectInstigator);
+	const FTransform SpawnTransform = ApplyCommonSpawnOptionsToTransform(OriginTransform, EffectInstigator);
 	const FVector RangeSpawnLocation = SpawnTransform.GetLocation();
 
 	// 2. 액터 소환 (지연 생성)
 	APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
 	ABaseRangeOverlapEffectActor* const DeferredSpawnedActor = World->SpawnActorDeferred<ABaseRangeOverlapEffectActor>(
-		SpawnConfig->RangeActorClass,
+		this->RangeActorClass,
 		SpawnTransform,
 		EffectInstigator,
 		SpawnInstigator,
@@ -101,37 +76,32 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 	// 3. 초기화 및 마무리
 	const FGameplayCueParameters HitTargetVfxCueParameters = BuildNiagaraCueParameters(
 		GESpec,
-		IsValid(SpawnConfig->HitTargetVfx.Get()) ? SpawnConfig->HitTargetVfx->CueTag : FGameplayTag(),
+		IsValid(this->HitTargetVfx.Get()) ? this->HitTargetVfx->CueTag : FGameplayTag(),
 		ContextHandle,
 		DeferredSpawnedActor,
 		RangeSpawnLocation,
-		SpawnConfig->HitTargetVfx.Get());
+		this->HitTargetVfx.Get());
 
 	const FGameplayCueParameters HitTargetSoundCueParameters = BuildNiagaraCueParameters(
 		GESpec,
-		IsValid(SpawnConfig->HitTargetSound.Get()) ? SpawnConfig->HitTargetSound->CueTag : FGameplayTag(),
+		IsValid(this->HitTargetSound.Get()) ? this->HitTargetSound->CueTag : FGameplayTag(),
 		ContextHandle,
 		DeferredSpawnedActor,
 		RangeSpawnLocation,
-		SpawnConfig->HitTargetSound.Get());
+		this->HitTargetSound.Get());
 
-	InitializeRangeActor(DeferredSpawnedActor, SpawnConfig, EffectInstigator, ContextHandle, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
+	InitializeRangeActor(DeferredSpawnedActor, EffectInstigator, ContextHandle, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
 	DeferredSpawnedActor->FinishSpawning(SpawnTransform);
 
 	// 4. 시각 효과 실행
-	ExecuteGameplayCues(GESpec, ContextHandle, EffectInstigator, DeferredSpawnedActor, SpawnTransform, OriginTransform, SpawnConfig);
+	ExecuteGameplayCues(GESpec, ContextHandle, EffectInstigator, DeferredSpawnedActor, SpawnTransform, OriginTransform);
 }
 
-const USummonRangeBaseConfig* USummonRangeBaseGEC::GetSummonConfig(const FGameplayEffectSpec& GESpec) const
-{
-	return nullptr;
-}
 
 FTransform USummonRangeBaseGEC::CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const
 {
 	const FTransform OriginTransform = CalculateOriginTransform(GESpec, Instigator, TargetActor);
-	const USummonRangeBaseConfig* const SpawnConfig = ResolveTypedConfigFromSpec<USummonRangeBaseConfig>(GESpec);
-	return ApplyCommonSpawnOptionsToTransform(OriginTransform, SpawnConfig, Instigator);
+	return ApplyCommonSpawnOptionsToTransform(OriginTransform, Instigator);
 }
 
 FTransform USummonRangeBaseGEC::CalculateOriginTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const
@@ -139,49 +109,49 @@ FTransform USummonRangeBaseGEC::CalculateOriginTransform(const FGameplayEffectSp
 	return FTransform::Identity;
 }
 
-void USummonRangeBaseGEC::ExecuteGameplayCues(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* EffectInstigator, ABaseRangeOverlapEffectActor* RangeActor, const FTransform& SpawnTransform, const FTransform& OriginTransform, const USummonRangeBaseConfig* Config) const
+void USummonRangeBaseGEC::ExecuteGameplayCues(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* EffectInstigator, ABaseRangeOverlapEffectActor* RangeActor, const FTransform& SpawnTransform, const FTransform& OriginTransform) const
 {
 	UAbilitySystemComponent* const InstigatorASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(EffectInstigator);
-	if (!IsValid(InstigatorASC) || !IsValid(Config))
+	if (!IsValid(InstigatorASC))
 	{
 		return;
 	}
 
 	FScopedPredictionWindow ForcedWindow(InstigatorASC, FPredictionKey(), false);
 
-	if (IsValid(Config->SummonerSpawnVfx) && Config->SummonerSpawnVfx->CueTag.IsValid())
+	if (IsValid(this->SummonerSpawnVfx) && this->SummonerSpawnVfx->CueTag.IsValid())
 	{
 		// 시전자 나이아가라: 원점 좌표(OriginTransform) 사용, EffectCauser = RangeActor (기본 동작)
-		const FGameplayCueParameters SummonerCueParams = BuildNiagaraCueParameters(GESpec, Config->SummonerSpawnVfx->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), Config->SummonerSpawnVfx);
-		InstigatorASC->ExecuteGameplayCue(Config->SummonerSpawnVfx->CueTag, SummonerCueParams);
+		const FGameplayCueParameters SummonerCueParams = BuildNiagaraCueParameters(GESpec, this->SummonerSpawnVfx->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), this->SummonerSpawnVfx);
+		InstigatorASC->ExecuteGameplayCue(this->SummonerSpawnVfx->CueTag, SummonerCueParams);
 	}
 
-	if (IsValid(Config->RangeSpawnVfx) && Config->RangeSpawnVfx->CueTag.IsValid())
+	if (IsValid(this->RangeSpawnVfx) && this->RangeSpawnVfx->CueTag.IsValid())
 	{
 		// 범위 나이아가라: 원점 좌표(OriginTransform) 사용, EffectCauser = RangeActor (기본 동작)
-		FGameplayCueParameters RangeCueParams = BuildNiagaraCueParameters(GESpec, Config->RangeSpawnVfx->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), Config->RangeSpawnVfx, OriginTransform.GetRotation().GetForwardVector());
+		FGameplayCueParameters RangeCueParams = BuildNiagaraCueParameters(GESpec, this->RangeSpawnVfx->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), this->RangeSpawnVfx, OriginTransform.GetRotation().GetForwardVector());
 		if (IsValid(RangeActor))
 		{
 			RangeCueParams.TargetAttachComponent = RangeActor->GetRootComponent();
 		}
-		InstigatorASC->ExecuteGameplayCue(Config->RangeSpawnVfx->CueTag, RangeCueParams);
+		InstigatorASC->ExecuteGameplayCue(this->RangeSpawnVfx->CueTag, RangeCueParams);
 	}
 
 	// Sound 실행
-	if (IsValid(Config->SummonerSpawnSound) && Config->SummonerSpawnSound->CueTag.IsValid())
+	if (IsValid(this->SummonerSpawnSound) && this->SummonerSpawnSound->CueTag.IsValid())
 	{
-		const FGameplayCueParameters SummonerCueParams = BuildNiagaraCueParameters(GESpec, Config->SummonerSpawnSound->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), Config->SummonerSpawnSound);
-		InstigatorASC->ExecuteGameplayCue(Config->SummonerSpawnSound->CueTag, SummonerCueParams);
+		const FGameplayCueParameters SummonerCueParams = BuildNiagaraCueParameters(GESpec, this->SummonerSpawnSound->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), this->SummonerSpawnSound);
+		InstigatorASC->ExecuteGameplayCue(this->SummonerSpawnSound->CueTag, SummonerCueParams);
 	}
 
-	if (IsValid(Config->RangeSpawnSound) && Config->RangeSpawnSound->CueTag.IsValid())
+	if (IsValid(this->RangeSpawnSound) && this->RangeSpawnSound->CueTag.IsValid())
 	{
-		FGameplayCueParameters RangeCueParams = BuildNiagaraCueParameters(GESpec, Config->RangeSpawnSound->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), Config->RangeSpawnSound, OriginTransform.GetRotation().GetForwardVector());
+		FGameplayCueParameters RangeCueParams = BuildNiagaraCueParameters(GESpec, this->RangeSpawnSound->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), this->RangeSpawnSound, OriginTransform.GetRotation().GetForwardVector());
 		if (IsValid(RangeActor))
 		{
 			RangeCueParams.TargetAttachComponent = RangeActor->GetRootComponent();
 		}
-		InstigatorASC->ExecuteGameplayCue(Config->RangeSpawnSound->CueTag, RangeCueParams);
+		InstigatorASC->ExecuteGameplayCue(this->RangeSpawnSound->CueTag, RangeCueParams);
 	}
 }
 
@@ -213,9 +183,9 @@ FGameplayCueParameters USummonRangeBaseGEC::BuildNiagaraCueParameters(const FGam
 	return CueParams;
 }
 
-void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, const USummonRangeBaseConfig* Config, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
+void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
 {
-	if (!IsValid(RangeActor) || !IsValid(Config) || !IsValid(Instigator))
+	if (!IsValid(RangeActor) || !IsValid(Instigator))
 	{
 		return;
 	}
@@ -228,26 +198,26 @@ void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* Ran
 	}
 
 	TArray<FGameplayEffectSpecHandle> InitGEHandles;
-	for (USkillEffectDataAsset* const SkillEffectDataAsset : Config->Applied)
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : this->Applied)
 	{
-		if (!IsValid(SkillEffectDataAsset))
+		if (!IsValid(EffectClass))
 		{
 			continue;
 		}
 
-		InitGEHandles.Append(SkillEffectDataAsset->MakeSpecs(CauserASC, NonConstSkill, RangeActor, Context));
+		InitGEHandles.Add(CauserASC->MakeOutgoingSpec(TSubclassOf<UGameplayEffect>(EffectClass), NonConstSkill->GetAbilityLevel(), Context));
 	}
 
 	// 강화 효과(SkillProc) 확인 및 전이
 	UBaseGEC::GetSkillProcEffects(CauserASC, NonConstSkill, RangeActor, Context, InitGEHandles);
 
-	RangeActor->InitializeEffectData(InitGEHandles, Instigator, Config->CollisionRadius, Config->bHitOncePerTarget, Config, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
-	RangeActor->SetLifeSpan(Config->LifeSpan);
+	RangeActor->InitializeEffectData(InitGEHandles, Instigator, this->CollisionRadius, this->bHitOncePerTarget, nullptr, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
+	RangeActor->SetLifeSpan(this->LifeSpan);
 }
 
-void USummonRangeBaseGEC::SnapLocationToGround(FVector& InOutLocation, const USummonRangeBaseConfig* Config, const AActor* Instigator) const
+void USummonRangeBaseGEC::SnapLocationToGround(FVector& InOutLocation, const AActor* Instigator) const
 {
-	if (!Config || !Config->bSnapToGround)
+	if (!this->bSnapToGround)
 	{
 		return;
 	}
@@ -268,44 +238,39 @@ void USummonRangeBaseGEC::SnapLocationToGround(FVector& InOutLocation, const USu
 		QueryParams.AddIgnoredActor(Instigator);
 	}
 
-	if (World->LineTraceSingleByChannel(FloorHit, InOutLocation, TraceEnd, Config->GroundTraceChannel, QueryParams))
+	if (World->LineTraceSingleByChannel(FloorHit, InOutLocation, TraceEnd, this->GroundTraceChannel, QueryParams))
 	{
 		InOutLocation.X = FloorHit.Location.X;
 		InOutLocation.Y = FloorHit.Location.Y;
 
-		float FinalZOffset = Config->FloatingHeight;
-		if (Config->bUseBoxExtentOffset)
+		float FinalZOffset = this->FloatingHeight;
+		if (this->bUseBoxExtentOffset)
 		{
-			FinalZOffset += Config->CollisionRadius.Z;
+			FinalZOffset += this->CollisionRadius.Z;
 		}
 
 		InOutLocation.Z = FloorHit.Location.Z + FinalZOffset;
 	}
 }
 
-void USummonRangeBaseGEC::ApplyCommonSpawnOptions(FVector& InOutLocation, FRotator& InOutRotation, const USummonRangeBaseConfig* Config, const AActor* Instigator) const
+void USummonRangeBaseGEC::ApplyCommonSpawnOptions(FVector& InOutLocation, FRotator& InOutRotation, const AActor* Instigator) const
 {
-	if (!Config)
-	{
-		return;
-	}
-
 	// 1. 회전 오프셋 적용
-	InOutRotation += Config->RotationOffset;
+	InOutRotation += this->RotationOffset;
 
 	// 2. 위치 오프셋 적용 (최종 회전값 기준)
-	InOutLocation += InOutRotation.Quaternion().RotateVector(Config->LocationOffset);
+	InOutLocation += InOutRotation.Quaternion().RotateVector(this->LocationOffset);
 
 	// 3. 지면 스냅
-	SnapLocationToGround(InOutLocation, Config, Instigator);
+	SnapLocationToGround(InOutLocation, Instigator);
 }
 
-FTransform USummonRangeBaseGEC::ApplyCommonSpawnOptionsToTransform(const FTransform& InOriginTransform, const USummonRangeBaseConfig* Config, const AActor* Instigator) const
+FTransform USummonRangeBaseGEC::ApplyCommonSpawnOptionsToTransform(const FTransform& InOriginTransform, const AActor* Instigator) const
 {
 	FVector TargetLocation = InOriginTransform.GetLocation();
 	FRotator CombinedRotation = InOriginTransform.Rotator();
 
-	ApplyCommonSpawnOptions(TargetLocation, CombinedRotation, Config, Instigator);
+	ApplyCommonSpawnOptions(TargetLocation, CombinedRotation, Instigator);
 
 	return FTransform(CombinedRotation, TargetLocation);
 }

@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "SkillBase.h"
@@ -13,7 +13,7 @@
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
 #include "SkillSystem/SkillDataAsset.h"
 #include "SkillSystem/SkillData.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "SkillSystem/GameplayEffect/GE_SharedCooldown.h"
 #include "Monster/BaseMonster.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
@@ -281,7 +281,7 @@ void USkillBase::PrepareToActiveSkill()
 	//if (IsLocallyControlled() || HasAuthority(&CurrentActivationInfo)) PlayAnimMontage();
 }
 
-void USkillBase::ApplyExcutionEffectToSelf(const TArray<TObjectPtr<USkillEffectDataAsset>>& SkillEffectDataAssets)
+void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets)
 {
 	UAbilitySystemComponent* const ASC = GetASC();
 	AActor* const Avatar = GetAvatar();
@@ -291,14 +291,14 @@ void USkillBase::ApplyExcutionEffectToSelf(const TArray<TObjectPtr<USkillEffectD
 	ContextHandle.AddInstigator(Avatar, Avatar);
 	ContextHandle.SetAbility(this);
 
-	for (USkillEffectDataAsset* const Effect : SkillEffectDataAssets)
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : SkillEffectDataAssets)
 	{
-		if (!IsValid(Effect)) continue;
+		if (!IsValid(EffectClass)) continue;
 
-		for (FGameplayEffectSpecHandle& Spec : Effect->MakeSpecs(ASC, this, Avatar, ContextHandle))
+		FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), ContextHandle);
+		if (SpecHandle.IsValid())
 		{
-			if (!Spec.IsValid() || !Spec.Data.IsValid()) continue;
-			ASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), ASC);
+			ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), ASC);
 		}
 	}
 }

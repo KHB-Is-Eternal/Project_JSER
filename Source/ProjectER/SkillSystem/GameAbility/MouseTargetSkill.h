@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -11,6 +11,7 @@
  */
 
 class ATargetActor;
+class UBaseGameplayEffect;
 
 UCLASS()
 class PROJECTER_API UMouseTargetSkill : public USkillBase
@@ -33,7 +34,7 @@ protected:
 	AActor* GetTargetUnderCursor();
 	bool IsInRange(AActor* Actor);
 	void RotateToTarget(AActor* Actor);
-	void ApplyEffectsTarget(AActor* TargetActor, const TArray<TObjectPtr<USkillEffectDataAsset>>& SkillEffectDataAssets);
+	void ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets);
 	void CleanUpSkill();
 
 	UFUNCTION()

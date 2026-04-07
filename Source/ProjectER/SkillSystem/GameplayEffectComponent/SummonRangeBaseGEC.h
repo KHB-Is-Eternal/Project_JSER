@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
-#include "SkillSystem/GameplayEffectComponent/BaseGECConfig.h"
 #include "GameplayTagContainer.h"
 #include "UObject/Object.h"
 #include "SummonRangeBaseGEC.generated.h"
@@ -13,7 +12,7 @@
  * 
  */
 class ABaseRangeOverlapEffectActor;
-class USkillEffectDataAsset;
+class UBaseGameplayEffect;
 class USkillNiagaraSpawnConfig;
 class USkillSoundSpawnConfig;
 struct FGameplayTag;
@@ -23,14 +22,27 @@ struct FGameplayEffectContextHandle;
 struct FActiveGameplayEffectsContainer;
 struct FPredictionKey;
 
-UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced, Abstract)
-class PROJECTER_API USummonRangeBaseConfig : public UBaseGECConfig
+
+UCLASS(Abstract)
+class PROJECTER_API USummonRangeBaseGEC : public UBaseGEC
 {
 	GENERATED_BODY()
+protected:
+	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
+	virtual FTransform CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const;
+	virtual FTransform CalculateOriginTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const;
+	virtual bool ShouldProcessOnInstigator(const AActor* Instigator) const;
+
+	virtual void ExecuteGameplayCues(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* EffectInstigator, ABaseRangeOverlapEffectActor* RangeActor, const FTransform& SpawnTransform, const FTransform& OriginTransform) const;
+	virtual AActor* GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const;
+
+	FGameplayCueParameters BuildNiagaraCueParameters(const FGameplayEffectSpec& GESpec, const FGameplayTag& OriginalTag, const FGameplayEffectContextHandle& EffectContext, AActor* EffectCauser, const FVector& CueLocation, const UObject* SourceObject, const FVector& CueNormal = FVector::UpVector) const;
+	virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const;
+	virtual void SnapLocationToGround(FVector& InOutLocation, const AActor* Instigator) const;
+	virtual void ApplyCommonSpawnOptions(FVector& InOutLocation, FRotator& InOutRotation, const AActor* Instigator) const;
+	virtual FTransform ApplyCommonSpawnOptionsToTransform(const FTransform& InOriginTransform, const AActor* Instigator) const;
 
 public:
-	virtual FText BuildTooltipDescription(float InLevel) const override;
-
 	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
 	TSubclassOf<ABaseRangeOverlapEffectActor> RangeActorClass;
 
@@ -80,27 +92,6 @@ public:
 	TObjectPtr<USkillSoundSpawnConfig> HitTargetSound;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Effect")
-	TArray<TObjectPtr<USkillEffectDataAsset>> Applied;
-};
-
-UCLASS()
-class PROJECTER_API USummonRangeBaseGEC : public UBaseGEC
-{
-	GENERATED_BODY()
-protected:
-	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
-	virtual const USummonRangeBaseConfig* GetSummonConfig(const FGameplayEffectSpec& GESpec) const;
-	virtual FTransform CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const;
-	virtual FTransform CalculateOriginTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const;
-	virtual bool ShouldProcessOnInstigator(const AActor* Instigator) const;
-
-	virtual void ExecuteGameplayCues(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* EffectInstigator, ABaseRangeOverlapEffectActor* RangeActor, const FTransform& SpawnTransform, const FTransform& OriginTransform, const USummonRangeBaseConfig* Config) const;
-	virtual AActor* GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const;
-
-	FGameplayCueParameters BuildNiagaraCueParameters(const FGameplayEffectSpec& GESpec, const FGameplayTag& OriginalTag, const FGameplayEffectContextHandle& EffectContext, AActor* EffectCauser, const FVector& CueLocation, const UObject* SourceObject, const FVector& CueNormal = FVector::UpVector) const;
-	virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, const USummonRangeBaseConfig* Config, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const;
-	virtual void SnapLocationToGround(FVector& InOutLocation, const USummonRangeBaseConfig* Config, const AActor* Instigator) const;
-	virtual void ApplyCommonSpawnOptions(FVector& InOutLocation, FRotator& InOutRotation, const USummonRangeBaseConfig* Config, const AActor* Instigator) const;
-	virtual FTransform ApplyCommonSpawnOptionsToTransform(const FTransform& InOriginTransform, const USummonRangeBaseConfig* Config, const AActor* Instigator) const;
+	TArray<TSubclassOf<UBaseGameplayEffect>> Applied;
 };
 
