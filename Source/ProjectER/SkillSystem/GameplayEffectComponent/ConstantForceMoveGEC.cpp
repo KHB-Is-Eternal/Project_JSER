@@ -8,7 +8,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/RootMotionSource.h"
-#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "TimerManager.h"
 
 UConstantForceMoveGEC::UConstantForceMoveGEC()

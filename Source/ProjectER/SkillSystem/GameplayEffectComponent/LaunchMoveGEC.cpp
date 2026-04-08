@@ -6,7 +6,7 @@
 #include "GameplayEffect.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 
 ULaunchMoveGEC::ULaunchMoveGEC()
 {

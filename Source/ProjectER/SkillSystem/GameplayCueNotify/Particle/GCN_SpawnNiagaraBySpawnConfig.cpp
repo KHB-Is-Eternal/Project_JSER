@@ -1,9 +1,9 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "SkillSystem/GameplayCueNotify/GCN_SpawnNiagaraBySpawnConfig.h"
-#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnConfig.h"
-#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnHelper.h"
+#include "SkillSystem/GameplayCueNotify/Particle/GCN_SpawnNiagaraBySpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
 
 #include "Engine/Blueprint.h"
 #include "AbilitySystemStats.h"

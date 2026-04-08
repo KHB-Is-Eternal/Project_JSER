@@ -4,8 +4,8 @@
 #include "GameplayEffectComponent.h"
 #include "GameplayEffectComponent.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
-#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnConfig.h"
-#include "SkillSystem/GameplayCueNotify/SkillSoundSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 
 UProjectERASC::UProjectERASC()
 {

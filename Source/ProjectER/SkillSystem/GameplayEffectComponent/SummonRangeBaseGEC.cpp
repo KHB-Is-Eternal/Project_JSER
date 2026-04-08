@@ -13,8 +13,8 @@
 #include "SkillSystem/GameAbility/SkillBase.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 
-#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnConfig.h"
-#include "SkillSystem/GameplayCueNotify/SkillSoundSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 #include "SkillSystem/GameplayEffectComponent/SummonRangeAtBone.h"
 #include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
 #include "GameFramework/GameStateBase.h"
