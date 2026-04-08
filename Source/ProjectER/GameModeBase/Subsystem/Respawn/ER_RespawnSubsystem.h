@@ -31,6 +31,9 @@ public:
 	void StartRespawnTimer(AER_PlayerState& PS, AER_GameState& GS);
 	void StopResapwnTimer(AER_GameState& GS, int32 TeamIdx);
 	
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="Respawn")
+	void CancelRespawnTimerForPlayer(AER_PlayerState* PS);
+	
 	//리스폰 처리
 	void RespawnPlayer();
 

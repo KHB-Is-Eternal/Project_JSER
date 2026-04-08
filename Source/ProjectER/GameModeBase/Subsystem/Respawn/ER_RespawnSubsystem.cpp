@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "ER_RespawnSubsystem.h"
@@ -217,6 +217,20 @@ void UER_RespawnSubsystem::StopResapwnTimer(AER_GameState& GS, int32 TeamIdx)
 			// 사망한 팀원의 리스폰 UI 제거
 			PC->Client_StopRespawnTimer();
 		}
+	}
+}
+
+void UER_RespawnSubsystem::CancelRespawnTimerForPlayer(AER_PlayerState* PS)
+{
+	if (!PS || !PS->HasAuthority()) 
+		return;
+
+	const int32 PlayerId = PS->GetPlayerId();
+	if (FTimerHandle* Handle = RespawnMap.Find(PlayerId))
+	{
+		GetWorld()->GetTimerManager().ClearTimer(*Handle);
+		
+		UE_LOG(LogTemp, Warning, TEXT("[RSS] CancelRespawnTimerForPlayer: Timer successfully stopped for Player %s"), *PS->GetPlayerName());
 	}
 }
 
