@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "ItemSystem/Interface/I_ItemInteractable.h" // [김현수 추가분]
 #include "ItemSystem/Data/ItemRecipeRow.h" // [김현수 추가분]
@@ -226,6 +226,8 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_NotifyCraftingUI(bool bIsCraftingStarted);
 
+	// UI에서 접근을 위해 Public으로 노출
+public:
 	/** 크래프팅 시도 */
 	UFUNCTION(BlueprintCallable, Category = "Interaction|Crafting")
 	void TryStartCrafting();
@@ -387,6 +389,10 @@ protected:
 	UUI_Scoreboard* ScoreboardWidget;
 	void ShowScoreboard();
 	void HideScoreboard();
+
+	// 사운드를 담아둘 변수
+	UPROPERTY()
+	TObjectPtr<USoundBase> ClickSound;
 	//
 
 private:
@@ -484,6 +490,8 @@ private:
 
 	void UseInventorySlot(int32 SlotIndex);
 
+	UFUNCTION()
+	void OnSkillLevelUp(FGameplayTag what_skill);
 
 	// 사운드
 	UPROPERTY(EditDefaultsOnly)

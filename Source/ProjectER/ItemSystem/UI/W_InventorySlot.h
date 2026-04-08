@@ -50,6 +50,11 @@ protected:
 
 	UPROPERTY()
 	class UUI_ToolTipManager* TooltipManager;
+	// 클릭 사운드용
+
+	// 사운드를 담아둘 변수
+	UPROPERTY()
+	TObjectPtr<USoundBase> ClickSound;
 	// 툴팁용
 
 private:

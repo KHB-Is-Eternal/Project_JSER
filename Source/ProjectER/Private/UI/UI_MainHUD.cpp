@@ -399,6 +399,12 @@ void UUI_MainHUD::NativeConstruct()
     }
     // skil
 
+    if (Btn_Craft)
+    {
+        Btn_Craft->OnHovered.AddDynamic(this, &UUI_MainHUD::OnCraftHovered);
+        Btn_Craft->OnUnhovered.AddDynamic(this, &UUI_MainHUD::HideTooltip);
+        Btn_Craft->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftClicked);
+    }
     // cool
     SkillCoolTexts[0] = skill_cool_01;
     SkillCoolTexts[1] = skill_cool_02;
@@ -569,6 +575,27 @@ void UUI_MainHUD::OnSkillLevelUp03Hovered()
 
 void UUI_MainHUD::OnSkillLevelUp04Hovered()
 {
+}
+
+void UUI_MainHUD::OnCraftHovered()
+{
+	FText Name = FText::FromString(TEXT("제작"));
+	FText ShortDesc = FText::FromString(TEXT("아이템을 제작합니다."));
+	FText DetailDesc = FText::FromString(TEXT("재료 아이템을 소모하여 새로운 아이템을 제작합니다."));
+	FText CostDesc = FText::FromString(TEXT("재료 아이템 소모"));
+
+    ShowTooltip(Btn_Craft, Name, ShortDesc, DetailDesc, CostDesc, true);
+
+}
+
+void UUI_MainHUD::OnCraftClicked()
+{
+    ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
+
+    if (IsValid(PC))
+    {
+        PC->TryStartCrafting();
+    }
 }
 
 void UUI_MainHUD::ShowTooltip(UWidget* AnchorWidget, FText Name, FText ShortDesc, FText DetailDesc, FText CostDesc, bool showUpper)
