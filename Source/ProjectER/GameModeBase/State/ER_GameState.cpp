@@ -112,7 +112,7 @@ bool AER_GameState::GetTeamEliminate(int32 idx)
 		for (auto& UniqueIdStr : TeamCache[idx])
 		{
 			AER_PlayerState* PS = GetPlayerStateByUniqueId(UniqueIdStr);
-			if (PS && !PS->bIsDead)
+			if (PS && PS->IsCombatEffective())
 			{
 				++AliveCount;
 			}

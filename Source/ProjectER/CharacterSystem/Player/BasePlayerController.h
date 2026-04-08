@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "ItemSystem/Interface/I_ItemInteractable.h" // [김현수 추가분]
 #include "ItemSystem/Data/ItemRecipeRow.h" // [김현수 추가분]
@@ -226,6 +226,8 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_NotifyCraftingUI(bool bIsCraftingStarted);
 
+	// UI에서 접근을 위해 Public으로 노출
+public:
 	/** 크래프팅 시도 */
 	UFUNCTION(BlueprintCallable, Category = "Interaction|Crafting")
 	void TryStartCrafting();
@@ -315,6 +317,10 @@ public:
 	UFUNCTION(BlueprintCallable, Client, Reliable)
 	void Client_CloseLoadingUI();
 
+	// 빈사에서 리스폰 UI 클릭 시 Handle Death 추가
+	UFUNCTION(BlueprintCallable, Server, Reliable)
+	void Server_RequestHandleDeath();
+
 	// 클라이언트가 캐릭터 선택창 진입 요청
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_RequestCharacterSelection();
@@ -387,6 +393,10 @@ protected:
 	UUI_Scoreboard* ScoreboardWidget;
 	void ShowScoreboard();
 	void HideScoreboard();
+
+	// 사운드를 담아둘 변수
+	UPROPERTY()
+	TObjectPtr<USoundBase> ClickSound;
 	//
 
 private:
@@ -484,6 +494,8 @@ private:
 
 	void UseInventorySlot(int32 SlotIndex);
 
+	UFUNCTION()
+	void OnSkillLevelUp(FGameplayTag what_skill);
 
 	// 사운드
 	UPROPERTY(EditDefaultsOnly)

@@ -4,6 +4,7 @@
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
+#include "Monster/GAS/GE/GE_AddTag.h"
 
 FSTT_AddStateTag::FSTT_AddStateTag()
 {
@@ -28,10 +29,11 @@ EStateTreeRunStatus FSTT_AddStateTag::EnterState(FStateTreeExecutionContext& Con
 
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	
-	if (ASC && InstanceData.TagEffect)
+	if (ASC)
 	{
+		TSubclassOf<UGE_AddTag> Effect = UGE_AddTag::StaticClass();
 		FGameplayEffectContextHandle EffectContextHandle = ASC->MakeEffectContext();
-		FGameplayEffectSpecHandle EffectSpecHandle = ASC->MakeOutgoingSpec(InstanceData.TagEffect, 1.0f, EffectContextHandle);
+		FGameplayEffectSpecHandle EffectSpecHandle = ASC->MakeOutgoingSpec(Effect, 1.0f, EffectContextHandle);
 		if (EffectSpecHandle.IsValid())
 		{
 			EffectSpecHandle.Data.Get()->DynamicGrantedTags.AddTag(InstanceData.StateTag);

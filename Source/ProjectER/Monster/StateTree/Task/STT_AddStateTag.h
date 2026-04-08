@@ -15,9 +15,6 @@ struct FAddStateTagData
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = "Tag")
-	TSubclassOf<UGameplayEffect> TagEffect;
-
-	UPROPERTY(EditAnywhere, Category = "Tag")
 	FGameplayTag StateTag;
 
 	UPROPERTY()

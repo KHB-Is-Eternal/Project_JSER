@@ -1,4 +1,4 @@
-#include "CharacterSystem/Player/BasePlayerController.h"
+﻿#include "CharacterSystem/Player/BasePlayerController.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -78,7 +78,13 @@ ABasePlayerController::ABasePlayerController()
 	
 	//Camera comp as null in the constructor. the caching will be done in the runtime --> on possess
 	TopDownCameraComp = nullptr;
-	
+
+	// Click Sound Init
+	static ConstructorHelpers::FObjectFinder<USoundBase> SoundAsset(TEXT("/Engine/VREditor/Sounds/UI/Click_on_Button.Click_on_Button"));
+	if (SoundAsset.Succeeded())
+	{
+		ClickSound = SoundAsset.Object;
+	}	
 }
 
 void ABasePlayerController::BeginPlay()
@@ -314,7 +320,7 @@ void ABasePlayerController::SetupInputComponent()
 		if (InputConfig->ChatEnterKey)
 		{
 			EnhancedInputComponent->BindAction(InputConfig->ChatEnterKey, ETriggerEvent::Started, this, &ABasePlayerController::OnEnterPressed);
-		}		
+		}	
 	}
 }
 
@@ -843,7 +849,14 @@ void ABasePlayerController::CheckInteractionDistance()
 			{
 				const FGameplayTag ReviveTag =
 					FGameplayTag::RequestGameplayTag(FName("Ability.Action.Revive"));
-				ASC->TryActivateAbilitiesByTag(FGameplayTagContainer(ReviveTag));
+
+				// GameplayEvent를 통해 검증된 부활 대상을 GA에 직접 전달
+				FGameplayEventData Payload;
+				Payload.EventTag = ReviveTag;
+				Payload.Instigator = ControlledBaseChar;
+				Payload.Target = TargetChar; // 이미 팀/상태 검증 완료된 부활 대상
+
+				ASC->HandleGameplayEvent(ReviveTag, &Payload);
 			}
 
 			InteractionTarget = nullptr;
@@ -1148,6 +1161,13 @@ void ABasePlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 
 	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn);
 	if (!ASC) return;
+
+	// ctrl 눌려 있을 경우 스킬 레벨업 처리 _ mpyi
+	if (IsInputKeyDown(EKeys::LeftControl))
+	{
+		OnSkillLevelUp(InputTag);
+		return; // 레벨업이 우선이므로 이후 공격 처리 로직은 실행하지 않음
+	}
 
 	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
 	{
@@ -1854,6 +1874,27 @@ void ABasePlayerController::UseInventorySlot(int32 SlotIndex)
 
 	// 슬롯 인덱스 사용 (0부터 시작)
 	InventoryComp->UseItem(SlotIndex);
+
+	// Client에서만 버튼 사운드 재생
+	if (IsLocalController())
+	{
+		if (ClickSound)
+		{
+			UGameplayStatics::PlaySound2D(this, ClickSound);
+		}
+	}
+}
+
+void ABasePlayerController::OnSkillLevelUp(FGameplayTag what_skill)
+{
+	if(what_skill == MainHUD->Q_SkillTag)
+		MainHUD->getSkillLevel(MainHUD->Q_SkillTag, true);
+	else if (what_skill == MainHUD->W_SkillTag)
+		MainHUD->getSkillLevel(MainHUD->W_SkillTag, true);
+	else if (what_skill == MainHUD->E_SkillTag)
+		MainHUD->getSkillLevel(MainHUD->E_SkillTag, true);
+	else if (what_skill == MainHUD->R_SkillTag)
+		MainHUD->getSkillLevel(MainHUD->R_SkillTag, true);
 }
 
 void ABasePlayerController::SetSoundMix(EAudioType AudioType, float Volume)
@@ -1956,6 +1997,15 @@ void ABasePlayerController::PawnLeavingGame()
 	    UE_LOG(LogTemp, Warning, TEXT("[PC] PawnLeavingGame After | PC=%s | Pawn=%s"),
         *GetNameSafe(this),
         *GetNameSafe(GetPawn()));
+}
+
+void ABasePlayerController::Server_RequestHandleDeath_Implementation()
+{
+	APawn* OwnedPawn = GetPawn();
+	if (ABaseCharacter* Char = Cast<ABaseCharacter>(OwnedPawn))
+	{
+		Char->HandleDeath();
+	}
 }
 
 
