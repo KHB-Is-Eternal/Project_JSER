@@ -293,7 +293,7 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 					if (TargetPS)
 					{
 						// 8초 안에 데미지를 줬으면 어시스트 판정
-s						TargetPS->GetAssists(Now, 8.f, AttackerPS, OutAssists);
+						TargetPS->GetAssists(Now, 8.f, AttackerPS, OutAssists);
 
 						// 자신이 준 데미지가 어시스트로 처리되는 일(자기 자신 킬, 자기 자신 데미지)을 확실하게 방지
 						if (AttackerPS)
