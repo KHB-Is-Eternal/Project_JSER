@@ -92,6 +92,8 @@ void ABaseItemActor::ApplyWorldItemCollisionSettings()
 		ItemMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		ItemMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 		ItemMesh->SetGenerateOverlapEvents(false);
+		ItemMesh->SetSimulatePhysics(false);
+		ItemMesh->SetEnableGravity(false);
 		ItemMesh->CanCharacterStepUpOn = ECB_No;
 		ItemMesh->SetCanEverAffectNavigation(false);
 	}

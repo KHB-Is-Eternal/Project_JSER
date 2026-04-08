@@ -722,7 +722,7 @@ bool UBaseInventoryComponent::DropItemFromSlot(int32 SlotIndex, const FVector& S
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = OwnerActor;
 	SpawnParams.Instigator = DropperPawn;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	ABaseItemActor* SpawnedItem = World->SpawnActor<ABaseItemActor>(
 		SpawnClass,
