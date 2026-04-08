@@ -1999,6 +1999,15 @@ void ABasePlayerController::PawnLeavingGame()
         *GetNameSafe(GetPawn()));
 }
 
+void ABasePlayerController::Server_RequestHandleDeath_Implementation()
+{
+	APawn* OwnedPawn = GetPawn();
+	if (ABaseCharacter* Char = Cast<ABaseCharacter>(OwnedPawn))
+	{
+		Char->HandleDeath();
+	}
+}
+
 
 void ABasePlayerController::Server_RequestCharacterSelection_Implementation()
 {

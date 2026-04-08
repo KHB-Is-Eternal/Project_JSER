@@ -31,6 +31,9 @@ public:
 	void StartRespawnTimer(AER_PlayerState& PS, AER_GameState& GS);
 	void StopResapwnTimer(AER_GameState& GS, int32 TeamIdx);
 	
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="Respawn")
+	void CancelRespawnTimerForPlayer(AER_PlayerState* PS);
+	
 	//리스폰 처리
 	void RespawnPlayer();
 
@@ -53,7 +56,7 @@ public:
 	TArray<TWeakObjectPtr<AActor>> Points;
 
 private:
-	TMap<int32, FTimerHandle> RespawnMap;
+	TMap<FString, FTimerHandle> RespawnMap;
 	// 리스폰 위치를 모아둘 맵
 	TMap<ERegionType, TArray<TWeakObjectPtr<AActor>>> RespawnPointsByRegion;
 

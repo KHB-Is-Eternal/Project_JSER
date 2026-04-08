@@ -1,4 +1,4 @@
-#include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
+﻿#include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
@@ -237,28 +237,6 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 				if (TargetASC && TargetASC->HasMatchingGameplayTag(ProjectER::State::Life::Down))
 				{
 					TargetChar->HandleDeath(); 
-        
-					// 기존 킬 로그 및 어시스트 처리 유지
-					auto InGameMode = Cast<AER_InGameMode>(GetWorld()->GetAuthGameMode());
-					if (!InGameMode) return;
-
-					TArray<APlayerState*> OutAssists;
-					if (TargetPS)
-					{
-						// 8초 안에 데미지를 줬으면 어시스트 판정
-						TargetPS->GetAssists(Now, 8.f, AttackerPS, OutAssists);
-
-						// 자신이 준 데미지가 어시스트로 처리되는 일(자기 자신 킬, 자기 자신 데미지)을 확실하게 방지
-						if (AttackerPS)
-						{
-							OutAssists.Remove(AttackerPS);
-						}
-						OutAssists.Remove(TargetPS);
-
-						// 죽으면 기여 기록 초기화
-						TargetPS->ResetDamageContrib();
-					}
-					InGameMode->NotifyPlayerDied(TargetChar, AttackerPS, OutAssists);
 					
 					if (AttackerPS)
 					{
@@ -306,6 +284,28 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 
 					// 빈사 로직 실행 (상태 변환 및 GE 적용)
 					TargetChar->HandleDown();
+
+					// 기존 킬 로그 및 어시스트 처리 유지
+					auto InGameMode = Cast<AER_InGameMode>(GetWorld()->GetAuthGameMode());
+					if (!InGameMode) return;
+
+					TArray<APlayerState*> OutAssists;
+					if (TargetPS)
+					{
+						// 8초 안에 데미지를 줬으면 어시스트 판정
+						TargetPS->GetAssists(Now, 8.f, AttackerPS, OutAssists);
+
+						// 자신이 준 데미지가 어시스트로 처리되는 일(자기 자신 킬, 자기 자신 데미지)을 확실하게 방지
+						if (AttackerPS)
+						{
+							OutAssists.Remove(AttackerPS);
+						}
+						OutAssists.Remove(TargetPS);
+
+						// 죽으면 기여 기록 초기화
+						TargetPS->ResetDamageContrib();
+					}
+					InGameMode->NotifyPlayerDied(TargetChar, AttackerPS, OutAssists);
 				}
 			}
 			else

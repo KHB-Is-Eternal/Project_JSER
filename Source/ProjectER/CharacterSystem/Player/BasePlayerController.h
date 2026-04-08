@@ -317,6 +317,10 @@ public:
 	UFUNCTION(BlueprintCallable, Client, Reliable)
 	void Client_CloseLoadingUI();
 
+	// 빈사에서 리스폰 UI 클릭 시 Handle Death 추가
+	UFUNCTION(BlueprintCallable, Server, Reliable)
+	void Server_RequestHandleDeath();
+
 	// 클라이언트가 캐릭터 선택창 진입 요청
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_RequestCharacterSelection();
