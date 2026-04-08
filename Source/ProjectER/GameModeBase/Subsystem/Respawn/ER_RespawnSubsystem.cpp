@@ -127,7 +127,8 @@ void UER_RespawnSubsystem::StartRespawnTimer(AER_PlayerState& PS, AER_GameState&
 		return;
 
 
-	const int32 PlayerId = PS.GetPlayerId();
+	const FUniqueNetIdRepl UniqueId = PS.GetUniqueId();
+	const FString PlayerIdStr = UniqueId.IsValid() ? UniqueId->ToString() : PS.GetPlayerName();
 
 	// 리스폰 시간 계산 -> 추후에 페이즈, 레벨에 따라서 리스폰 시간 계산
 	// 이터널 리턴 -> 1~6레벨 3~8초, 7레벨 10초, 8~11레벨 25~30초, 12레벨 35초, 13레벨 이상 40초
@@ -167,7 +168,7 @@ void UER_RespawnSubsystem::StartRespawnTimer(AER_PlayerState& PS, AER_GameState&
 	}
 
 	// 리스폰 타이머 시작
-	FTimerHandle& Handle = RespawnMap.FindOrAdd(PlayerId);
+	FTimerHandle& Handle = RespawnMap.FindOrAdd(PlayerIdStr);
 
 	GetWorld()->GetTimerManager().ClearTimer(Handle);
 
@@ -207,8 +208,9 @@ void UER_RespawnSubsystem::StopResapwnTimer(AER_GameState& GS, int32 TeamIdx)
 		if (!player) continue;
 
 		// 플레이어의 id를 받아와 리스폰 map에 접근 후 타이머 정지
-		const int32 PlayerId = player->GetPlayerId();
-		FTimerHandle& Handle = RespawnMap.FindOrAdd(PlayerId);
+		const FUniqueNetIdRepl UniqueId = player->GetUniqueId();
+		const FString PlayerIdStr = UniqueId.IsValid() ? UniqueId->ToString() : player->GetPlayerName();
+		FTimerHandle& Handle = RespawnMap.FindOrAdd(PlayerIdStr);
 		GetWorld()->GetTimerManager().ClearTimer(Handle);
 
 		ABasePlayerController* PC = Cast<ABasePlayerController>(player->GetOwner());
@@ -225,10 +227,12 @@ void UER_RespawnSubsystem::CancelRespawnTimerForPlayer(AER_PlayerState* PS)
 	if (!PS || !PS->HasAuthority()) 
 		return;
 
-	const int32 PlayerId = PS->GetPlayerId();
-	if (FTimerHandle* Handle = RespawnMap.Find(PlayerId))
+	const FUniqueNetIdRepl UniqueId = PS->GetUniqueId();
+	const FString PlayerIdStr = UniqueId.IsValid() ? UniqueId->ToString() : PS->GetPlayerName();
+	if (FTimerHandle* Handle = RespawnMap.Find(PlayerIdStr))
 	{
 		GetWorld()->GetTimerManager().ClearTimer(*Handle);
+		RespawnMap.Remove(PlayerIdStr);
 		
 		UE_LOG(LogTemp, Warning, TEXT("[RSS] CancelRespawnTimerForPlayer: Timer successfully stopped for Player %s"), *PS->GetPlayerName());
 	}
@@ -261,7 +265,9 @@ void UER_RespawnSubsystem::InitializeRespawnMap(AER_GameState& GS)
 		if (!player)
 			continue;
 
-		RespawnMap.FindOrAdd(player->GetPlayerId());
+		const FUniqueNetIdRepl UniqueId = player->GetUniqueId();
+		const FString PlayerIdStr = UniqueId.IsValid() ? UniqueId->ToString() : player->GetPlayerName();
+		RespawnMap.FindOrAdd(PlayerIdStr);
 	}
 }
 

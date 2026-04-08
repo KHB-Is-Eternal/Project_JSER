@@ -56,7 +56,7 @@ public:
 	TArray<TWeakObjectPtr<AActor>> Points;
 
 private:
-	TMap<int32, FTimerHandle> RespawnMap;
+	TMap<FString, FTimerHandle> RespawnMap;
 	// 리스폰 위치를 모아둘 맵
 	TMap<ERegionType, TArray<TWeakObjectPtr<AActor>>> RespawnPointsByRegion;
 
