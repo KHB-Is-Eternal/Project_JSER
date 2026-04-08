@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "ER_RespawnSubsystem.h"
@@ -19,10 +19,10 @@ void UER_RespawnSubsystem::HandlePlayerDeath(AER_PlayerState& PS, AER_GameState&
 	UE_LOG(LogTemp, Warning, TEXT("[RSS] : Start HandlePlayerDeath"));
 
 
-	if (PS.bIsDead)
-		return;
-
-	PS.bIsDead = true;
+	//if (PS.bIsDead)
+	//	return;
+	//
+	//PS.bIsDead = true;
 	PS.AddDeathCount();
 	PS.ForceNetUpdate();
 	UE_LOG(LogTemp, Warning, TEXT("Death.PS  K : %d, D : %d, A : %d"), PS.GetKillCount(), PS.GetDeathCount(), PS.GetAssistCount());
@@ -121,9 +121,6 @@ void UER_RespawnSubsystem::SetTeamWin(AER_GameState& GS, int32 TeamIdx)
 void UER_RespawnSubsystem::StartRespawnTimer(AER_PlayerState& PS, AER_GameState& GS)
 {
 	if (!GS.HasAuthority())
-		return;
-
-	if (!PS.bIsDead)
 		return;
 
 	if (GS.GetCurrentPhase() == 5)

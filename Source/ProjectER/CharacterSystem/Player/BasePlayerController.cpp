@@ -1,4 +1,4 @@
-#include "CharacterSystem/Player/BasePlayerController.h"
+﻿#include "CharacterSystem/Player/BasePlayerController.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -1956,6 +1956,15 @@ void ABasePlayerController::PawnLeavingGame()
 	    UE_LOG(LogTemp, Warning, TEXT("[PC] PawnLeavingGame After | PC=%s | Pawn=%s"),
         *GetNameSafe(this),
         *GetNameSafe(GetPawn()));
+}
+
+void ABasePlayerController::Server_RequestHandleDeath_Implementation()
+{
+	APawn* OwnedPawn = GetPawn();
+	if (ABaseCharacter* Char = Cast<ABaseCharacter>(OwnedPawn))
+	{
+		Char->HandleDeath();
+	}
 }
 
 

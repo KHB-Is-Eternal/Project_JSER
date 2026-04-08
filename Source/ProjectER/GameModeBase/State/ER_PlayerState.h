@@ -115,7 +115,7 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	ETeamType TeamType = ETeamType::None;
 
-	UPROPERTY(Replicated, BlueprintReadOnly)
+	UPROPERTY(Replicated, BlueprintReadWrite)
 	bool bIsDead = false;
 
 	UPROPERTY(Replicated, BlueprintReadOnly)
