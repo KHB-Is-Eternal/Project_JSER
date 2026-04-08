@@ -843,7 +843,14 @@ void ABasePlayerController::CheckInteractionDistance()
 			{
 				const FGameplayTag ReviveTag =
 					FGameplayTag::RequestGameplayTag(FName("Ability.Action.Revive"));
-				ASC->TryActivateAbilitiesByTag(FGameplayTagContainer(ReviveTag));
+
+				// GameplayEvent를 통해 검증된 부활 대상을 GA에 직접 전달
+				FGameplayEventData Payload;
+				Payload.EventTag = ReviveTag;
+				Payload.Instigator = ControlledBaseChar;
+				Payload.Target = TargetChar; // 이미 팀/상태 검증 완료된 부활 대상
+
+				ASC->HandleGameplayEvent(ReviveTag, &Payload);
 			}
 
 			InteractionTarget = nullptr;
