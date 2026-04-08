@@ -3,6 +3,7 @@
 #include "Monster/GAS/AttributeSet/BaseMonsterAttributeSet.h"
 #include "Monster/Data/MonsterDataAsset.h"
 #include "Monster/Data/BaseMonsterTableRow.h"
+#include "Monster/GAS/GE/GE_AddXP.h"
 #include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/State/ER_PlayerState.h"
@@ -497,13 +498,13 @@ void ABaseMonster::OnMonterDeathHandle(AActor* Target)
 	//아이템 박스 초기화;
 	LootableComp->InitializeWithItems(MonsterData->ItemList);
 	//보상 지급
-	GameplayEffectSetByCaller(Target, XPRewardEffect, MonsterTags.IncomingXPTag, MonsterData->Exp);
+	RewardMonsterXP(Target, MonsterTags.IncomingXPTag, MonsterData->Exp);
 
 	// BP Exposed Function for visual udpate
 	//TODO::
 }
 
-void ABaseMonster::GameplayEffectSetByCaller(AActor* Player, TSubclassOf<UGameplayEffect> GE, FGameplayTag Tag, float Amount)
+void ABaseMonster::RewardMonsterXP(AActor* Player, FGameplayTag Tag, float Amount)
 {
 	if (IsValid(Player) == false)
 	{
@@ -570,6 +571,8 @@ void ABaseMonster::GameplayEffectSetByCaller(AActor* Player, TSubclassOf<UGamepl
 		if (!TeamPS.IsValid()) continue;
 		FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();;
 		ContextHandle.AddInstigator(this, nullptr);
+
+		TSubclassOf<UGE_AddXP> GE = UGE_AddXP::StaticClass();
 		FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(GE, 1, ContextHandle);
 		SpecHandle.Data->SetSetByCallerMagnitude(
 			Tag,
@@ -689,8 +692,9 @@ void ABaseMonster::SendAttackRangeEvent(float AttackRange)
 	
 	const float Distance = FVector::DistSquared(
 			TargetPlayer->GetActorLocation(), GetActorLocation());
+	float SquaAttackRange = AttackRange * AttackRange;
 
-	if (Distance <= AttackRange * AttackRange)
+	if (Distance <= SquaAttackRange)
 	{
 		// 공격
 		SendStateTreeEvent(MonsterTags.AttackEventTag);

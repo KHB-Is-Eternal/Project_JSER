@@ -159,7 +159,7 @@ private:
 	bool HasASCTag(FGameplayTag Tag);
 
 	UFUNCTION(BlueprintCallable)
-	void GameplayEffectSetByCaller(AActor* Player, TSubclassOf<UGameplayEffect> GE, FGameplayTag Tag, float Amount);
+	void RewardMonsterXP(AActor* Player, FGameplayTag Tag, float Amount);
 
 	UFUNCTION(BlueprintCallable)
 	void TryActivateByDynamicTag(FGameplayTag InputTag);
@@ -205,9 +205,6 @@ private:
 	TObjectPtr<UAudioComponent> SoundComp;
 
 
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
-	TSubclassOf<UGameplayEffect> XPRewardEffect;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
 	FMonsterTags MonsterTags;

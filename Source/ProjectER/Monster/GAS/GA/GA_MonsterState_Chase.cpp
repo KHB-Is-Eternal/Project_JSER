@@ -52,8 +52,13 @@ void UGA_MonsterState_Chase::ActivateAbility(const FGameplayAbilitySpecHandle Ha
 	{
 		AttackRange = AS->GetAttackRange();
 	}
-	float CapsuleRadius = Monster->GetCapsuleComponent()->GetScaledCapsuleRadius();
-	float AcceptanceRadius = FMath::Max(0.0f, AttackRange - (CapsuleRadius + 10));
+	float MyCapsuleRadius = Monster->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	float TargetRadius = 0.0f;
+	if (ACharacter* TargetCharacter = Cast<ACharacter>(TargetActor))
+	{
+		TargetRadius = TargetCharacter->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	}
+	float AcceptanceRadius = FMath::Max(0.0f, AttackRange - (MyCapsuleRadius + TargetRadius));
 
 	AIC->ReceiveMoveCompleted.RemoveAll(this);
 	
