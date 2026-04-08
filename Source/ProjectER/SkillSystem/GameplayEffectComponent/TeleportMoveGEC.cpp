@@ -93,14 +93,9 @@ void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, con
 		}
 	}
 
-	// ── 4. 최종 이동 및 이펙트 실행 ──
+	// ── 4. 최종 이동 ──
 	Instigator->SetActorLocation(Destination, false, nullptr, ETeleportType::TeleportPhysics);
 	UpdateLevelTracker(Instigator);
-
-	ExecuteMoveCue(this->EndVfx, GESpec, Instigator, Destination);
-	ExecuteMoveSound(this->EndSound, GESpec, Instigator, Destination);
-	RemoveMovingCue(this->MovingVfx, Instigator);
-	RemoveMovingSoundCue(this->MovingSound, Instigator);
 }
 
 FVector UTeleportMoveGEC::CalculateDestination(const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Direction) const

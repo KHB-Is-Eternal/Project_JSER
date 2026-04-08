@@ -88,42 +88,15 @@ void ULaunchMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const
 		FTimerHandle RestoreTimer;
 		Character->GetWorld()->GetTimerManager().SetTimer(
 			RestoreTimer,
-			[WeakThis, WeakChar, GESpec]()
+			[WeakThis, WeakChar]()
 			{
 				if (WeakThis.IsValid() && WeakChar.IsValid())
 				{
-					// 도착(착지) 큐 실행 및 Moving 루핑 종료
-					WeakThis->ExecuteMoveCue(WeakThis->EndVfx, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
-					WeakThis->ExecuteMoveSound(WeakThis->EndSound, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
-					WeakThis->RemoveMovingCue(WeakThis->MovingVfx, WeakChar.Get());
-					WeakThis->RemoveMovingSoundCue(WeakThis->MovingSound, WeakChar.Get());
-
 					// 충돌 무시는 서버에서만 제어
 					if (WeakThis->bIgnoreUnitCollision && WeakChar->HasAuthority())
 					{
 						WeakThis->SetPawnCollisionIgnore(WeakChar.Get(), false);
 					}
-				}
-			},
-			PredictDuration,
-			false);
-	}
-	else
-	{
-		// 충돌 무시는 없지만 EndVfx는 여전히 타이머로 실행해야 함 (비행 후 착지 시점)
-		TWeakObjectPtr<ULaunchMoveGEC const> WeakThis = this;
-		TWeakObjectPtr<ACharacter> WeakChar = Character;
-		FTimerHandle EndVfxTimer;
-		Character->GetWorld()->GetTimerManager().SetTimer(
-			EndVfxTimer,
-			[WeakThis, WeakChar, GESpec]()
-			{
-				if (WeakThis.IsValid() && WeakChar.IsValid())
-				{
-					WeakThis->ExecuteMoveCue(WeakThis->EndVfx, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
-					WeakThis->ExecuteMoveSound(WeakThis->EndSound, GESpec, WeakChar.Get(), WeakChar->GetActorLocation());
-					WeakThis->RemoveMovingCue(WeakThis->MovingVfx, WeakChar.Get());
-					WeakThis->RemoveMovingSoundCue(WeakThis->MovingSound, WeakChar.Get());
 				}
 			},
 			PredictDuration,

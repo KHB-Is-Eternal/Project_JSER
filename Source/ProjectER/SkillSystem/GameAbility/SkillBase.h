@@ -40,7 +40,7 @@ protected:
 	void SetWaitEventActiveTag();
 	void SetWaitEventCastingTag();
 	void PrepareToActiveSkill();
-	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets);
+	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
 	bool TryExecuteSkill();
 	FGameplayTag GetInputTag();
 	ETargetRelationship GetSkillTargetRelationship();

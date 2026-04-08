@@ -27,6 +27,11 @@ UCLASS(Abstract)
 class PROJECTER_API USummonRangeBaseGEC : public UBaseGEC
 {
 	GENERATED_BODY()
+
+public:
+	// GEC가 보유한 CueTag가 설정된 Config 객체들을 수집하여 UProjectERASC에 제공합니다. (Phase 2)
+	virtual void CollectCueConfigs(TArray<const UObject*>& OutConfigs) const override;
+
 protected:
 	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
 	virtual FTransform CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const;
@@ -74,16 +79,10 @@ public:
 	bool bHitOncePerTarget = true;
 
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Niagara")
-	TObjectPtr<USkillNiagaraSpawnConfig> SummonerSpawnVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Niagara")
 	TObjectPtr<USkillNiagaraSpawnConfig> RangeSpawnVfx;
 
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Niagara")
 	TObjectPtr<USkillNiagaraSpawnConfig> HitTargetVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> SummonerSpawnSound;
 
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Sound")
 	TObjectPtr<USkillSoundSpawnConfig> RangeSpawnSound;
@@ -94,4 +93,3 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Effect")
 	TArray<TSubclassOf<UBaseGameplayEffect>> Applied;
 };
-

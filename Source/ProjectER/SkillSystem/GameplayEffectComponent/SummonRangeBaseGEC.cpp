@@ -16,8 +16,16 @@
 #include "SkillSystem/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/SkillSoundSpawnConfig.h"
 #include "SkillSystem/GameplayEffectComponent/SummonRangeAtBone.h"
+#include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/GameState.h"
 
-
+void USummonRangeBaseGEC::CollectCueConfigs(TArray<const UObject*>& OutConfigs) const
+{
+	// 범위 소환 VFX/Sound 설정을 수집하여 UProjectERASC가 자동 매칭할 수 있도록 합니다. (Phase 2)
+	if (RangeSpawnVfx) OutConfigs.Add(RangeSpawnVfx);
+	if (RangeSpawnSound) OutConfigs.Add(RangeSpawnSound);
+}
 
 void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const
 {
@@ -60,41 +68,65 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 	const FTransform SpawnTransform = ApplyCommonSpawnOptionsToTransform(OriginTransform, EffectInstigator);
 	const FVector RangeSpawnLocation = SpawnTransform.GetLocation();
 
-	// 2. 액터 소환 (지연 생성)
-	APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
-	ABaseRangeOverlapEffectActor* const DeferredSpawnedActor = World->SpawnActorDeferred<ABaseRangeOverlapEffectActor>(
-		this->RangeActorClass,
-		SpawnTransform,
-		EffectInstigator,
-		SpawnInstigator,
-		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-	if (!IsValid(DeferredSpawnedActor))
+	// 2. 권한 확인: 실제 액터 소환은 서버에서만 수행합니다. (중복 소환 방지)
+	if (ActiveGEContainer.Owner && ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
 	{
-		return;
+		// 3. 액터 소환 (지연 생성)
+		APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
+		ABaseRangeOverlapEffectActor* const DeferredSpawnedActor = World->SpawnActorDeferred<ABaseRangeOverlapEffectActor>(
+			this->RangeActorClass,
+			SpawnTransform,
+			EffectInstigator,
+			SpawnInstigator,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+			
+		if (IsValid(DeferredSpawnedActor))
+		{
+			// 4. 초기화 및 마무리
+			const FGameplayCueParameters HitTargetVfxCueParameters = BuildNiagaraCueParameters(
+				GESpec,
+				IsValid(this->HitTargetVfx.Get()) ? this->HitTargetVfx->CueTag : FGameplayTag(),
+				ContextHandle,
+				DeferredSpawnedActor,
+				RangeSpawnLocation,
+				this->HitTargetVfx.Get());
+
+			const FGameplayCueParameters HitTargetSoundCueParameters = BuildNiagaraCueParameters(
+				GESpec,
+				IsValid(this->HitTargetSound.Get()) ? this->HitTargetSound->CueTag : FGameplayTag(),
+				ContextHandle,
+				DeferredSpawnedActor,
+				RangeSpawnLocation,
+				this->HitTargetSound.Get());
+
+			InitializeRangeActor(DeferredSpawnedActor, EffectInstigator, ContextHandle, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
+			DeferredSpawnedActor->FinishSpawning(SpawnTransform);
+
+			// 5. 렉 보상 (Lag Compensation / Fast-Forward)
+			// 클라이언트 측 발동 시간과 서버 현재 시간을 비교하여 소환 위치를 오프셋합니다.
+			if (const FProjectERGameplayEffectContext* ERContext = static_cast<const FProjectERGameplayEffectContext*>(EffectContext))
+			{
+				if (ERContext->ClientActivationTime > 0.0f)
+				{
+					if (AGameStateBase* GameState = World->GetGameState())
+					{
+						float ServerTime = GameState->GetServerWorldTimeSeconds();
+						float Latency = ServerTime - ERContext->ClientActivationTime;
+						if (Latency > 0.0f)
+						{
+							// 발사체의 경우 이동 속도가 존재하므로, 속도 * 지연시간 만큼 앞으로 밀어줍니다.
+							FVector Velocity = DeferredSpawnedActor->GetVelocity();
+							if (!Velocity.IsNearlyZero())
+							{
+								FVector Correction = Velocity * Latency;
+								DeferredSpawnedActor->AddActorWorldOffset(Correction);
+							}
+						}
+					}
+				}
+			}
+		}
 	}
-
-	// 3. 초기화 및 마무리
-	const FGameplayCueParameters HitTargetVfxCueParameters = BuildNiagaraCueParameters(
-		GESpec,
-		IsValid(this->HitTargetVfx.Get()) ? this->HitTargetVfx->CueTag : FGameplayTag(),
-		ContextHandle,
-		DeferredSpawnedActor,
-		RangeSpawnLocation,
-		this->HitTargetVfx.Get());
-
-	const FGameplayCueParameters HitTargetSoundCueParameters = BuildNiagaraCueParameters(
-		GESpec,
-		IsValid(this->HitTargetSound.Get()) ? this->HitTargetSound->CueTag : FGameplayTag(),
-		ContextHandle,
-		DeferredSpawnedActor,
-		RangeSpawnLocation,
-		this->HitTargetSound.Get());
-
-	InitializeRangeActor(DeferredSpawnedActor, EffectInstigator, ContextHandle, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
-	DeferredSpawnedActor->FinishSpawning(SpawnTransform);
-
-	// 4. 시각 효과 실행
-	ExecuteGameplayCues(GESpec, ContextHandle, EffectInstigator, DeferredSpawnedActor, SpawnTransform, OriginTransform);
 }
 
 
@@ -111,48 +143,8 @@ FTransform USummonRangeBaseGEC::CalculateOriginTransform(const FGameplayEffectSp
 
 void USummonRangeBaseGEC::ExecuteGameplayCues(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* EffectInstigator, ABaseRangeOverlapEffectActor* RangeActor, const FTransform& SpawnTransform, const FTransform& OriginTransform) const
 {
-	UAbilitySystemComponent* const InstigatorASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(EffectInstigator);
-	if (!IsValid(InstigatorASC))
-	{
-		return;
-	}
-
-	FScopedPredictionWindow ForcedWindow(InstigatorASC, FPredictionKey(), false);
-
-	if (IsValid(this->SummonerSpawnVfx) && this->SummonerSpawnVfx->CueTag.IsValid())
-	{
-		// 시전자 나이아가라: 원점 좌표(OriginTransform) 사용, EffectCauser = RangeActor (기본 동작)
-		const FGameplayCueParameters SummonerCueParams = BuildNiagaraCueParameters(GESpec, this->SummonerSpawnVfx->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), this->SummonerSpawnVfx);
-		InstigatorASC->ExecuteGameplayCue(this->SummonerSpawnVfx->CueTag, SummonerCueParams);
-	}
-
-	if (IsValid(this->RangeSpawnVfx) && this->RangeSpawnVfx->CueTag.IsValid())
-	{
-		// 범위 나이아가라: 원점 좌표(OriginTransform) 사용, EffectCauser = RangeActor (기본 동작)
-		FGameplayCueParameters RangeCueParams = BuildNiagaraCueParameters(GESpec, this->RangeSpawnVfx->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), this->RangeSpawnVfx, OriginTransform.GetRotation().GetForwardVector());
-		if (IsValid(RangeActor))
-		{
-			RangeCueParams.TargetAttachComponent = RangeActor->GetRootComponent();
-		}
-		InstigatorASC->ExecuteGameplayCue(this->RangeSpawnVfx->CueTag, RangeCueParams);
-	}
-
-	// Sound 실행
-	if (IsValid(this->SummonerSpawnSound) && this->SummonerSpawnSound->CueTag.IsValid())
-	{
-		const FGameplayCueParameters SummonerCueParams = BuildNiagaraCueParameters(GESpec, this->SummonerSpawnSound->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), this->SummonerSpawnSound);
-		InstigatorASC->ExecuteGameplayCue(this->SummonerSpawnSound->CueTag, SummonerCueParams);
-	}
-
-	if (IsValid(this->RangeSpawnSound) && this->RangeSpawnSound->CueTag.IsValid())
-	{
-		FGameplayCueParameters RangeCueParams = BuildNiagaraCueParameters(GESpec, this->RangeSpawnSound->CueTag, ContextHandle, RangeActor, OriginTransform.GetLocation(), this->RangeSpawnSound, OriginTransform.GetRotation().GetForwardVector());
-		if (IsValid(RangeActor))
-		{
-			RangeCueParams.TargetAttachComponent = RangeActor->GetRootComponent();
-		}
-		InstigatorASC->ExecuteGameplayCue(this->RangeSpawnSound->CueTag, RangeCueParams);
-	}
+	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거합니다. 
+	// 이제 GE에 등록된 GameplayCue 태그가 트리거되면 UProjectERASC에서 가로채어 SourceObject(Config)를 주입합니다.
 }
 
 AActor* USummonRangeBaseGEC::GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const

@@ -54,17 +54,6 @@ protected:
 
 	void SnapToGround(FVector& InOutLocation, const AActor* Instigator) const;
 	
-	// 개별 큐 실행 헬퍼
-	void ExecuteMoveCue(const USkillNiagaraSpawnConfig* VfxConfig, const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Location) const;
-	void ExecuteMoveSound(const USkillSoundSpawnConfig* SoundConfig, const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Location) const;
-
-	// Moving 루핑 큐 추가/제거 (Direction과 Speed를 파라미터로 넘겨 클라이언트 동기화 지원)
-	void AddMovingCue(const USkillNiagaraSpawnConfig* VfxConfig, const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Direction = FVector::ZeroVector, float Speed = 0.0f, float Duration = 0.0f) const;
-	void RemoveMovingCue(const USkillNiagaraSpawnConfig* VfxConfig, AActor* Instigator) const;
-
-	void AddMovingSoundCue(const USkillSoundSpawnConfig* SoundConfig, const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Direction = FVector::ZeroVector, float Speed = 0.0f, float Duration = 0.0f) const;
-	void RemoveMovingSoundCue(const USkillSoundSpawnConfig* SoundConfig, AActor* Instigator) const;
-
 	// 활성 몽타주 속도 조정
 	void AdjustActiveMontageRate(ACharacter* Character, float MoveDuration) const;
 
@@ -104,26 +93,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Move|WallHit",
 		meta = (EditCondition = "bDetectWallHit"))
 	TArray<TSubclassOf<UBaseGameplayEffect>> WallHitApplied;
-
-	// --- VFX ---
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|VFX")
-	TObjectPtr<USkillNiagaraSpawnConfig> StartVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|VFX")
-	TObjectPtr<USkillNiagaraSpawnConfig> MovingVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|VFX")
-	TObjectPtr<USkillNiagaraSpawnConfig> EndVfx;
-
-	// --- Sound ---
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> StartSound;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> MovingSound;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> EndSound;
 
 	// --- Animation ---
 	// 활성 몽타주 속도 조정 여부

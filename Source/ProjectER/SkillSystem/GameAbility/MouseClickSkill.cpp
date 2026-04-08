@@ -101,17 +101,21 @@ void UMouseClickSkill::ExecuteSkill()
 			return;
 		}
 
-		const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
-		for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : ExecutionEffects)
-		{
-			if (!IsValid(EffectClass)) continue;
+		// const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
+		// for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : ExecutionEffects)
+		// {
+		// 	if (!IsValid(EffectClass)) continue;
 
-			FGameplayEffectSpecHandle SpecHandle = InstigatorASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), TargetLocationEffectContext);
-			if (SpecHandle.IsValid())
-			{
-				InstigatorASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get(), InstigatorASC->GetPredictionKeyForNewAction());
-			}
-		}
+		// 	FGameplayEffectSpecHandle SpecHandle = InstigatorASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), TargetLocationEffectContext);
+		// 	if (SpecHandle.IsValid())
+		// 	{
+				
+		// 		InstigatorASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get(), InstigatorASC->GetPredictionKeyForNewAction());
+		// 	}
+		// }
+
+		const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
+		ApplyExcutionEffectToSelf(ExecutionEffects, TargetLocationEffectContext);
 
 		ABaseCharacter* Character = Cast<ABaseCharacter>(Avatar);
 		if (Character) Character->StopMove();
@@ -205,6 +209,7 @@ void UMouseClickSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle&
 		return;
 	}
 
+	AActor* Avatar = GetAvatarActorFromActorInfo();
 	FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
 	ContextHandle.AddOrigin(Location);
 	ContextHandle.AddSourceObject(this);

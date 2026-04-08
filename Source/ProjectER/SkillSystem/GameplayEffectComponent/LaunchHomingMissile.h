@@ -30,6 +30,9 @@ class PROJECTER_API ULaunchHomingMissile : public UBaseGEC
 public:
 	ULaunchHomingMissile();
 
+	// GEC가 보유한 CueTag가 설정된 Config 객체들을 수집합니다. (Phase 2)
+	virtual void CollectCueConfigs(TArray<const UObject*>& OutConfigs) const override;
+
 protected:
 	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
 
@@ -72,18 +75,12 @@ public:
 
 	//--- Niagara VFX ---
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Niagara")
-	TObjectPtr<USkillNiagaraSpawnConfig> SummonerVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Niagara")
 	TObjectPtr<USkillNiagaraSpawnConfig> MissileVfx;
 
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Niagara")
 	TObjectPtr<USkillNiagaraSpawnConfig> ImpactVfx;
 
 	//--- Sound ---
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> SummonerSound;
-
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Sound")
 	TObjectPtr<USkillSoundSpawnConfig> MissileSound;
 

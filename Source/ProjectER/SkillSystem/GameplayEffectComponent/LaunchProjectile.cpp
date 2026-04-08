@@ -17,6 +17,9 @@
 
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/GameState.h"
 
 ULaunchProjectile::ULaunchProjectile()
 {

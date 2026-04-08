@@ -13,6 +13,9 @@
 #include "GameplayEffectTypes.h"
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/GameState.h"
 
 // ============================================================================
 // GEC
@@ -20,6 +23,13 @@
 
 ULaunchHomingMissile::ULaunchHomingMissile()
 {
+}
+
+void ULaunchHomingMissile::CollectCueConfigs(TArray<const UObject*>& OutConfigs) const
+{
+	// 미사일 발사 시 동반되는 효과들을 수집합니다. (Phase 2)
+	if (MissileVfx) OutConfigs.Add(MissileVfx);
+	if (MissileSound) OutConfigs.Add(MissileSound);
 }
 
 void ULaunchHomingMissile::OnGameplayEffectApplied(
@@ -77,6 +87,12 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 
 	const FTransform SpawnTransform = CalculateSpawnTransform(Instigator, TargetActor);
 
+	// 2. 권한 확인: 실제 액터 소환은 서버에서만 수행합니다.
+	if (!ActiveGEContainer.Owner || !ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
+	{
+		return;
+	}
+
 	// --- 미사일 액터 지연 생성 ---
 	APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
 	ABaseMissileActor* const MissileActor = World->SpawnActorDeferred<ABaseMissileActor>(
@@ -114,6 +130,7 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 	}
 	
 	// --- 적중 효과(VFX, Sound) 큐 파라미터 구성 ---
+	// 적중 효과는 로컬 예측이 필수적이지 않으므로 기존 방식(InitializeMissile 시 전달)을 유지합니다. 
 	FGameplayCueParameters HitVfxCueParams(GESpec);
 	if (IsValid(this->ImpactVfx) && this->ImpactVfx->CueTag.IsValid())
 	{
@@ -158,7 +175,31 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 	// --- 스폰 완료 ---
 	MissileActor->FinishSpawning(SpawnTransform);
 
-	// --- Summoner / Missile VFX & Sound 실행 ---
+	// --- 렉 보상 (Lag Compensation / Fast-Forward) ---
+	if (const FProjectERGameplayEffectContext* ERContext = static_cast<const FProjectERGameplayEffectContext*>(ContextHandle.Get()))
+	{
+		if (ERContext->ClientActivationTime > 0.0f)
+		{
+			if (AGameStateBase* GameState = World->GetGameState())
+			{
+				float ServerTime = GameState->GetServerWorldTimeSeconds();
+				float Latency = ServerTime - ERContext->ClientActivationTime;
+				if (Latency > 0.0f)
+				{
+					FVector Velocity = MissileActor->GetVelocity();
+					if (!Velocity.IsNearlyZero())
+					{
+						FVector Correction = Velocity * Latency;
+						MissileActor->AddActorWorldOffset(Correction);
+					}
+				}
+			}
+		}
+	}
+
+	// --- 시각 효과 실행 ---
+	// [수정] 네이티브 GameplayCue 시스템이 UProjectERASC를 통해 자동으로 Config를 주입하여 실행합니다. (Phase 2)
+	// 시전자 관련 효과는 몽타주 AnimNotify에서 담당합니다. (Phase 3)
 	ExecuteVfx(GESpec, ContextHandle, Instigator, MissileActor);
 	ExecuteSound(GESpec, ContextHandle, Instigator, MissileActor);
 }
@@ -218,46 +259,7 @@ void ULaunchHomingMissile::ExecuteVfx(
 	AActor* Instigator,
 	ABaseMissileActor* MissileActor) const
 {
-	UAbilitySystemComponent* const InstigatorASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Instigator);
-	if (!IsValid(InstigatorASC))
-	{
-		return;
-	}
-
-	{
-		FScopedPredictionWindow ForcedWindow(InstigatorASC, FPredictionKey(), false);
-
-		// Summoner VFX (시전자 위치에 재생)
-		if (IsValid(this->SummonerVfx) && this->SummonerVfx->CueTag.IsValid())
-		{
-			FGameplayCueParameters SummonerParams(GESpec);
-			SummonerParams.OriginalTag = this->SummonerVfx->CueTag;
-			SummonerParams.Instigator = ContextHandle.GetInstigator();
-			SummonerParams.EffectCauser = MissileActor;
-			SummonerParams.Location = Instigator->GetActorLocation();
-			SummonerParams.SourceObject = this->SummonerVfx;
-			SummonerParams.GameplayEffectLevel = GESpec.GetLevel();
-			InstigatorASC->ExecuteGameplayCue(this->SummonerVfx->CueTag, SummonerParams);
-		}
-
-		// Missile VFX (미사일 본체에 부착되어 이동하며 재생)
-		if (IsValid(this->MissileVfx) && this->MissileVfx->CueTag.IsValid())
-		{
-			FGameplayCueParameters MissileParams(GESpec);
-			MissileParams.OriginalTag = this->MissileVfx->CueTag;
-			MissileParams.Instigator = ContextHandle.GetInstigator();
-			MissileParams.EffectCauser = MissileActor;
-			MissileParams.Location = MissileActor->GetActorLocation();
-			MissileParams.Normal = MissileActor->GetActorForwardVector();
-			MissileParams.SourceObject = this->MissileVfx;
-			MissileParams.GameplayEffectLevel = GESpec.GetLevel();
-			if (IsValid(MissileActor))
-			{
-				MissileParams.TargetAttachComponent = MissileActor->GetRootComponent();
-			}
-			InstigatorASC->ExecuteGameplayCue(this->MissileVfx->CueTag, MissileParams);
-		}
-	}
+	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거합니다. 
 }
 
 void ULaunchHomingMissile::ExecuteSound(
@@ -266,44 +268,5 @@ void ULaunchHomingMissile::ExecuteSound(
 	AActor* Instigator,
 	ABaseMissileActor* MissileActor) const
 {
-	UAbilitySystemComponent* const InstigatorASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Instigator);
-	if (!IsValid(InstigatorASC))
-	{
-		return;
-	}
-
-	{
-		FScopedPredictionWindow ForcedWindow(InstigatorASC, FPredictionKey(), false);
-
-		// Summoner Sound
-		if (IsValid(this->SummonerSound) && this->SummonerSound->CueTag.IsValid())
-		{
-			FGameplayCueParameters SummonerParams(GESpec);
-			SummonerParams.OriginalTag = this->SummonerSound->CueTag;
-			SummonerParams.Instigator = ContextHandle.GetInstigator();
-			SummonerParams.EffectCauser = MissileActor;
-			SummonerParams.Location = Instigator->GetActorLocation();
-			SummonerParams.SourceObject = this->SummonerSound;
-			SummonerParams.GameplayEffectLevel = GESpec.GetLevel();
-			InstigatorASC->ExecuteGameplayCue(this->SummonerSound->CueTag, SummonerParams);
-		}
-
-		// Missile Sound
-		if (IsValid(this->MissileSound) && this->MissileSound->CueTag.IsValid())
-		{
-			FGameplayCueParameters MissileParams(GESpec);
-			MissileParams.OriginalTag = this->MissileSound->CueTag;
-			MissileParams.Instigator = ContextHandle.GetInstigator();
-			MissileParams.EffectCauser = MissileActor;
-			MissileParams.Location = MissileActor->GetActorLocation();
-			MissileParams.Normal = MissileActor->GetActorForwardVector();
-			MissileParams.SourceObject = this->MissileSound;
-			MissileParams.GameplayEffectLevel = GESpec.GetLevel();
-			if (IsValid(MissileActor))
-			{
-				MissileParams.TargetAttachComponent = MissileActor->GetRootComponent();
-			}
-			InstigatorASC->ExecuteGameplayCue(this->MissileSound->CueTag, MissileParams);
-		}
-	}
+	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거합니다. 
 }

@@ -24,6 +24,9 @@
 #include "AbilitySystemGlobals.h" // [김현수 추가분] 태그 체크용
 
 #include "CharacterSystem/Player/BasePlayerController.h" // [김현수 추가분]
+#include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/GameState.h"
 
 USkillBase::USkillBase()
 {
@@ -46,6 +49,7 @@ void USkillBase::SetSkillTagCount(FGameplayTag Tag, int32 Count)
 
 void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
+	UE_LOG(LogTemp, Warning, TEXT("[SkillBase] ActivateAbility Called! Skill: %s"), *GetName());
 
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
@@ -190,11 +194,20 @@ void USkillBase::ExecuteSkill()
 		if (auto* Character = Cast<ABaseCharacter>(Avatar)) Character->StopMove();
 	}
 
+	if (ASC->IsNetMode(NM_Client))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[SkillBase] ExecuteSkill on Client. HasValidPredictionKey: %s"), 
+			ASC->ScopedPredictionKey.IsValidKey() ? TEXT("True") : TEXT("False"));
+	}
+
 	if (IsLocallyControlled()) OnExecuteSkill_InClient();
 }
 
 void USkillBase::OnActiveTagEventReceived(FGameplayEventData Payload)
 {
+	// [ProjectER] 클라이언트 사이드 예측 실행을 보장하기 위해 예측 창을 엽니다.
+	FScopedPredictionWindow ScopedWindow(GetASC(), IsLocallyControlled());
+
 	if (!TryExecuteSkill())
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
@@ -281,15 +294,33 @@ void USkillBase::PrepareToActiveSkill()
 	//if (IsLocallyControlled() || HasAuthority(&CurrentActivationInfo)) PlayAnimMontage();
 }
 
-void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets)
+void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle)
 {
 	UAbilitySystemComponent* const ASC = GetASC();
 	AActor* const Avatar = GetAvatar();
 	if (!IsValid(ASC) || !IsValid(Avatar) || SkillEffectDataAssets.Num() <= 0) return;
 
-	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
+	if (ASC->IsNetMode(NM_Client))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[SkillBase] ApplyExcutionEffectToSelf on Client. PredictionKey: %s"), 
+			*ASC->ScopedPredictionKey.ToString());
+	}
+
+	if(ContextHandle.IsValid() == false) ContextHandle = ASC->MakeEffectContext();
 	ContextHandle.AddInstigator(Avatar, Avatar);
 	ContextHandle.SetAbility(this);
+
+	if (FProjectERGameplayEffectContext* ERContext = static_cast<FProjectERGameplayEffectContext*>(ContextHandle.Get()))
+	{
+		// 클라이언트 시전 시간 기록 (렉 보상용)
+		if (UWorld* World = GetWorld())
+		{
+			if (AGameStateBase* GameState = World->GetGameState())
+			{
+				ERContext->ClientActivationTime = GameState->GetServerWorldTimeSeconds();
+			}
+		}
+	}
 
 	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : SkillEffectDataAssets)
 	{

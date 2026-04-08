@@ -106,11 +106,8 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
                 WeakThis->SetPawnCollisionIgnore(CharPtr, false);
             }
         }
-        WeakThis->ExecuteMoveCue(WeakThis->EndVfx, GESpecCopy, InstigatorPtr, ActualEndLoc);
-        WeakThis->ExecuteMoveSound(WeakThis->EndSound, GESpecCopy, InstigatorPtr, ActualEndLoc);
-        WeakThis->RemoveMovingCue(WeakThis->MovingVfx, InstigatorPtr);
-        WeakThis->RemoveMovingSoundCue(WeakThis->MovingSound, InstigatorPtr);
 
+        // 시전자 효과(EndVfx, MovingVfx 종료 등)는 몽타주의 AnimNotify에서 처리됩니다.
     },
     Duration + 0.05f,
     false);

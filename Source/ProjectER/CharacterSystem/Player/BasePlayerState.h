@@ -1,11 +1,11 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
 #include "BasePlayerState.generated.h"
 
-class UAbilitySystemComponent;
+class UProjectERASC;
 class UBaseAttributeSet;
 
 UCLASS()
@@ -22,7 +22,7 @@ public:
 	
 private:
 	UPROPERTY(VisibleAnywhere, Category = "GAS")
-	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
+	TObjectPtr<UProjectERASC> AbilitySystemComponent;
 	
 	UPROPERTY(VisibleAnywhere, Category = "GAS")
 	TObjectPtr<UBaseAttributeSet> AttributeSet;
