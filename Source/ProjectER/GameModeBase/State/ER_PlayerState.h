@@ -1,4 +1,4 @@
-﻿
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -43,6 +43,10 @@ public:
 	void AddDamageContributor(APlayerState* AttackerPS, float Damage, float Now);
 	void GetAssists(float Now, float WindowSec, APlayerState* KillerPS, TArray<APlayerState*>& OutAssists) const;
 	void ResetDamageContrib();
+
+	// 전투 가능 상태 판정 (사망 혹은 빈사 상태인지 체크)
+	UFUNCTION(BlueprintPure, Category = "State")
+	bool IsCombatEffective() const;
 
 	// Getter
 	UBaseAttributeSet* GetAttributeSet() const { return AttributeSet; }
