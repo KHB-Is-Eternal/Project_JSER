@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "SkillSystem/SkillSoundSpawnSettings.h"
+#include "SkillSystem/GameplayCueNotify/SkillSoundSpawnSettings.h"
 #include "GameplayTagContainer.h"
 #include "SkillSoundSpawnConfig.generated.h"
 

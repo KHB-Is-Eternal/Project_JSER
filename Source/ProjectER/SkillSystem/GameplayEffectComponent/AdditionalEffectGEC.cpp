@@ -1,7 +1,7 @@
 #include "SkillSystem/GameplayEffectComponent/AdditionalEffectGEC.h"
 
-#include "SkillSystem/SkillNiagaraSpawnConfig.h"
-#include "SkillSystem/SkillSoundSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/SkillSoundSpawnConfig.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
 

@@ -1,5 +1,5 @@
-#include "SkillSystem/SkillSoundSpawnHelper.h"
-#include "SkillSystem/SkillSoundSpawnSettings.h"
+#include "SkillSystem/GameplayCueNotify/SkillSoundSpawnHelper.h"
+#include "SkillSystem/GameplayCueNotify/SkillSoundSpawnSettings.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/AudioComponent.h"
 #include "Components/SkeletalMeshComponent.h"

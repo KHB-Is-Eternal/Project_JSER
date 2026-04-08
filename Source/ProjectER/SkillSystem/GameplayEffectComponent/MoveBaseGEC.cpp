@@ -10,8 +10,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "SkillSystem/GameAbility/SkillBase.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
-#include "SkillSystem/SkillNiagaraSpawnConfig.h"
-#include "SkillSystem/SkillSoundSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/SkillSoundSpawnConfig.h"
 
 UMoveBaseGEC::UMoveBaseGEC()
 {

@@ -5,7 +5,7 @@
 #include "Components/CapsuleComponent.h"
 #include "GameplayEffect.h"
 #include "GameFramework/Character.h"
-#include "SkillSystem/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnConfig.h"
 #include "LevelManagement/LevelAreaTrackerComponent.h"
 #include "NavigationSystem.h"
 #include "NavigationPath.h"

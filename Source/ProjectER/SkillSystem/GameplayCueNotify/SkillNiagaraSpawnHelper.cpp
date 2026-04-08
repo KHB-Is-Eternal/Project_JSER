@@ -1,9 +1,9 @@
-#include "SkillSystem/SkillNiagaraSpawnHelper.h"
+#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnHelper.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "NiagaraComponent.h"
-#include "SkillSystem/SkillNiagaraSpawnSettings.h"
+#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnSettings.h"
 #include "Engine/World.h"
 
 namespace

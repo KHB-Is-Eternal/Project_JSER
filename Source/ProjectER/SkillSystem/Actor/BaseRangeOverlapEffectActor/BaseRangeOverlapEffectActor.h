@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayEffectTypes.h"
-#include "SkillSystem/SkillNiagaraSpawnSettings.h"
+#include "SkillSystem/GameplayCueNotify/SkillNiagaraSpawnSettings.h"
 #include "BaseRangeOverlapEffectActor.generated.h"
 
 class UShapeComponent;
