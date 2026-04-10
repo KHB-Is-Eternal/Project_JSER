@@ -29,49 +29,88 @@ void UGA_MonsterState_Chase::ActivateAbility(const FGameplayAbilitySpecHandle Ha
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
 	ABaseMonster* Monster = Cast<ABaseMonster>(GetOwningActorFromActorInfo());
-	if (IsValid(Monster) == false || IsValid(Monster->MonsterData) == false)
+	if (IsValid(Monster) == false)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::ActivateAbility : Not Monster"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
-
+	if (IsValid(Monster->MonsterData) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::ActivateAbility : Not MonsterData"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
 	AAIController* AIC = Cast<AAIController>(Monster->GetController());
-	AActor* TargetActor = Monster->GetTargetPlayer();
-
-	if (IsValid(AIC) == false || IsValid(TargetActor) == false)
+	if (IsValid(AIC) == false)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::ActivateAbility : Not AIC"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
-
+	AActor* TargetActor = Monster->GetTargetPlayer();
+	if (IsValid(TargetActor) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::ActivateAbility : Not TargetActor"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+	UBaseMonsterAttributeSet* AS = Monster->GetAttributeSet();
+	if (IsValid(AS) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::ActivateAbility : Not AttributeSet"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+	UCapsuleComponent* MonsterCapsuleComp = Monster->GetCapsuleComponent();
+	if (IsValid(MonsterCapsuleComp) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::ActivateAbility : Not MonsterCapsuleComp"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}	
+	ACharacter* TargetCharacter = Cast<ACharacter>(TargetActor);
+	if (IsValid(TargetCharacter) ==false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::ActivateAbility : Not TargetCharacter"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}	
+	UCapsuleComponent* TargetCapsuleComp = TargetCharacter->GetCapsuleComponent();
+	if (IsValid(TargetCapsuleComp) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::ActivateAbility : Not TargetCapsuleComp"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+	
 	Monster->SetbIsCombat(true);
 
 	float AttackRange = 0.0f;
-	UBaseMonsterAttributeSet* AS = Monster->GetAttributeSet();
-	if (IsValid(AS))
-	{
-		AttackRange = AS->GetAttackRange();
-	}
-	float MyCapsuleRadius = Monster->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	AttackRange = AS->GetAttackRange();
+	float MyCapsuleRadius = 0.0f;
+	MyCapsuleRadius = MonsterCapsuleComp->GetScaledCapsuleRadius();
 	float TargetRadius = 0.0f;
-	if (ACharacter* TargetCharacter = Cast<ACharacter>(TargetActor))
-	{
-		TargetRadius = TargetCharacter->GetCapsuleComponent()->GetScaledCapsuleRadius();
-	}
+	TargetRadius = TargetCapsuleComp->GetScaledCapsuleRadius();
 	float AcceptanceRadius = FMath::Max(0.0f, AttackRange - (MyCapsuleRadius + TargetRadius));
 
 	AIC->ReceiveMoveCompleted.RemoveAll(this);
 	
 	EPathFollowingRequestResult::Type ReqResult = AIC->MoveToActor(TargetActor, AcceptanceRadius, false);
-	if (ReqResult != EPathFollowingRequestResult::Failed && ReqResult != EPathFollowingRequestResult::AlreadyAtGoal)
+	if (ReqResult == EPathFollowingRequestResult::RequestSuccessful)
 	{
 		MoveRequestID = AIC->GetCurrentMoveRequestID();
 		AIC->ReceiveMoveCompleted.AddDynamic(this, &UGA_MonsterState_Chase::OnMoveFinished);
 	}
-	else
+	else if (ReqResult == EPathFollowingRequestResult::AlreadyAtGoal)
 	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-		return;
+		MoveRequestID = AIC->GetCurrentMoveRequestID();
+		OnMoveFinished(MoveRequestID, EPathFollowingResult::Success);
+	}
+	else if (ReqResult == EPathFollowingRequestResult::Failed)
+	{
+		MoveRequestID = AIC->GetCurrentMoveRequestID();
+		OnMoveFinished(MoveRequestID, EPathFollowingResult::Aborted);
 	}
 }
 
@@ -91,23 +130,31 @@ void UGA_MonsterState_Chase::EndAbility(const FGameplayAbilitySpecHandle Handle,
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 
 	ABaseMonster* Monster = Cast<ABaseMonster>(GetOwningActorFromActorInfo());
-	if (IsValid(Monster))
+	if (IsValid(Monster) == false)
 	{
-		if (AAIController* AIC = Cast<AAIController>(Monster->GetController()))
-		{
-			AIC->ReceiveMoveCompleted.RemoveAll(this);
-		}
-
-		if (UAnimInstance* AnimInstance = Monster->GetMesh()->GetAnimInstance())
-		{
-			AnimInstance->StopAllMontages(0.f);
-		}
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::EndAbility : Not Monster"));
+		return;
 	}
-
+	AAIController* AIC = Cast<AAIController>(Monster->GetController());
+	if (IsValid(Monster) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::EndAbility : Not AIC"));
+		return;
+	}
+	UAnimInstance* AnimInstance = Monster->GetMesh()->GetAnimInstance();
+	if (IsValid(AnimInstance) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::EndAbility : Not AnimInstance"));
+		return;
+	}
 	UBaseMonsterAttributeSet* AS = Monster->GetAttributeSet();
-	if(IsValid(AS))
+	if (IsValid(AS) == false)
 	{
-		Monster->SendAttackRangeEvent(AS->GetAttackRange());
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Chase::EndAbility : Not AttributeSet"));
+		return;
 	}
-
+	
+	AIC->ReceiveMoveCompleted.RemoveAll(this);
+	AnimInstance->StopAllMontages(0.f);
+	Monster->SendAttackRangeEvent(AS->GetAttackRange());
 }
