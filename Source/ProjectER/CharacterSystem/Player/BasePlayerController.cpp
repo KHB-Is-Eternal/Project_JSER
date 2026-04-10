@@ -2515,3 +2515,48 @@ void ABasePlayerController::Server_CompleteCrafting_Implementation(FItemRecipeRo
 		UE_LOG(LogTemp, Error, TEXT("[Crafting Server] Result item is null"));
 	}
 }
+
+void ABasePlayerController::Server_RequestTeleportToTeam_Implementation(APlayerState* TargetAllyPS)
+{
+	if (TargetAllyPS == nullptr)
+	{
+		return;
+	}
+
+	Client_CloseTeleportUI();
+	Client_CloseRespawnTeleportUI();
+
+	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
+
+	if (PS && Char)
+	{
+		// 2. 앞서 수정한 GA_Teleport가 받을 수 있도록 EventData 구성
+		FGameplayEventData Payload;
+		Payload.Instigator = ControlledBaseChar; // 시전자 (나)
+		Payload.Target = TargetAllyPS;           // 타겟 아군의 PlayerState
+
+		const FGameplayTag EventTag = ProjectER::Event::Interact::Teleport;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PS, EventTag, Payload);
+	}
+}
+
+//void ABasePlayerController::Server_RequestTeleport_Implementation(int32 RegionIndex)
+//{
+//	Client_CloseTeleportUI();
+//	Client_CloseRespawnTeleportUI();
+//
+//	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+//	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
+//	if (PS && Char)
+//	{
+//		FGameplayEventData Payload;
+//		Payload.Instigator = Char;
+//		Payload.Target = Char;
+//		Payload.EventMagnitude = RegionIndex;
+//
+//		const FGameplayTag EventTag = ProjectER::Event::Interact::Teleport;
+//		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PS, EventTag, Payload);
+//		UE_LOG(LogTemp, Log, TEXT("[Teleport] Server sent GameplayEvent %s with Magnitude %d"), *EventTag.ToString(), RegionIndex);
+//	}
+//}

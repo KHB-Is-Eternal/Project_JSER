@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "ItemSystem/Interface/I_ItemInteractable.h" // [김현수 추가분]
 #include "ItemSystem/Data/ItemRecipeRow.h" // [김현수 추가분]
@@ -356,6 +356,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_RequestTeleport(int32 RegionIndex);
+
+	// 아군 타겟 텔레포트 서버 요청
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "ProjectER|Teleport")
+	void Server_RequestTeleportToTeam(class APlayerState* TargetAllyPS);
 
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_BeginTeleportInteract(class UER_TeleportComponent* TeleportComp);
