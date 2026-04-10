@@ -30,5 +30,8 @@ protected:
 	float TeleportDelayTime = 1.0f;
 
 private:
-	int32 TargetRegionIndex;
+	int32 TargetRegionIndex = 0;
+
+	// 아군 텔레포트 목적지가 될 타겟 액터 (오브젝트 파괴 시 크래시 방지를 위한 약참조 포인터)
+	TWeakObjectPtr<const AActor> TargetAllyActor;
 };
