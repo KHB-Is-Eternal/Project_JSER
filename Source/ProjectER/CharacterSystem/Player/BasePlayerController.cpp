@@ -1,4 +1,4 @@
-﻿#include "CharacterSystem/Player/BasePlayerController.h"
+#include "CharacterSystem/Player/BasePlayerController.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -1214,15 +1214,31 @@ void ABasePlayerController::ConnectToDedicatedServer(const FString& Ip, int32 Po
 
 void ABasePlayerController::Client_SetLose_Implementation()
 {
+	if (!IsLocalPlayerController() || GetLocalPlayer() == nullptr)
+	{
+		return;
+	}
+
 	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
-	PS->bIsLose = true;
+	if (PS)
+	{
+		PS->bIsLose = true;
+	}
 	ShowLoseUI();
 }
 
 void ABasePlayerController::Client_SetWin_Implementation()
 {
+	if (!IsLocalPlayerController() || GetLocalPlayer() == nullptr)
+	{
+		return;
+	}
+
 	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
-	PS->bIsWin = true;
+	if (PS)
+	{
+		PS->bIsWin = true;
+	}
 	ShowWinUI();
 }
 
@@ -1234,11 +1250,21 @@ void ABasePlayerController::Client_SetDead_Implementation()
 
 void ABasePlayerController::Client_StartRespawnTimer_Implementation()
 {
+	if (!IsLocalPlayerController() || GetLocalPlayer() == nullptr)
+	{
+		return;
+	}
+
 	ShowRespawnTimerUI();
 }
 
 void ABasePlayerController::Client_StopRespawnTimer_Implementation()
 {
+	if (!IsLocalPlayerController() || GetLocalPlayer() == nullptr)
+	{
+		return;
+	}
+
 	HideRespawnTimerUI();
 }
 
