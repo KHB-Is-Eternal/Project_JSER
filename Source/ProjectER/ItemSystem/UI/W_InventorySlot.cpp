@@ -19,6 +19,8 @@
 
 #include "UI/UI_ToolTip.h"	// 툴팁용
 #include "UI/UI_ToolTipManager.h"	// 툴팁용
+#include "Kismet/GameplayStatics.h" // 클릭 사운드용
+#include "Sound/SoundBase.h"		// 클릭 사운드용
 
 UW_InventorySlot::UW_InventorySlot(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -26,11 +28,19 @@ UW_InventorySlot::UW_InventorySlot(const FObjectInitializer& ObjectInitializer)
 	SetVisibility(ESlateVisibility::Visible);
 	bIsFocusable = false;
 
+	
 	static ConstructorHelpers::FClassFinder<UUI_ToolTip> ToolTipAsset(TEXT("/Game/Blueprints/BP_UI/BP_UI_ToolTip.BP_UI_ToolTip_C"));
 
 	if (ToolTipAsset.Succeeded())
 	{
 		ToolTipWidgetClass = ToolTipAsset.Class;
+	}
+
+	// Click Sound Init
+	static ConstructorHelpers::FObjectFinder<USoundBase> SoundAsset(TEXT("/Engine/VREditor/Sounds/UI/Click_on_Button.Click_on_Button"));
+	if (SoundAsset.Succeeded())
+	{
+		ClickSound = SoundAsset.Object;
 	}
 }
 
@@ -205,7 +215,10 @@ FReply UW_InventorySlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, co
 	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
 		// UE_LOG(LogTemp, Log, TEXT("Inventory Slot [%d] - Mouse Down!"), SlotIndex);
-
+		if (ClickSound)
+		{
+			UGameplayStatics::PlaySound2D(this, ClickSound);
+		}
 		return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
 	}
 

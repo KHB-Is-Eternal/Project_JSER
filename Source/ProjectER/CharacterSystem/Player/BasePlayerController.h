@@ -219,6 +219,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Item|Drop")
 	TSubclassOf<ABaseItemActor> DroppedItemActorClass;
 
+	bool CanInteractWithItemsInCurrentLifeState(APawn* InPawn) const;
+
 	// ===== 아이템 조합 시스템 =====
 protected:
 
@@ -226,6 +228,8 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_NotifyCraftingUI(bool bIsCraftingStarted);
 
+	// UI에서 접근을 위해 Public으로 노출
+public:
 	/** 크래프팅 시도 */
 	UFUNCTION(BlueprintCallable, Category = "Interaction|Crafting")
 	void TryStartCrafting();
@@ -315,6 +319,10 @@ public:
 	UFUNCTION(BlueprintCallable, Client, Reliable)
 	void Client_CloseLoadingUI();
 
+	// 빈사에서 리스폰 UI 클릭 시 Handle Death 추가
+	UFUNCTION(BlueprintCallable, Server, Reliable)
+	void Server_RequestHandleDeath();
+
 	// 클라이언트가 캐릭터 선택창 진입 요청
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_RequestCharacterSelection();
@@ -350,6 +358,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_RequestTeleport(int32 RegionIndex);
+
+	// 아군 타겟 텔레포트 서버 요청
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "ProjectER|Teleport")
+	void Server_RequestTeleportToTeam(class APlayerState* TargetAllyPS);
 
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_BeginTeleportInteract(class UER_TeleportComponent* TeleportComp);
@@ -387,6 +399,10 @@ protected:
 	UUI_Scoreboard* ScoreboardWidget;
 	void ShowScoreboard();
 	void HideScoreboard();
+
+	// 사운드를 담아둘 변수
+	UPROPERTY()
+	TObjectPtr<USoundBase> ClickSound;
 	//
 
 private:
@@ -484,6 +500,8 @@ private:
 
 	void UseInventorySlot(int32 SlotIndex);
 
+	UFUNCTION()
+	void OnSkillLevelUp(FGameplayTag what_skill);
 
 	// 사운드
 	UPROPERTY(EditDefaultsOnly)
