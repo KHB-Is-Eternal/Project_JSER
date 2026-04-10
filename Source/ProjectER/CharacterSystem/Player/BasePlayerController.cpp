@@ -1336,15 +1336,23 @@ void ABasePlayerController::Server_MoveTeam_Implementation(int32 TeamIdx)
 }
 
 void ABasePlayerController::Server_RequestPickup_Implementation(ABaseItemActor* Item)
-{ // 바닥에 있는 아이템 줍기
-	if (!Item) return;
-
+{
 	APawn* PlayerPawn = GetPawn();
-	if (!PlayerPawn) return;
+	if (!CanInteractWithItemsInCurrentLifeState(PlayerPawn))
+	{
+		return;
+	}
+
+	if (!Item || !PlayerPawn)
+	{
+		return;
+	}
 
 	constexpr float MaxDist = 200.f;
 	if (FVector::DistSquared(PlayerPawn->GetActorLocation(), Item->GetActorLocation()) > FMath::Square(MaxDist))
+	{
 		return;
+	}
 
 	Item->PickupItem(PlayerPawn);
 }
@@ -1352,6 +1360,12 @@ void ABasePlayerController::Server_RequestPickup_Implementation(ABaseItemActor* 
 // 박스 아이템 루팅 RPC 시작
 void ABasePlayerController::Server_BeginLoot_Implementation(AActor* Actor)
 {
+	APawn* PlayerPawn = GetPawn();
+	if (!CanInteractWithItemsInCurrentLifeState(PlayerPawn))
+	{
+		return;
+	}
+
 	if (!IsValid(Actor)) return;
 
 	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
@@ -1631,6 +1645,12 @@ void ABasePlayerController::Server_RequestTeleport_Implementation(int32 RegionIn
 
 void ABasePlayerController::Server_BeginLootFromActor_Implementation(AActor* TargetActor)
 {
+	APawn* PlayerPawn = GetPawn();
+	if (!CanInteractWithItemsInCurrentLifeState(PlayerPawn))
+	{
+		return;
+	}
+
 	if (!IsValid(TargetActor))
 		return;
 
@@ -1679,6 +1699,13 @@ void ABasePlayerController::Server_BeginLootFromActor_Implementation(AActor* Tar
 
 void ABasePlayerController::Server_TakeItemFromActor_Implementation(const AActor* TargetActor, int32 SlotIndex)
 {
+	APawn* PlayerPawn = GetPawn();
+	if (!CanInteractWithItemsInCurrentLifeState(PlayerPawn))
+	{
+		return;
+	}
+
+
 	if (!TargetActor || !GetPawn())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Server_TakeItemFromActor: Invalid actor or pawn"));
@@ -2514,4 +2541,28 @@ void ABasePlayerController::Server_CompleteCrafting_Implementation(FItemRecipeRo
 	{
 		UE_LOG(LogTemp, Error, TEXT("[Crafting Server] Result item is null"));
 	}
+}
+
+bool ABasePlayerController::CanInteractWithItemsInCurrentLifeState(APawn* InPawn) const
+{
+	if (!IsValid(InPawn))
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* ASC =
+		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(InPawn);
+
+	if (!IsValid(ASC))
+	{
+		return false;
+	}
+
+	const bool bIsDown = ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+
+	const bool bIsDead = ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
+
+	return !bIsDown && !bIsDead;
 }
