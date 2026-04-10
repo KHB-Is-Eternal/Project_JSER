@@ -1,4 +1,5 @@
 #include "ER_GameState.h"
+#include "GameFramework/PlayerState.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "CharacterSystem/Data/CharacterData.h"
@@ -211,3 +212,30 @@ AER_PlayerState* AER_GameState::GetPlayerStateByUniqueId(const FString& InUnique
 	return nullptr;
 }
 
+void AER_GameState::AddPlayerState(APlayerState* PlayerState)
+{
+	Super::AddPlayerState(PlayerState);
+
+	check(PlayerState);
+
+	if (PlayerState == nullptr)
+	{
+		return;
+	}
+
+	OnPlayerStateAddedDelegate.Broadcast(PlayerState);
+}
+
+void AER_GameState::RemovePlayerState(APlayerState* PlayerState)
+{
+	Super::RemovePlayerState(PlayerState);
+
+	check(PlayerState);
+
+	if (PlayerState == nullptr)
+	{
+		return;
+	}
+
+	OnPlayerStateRemovedDelegate.Broadcast(PlayerState);
+}
