@@ -219,6 +219,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Item|Drop")
 	TSubclassOf<ABaseItemActor> DroppedItemActorClass;
 
+	bool CanInteractWithItemsInCurrentLifeState(APawn* InPawn) const;
+
 	// ===== 아이템 조합 시스템 =====
 protected:
 
