@@ -443,6 +443,20 @@ private:
 public:
 	UFUNCTION()
 	void WarningSign(int number);
+private:
+	UPROPERTY()
+	bool bIsWarningActive = false;
+	UPROPERTY()
+	FTimerHandle UI_WarningTimerHandle;
+	UFUNCTION()
+	void showWarningSign();
+	void hideWarningSign();
+protected:
+	UPROPERTY(Transient, BlueprintReadOnly)
+	UWidgetAnimation* showWarningAnim;
+
+	UPROPERTY(Transient, BlueprintReadOnly)
+	UWidgetAnimation* hideWarningAnim;
 
 	// TEAM HUD Management
 public:
