@@ -29,8 +29,13 @@ class PROJECTER_API USummonRangeBaseGEC : public UBaseGEC
 	GENERATED_BODY()
 
 public:
-	// GEC가 보유한 CueTag가 설정된 Config 객체들을 수집하여 UProjectERASC에 제공합니다. (Phase 2)
-	virtual void CollectCueConfigs(TArray<const UObject*>& OutConfigs) const override;
+
+
+	/** Phase 1: 준비 - 소환 위치를 계산하여 Context에 기록합니다. */
+	virtual void PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const override;
+
+	/** Phase 2: 비주얼 실행 - 기록된 위치에서 즉시 로컬 이펙트를 실행합니다. */
+	virtual void OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const override;
 
 protected:
 	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;

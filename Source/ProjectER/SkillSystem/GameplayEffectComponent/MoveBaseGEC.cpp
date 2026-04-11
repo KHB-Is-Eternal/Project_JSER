@@ -8,7 +8,6 @@
 #include "GameplayEffect.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "SkillSystem/GameAbility/SkillBase.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
@@ -199,7 +198,6 @@ void UMoveBaseGEC::HandleWallHit(AActor* Instigator, const FHitResult& Hit, cons
 	}
 
 	const FGameplayEffectContextHandle& ContextHandle = GESpec.GetEffectContext();
-	USkillBase* const Skill = const_cast<USkillBase*>(Cast<USkillBase>(ContextHandle.GetAbility()));
 
 	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : this->WallHitApplied)
 	{

@@ -10,7 +10,6 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 #include "SkillSystem/Actor/BaseRangeOverlapEffectActor/BaseRangeOverlapEffectActor.h"
-#include "SkillSystem/GameAbility/SkillBase.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
@@ -20,11 +19,61 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/GameState.h"
 
-void USummonRangeBaseGEC::CollectCueConfigs(TArray<const UObject*>& OutConfigs) const
+void USummonRangeBaseGEC::PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const
 {
-	// 범위 소환 VFX/Sound 설정을 수집하여 UProjectERASC가 자동 매칭할 수 있도록 합니다. (Phase 2)
-	if (RangeSpawnVfx) OutConfigs.Add(RangeSpawnVfx);
-	if (RangeSpawnSound) OutConfigs.Add(RangeSpawnSound);
+	if (!IsValid(ASC)) return;
+
+	AActor* const EffectInstigator = IsValid(ContextHandle.GetInstigator())
+		? ContextHandle.GetInstigator()
+		: ContextHandle.GetEffectCauser();
+	if (!IsValid(EffectInstigator) || !ShouldProcessOnInstigator(EffectInstigator)) return;
+
+	// 1. 타겟 식별 및 기준 위치(Origin) 계산
+	AActor* const TargetActor = nullptr; // Target을 뽑아오는건 Container에서 해야 가장 정확하지만, 여기서는 Context의 HitResult 사용
+	const FTransform OriginTransform = CalculateOriginTransform(*SpecHandle.Data.Get(), EffectInstigator, TargetActor);
+	const FTransform SpawnTransform = ApplyCommonSpawnOptionsToTransform(OriginTransform, EffectInstigator);
+
+	// 2. 보정된 결과(Origin)를 Context에 기록
+	FProjectERGameplayEffectContext* const MutableContext = static_cast<FProjectERGameplayEffectContext*>(const_cast<FGameplayEffectContext*>(ContextHandle.Get()));
+	if (MutableContext)
+	{
+		MutableContext->AddOrigin(SpawnTransform.GetLocation());
+		
+		FHitResult SimulationHit;
+		SimulationHit.Location = SpawnTransform.GetLocation();
+		SimulationHit.Normal = SpawnTransform.Rotator().Vector();
+		MutableContext->AddHitResult(SimulationHit, true);
+	}
+}
+
+void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const
+{
+	if (!IsValid(ASC)) return;
+
+	FVector CueLocation = ContextHandle.GetOrigin();
+	FVector CueDirection = FVector::UpVector;
+	if (const FHitResult* Hit = ContextHandle.GetHitResult())
+	{
+		CueDirection = Hit->Normal;
+	}
+
+	if (IsValid(this->RangeSpawnVfx) && this->RangeSpawnVfx->CueTag.IsValid())
+	{
+		FGameplayCueParameters Params(*SpecHandle.Data.Get());
+		Params.Location = CueLocation;
+		Params.Normal = CueDirection;
+		Params.SourceObject = this->RangeSpawnVfx;
+		ASC->ExecuteGameplayCue(this->RangeSpawnVfx->CueTag, Params);
+	}
+
+	if (IsValid(this->RangeSpawnSound) && this->RangeSpawnSound->CueTag.IsValid())
+	{
+		FGameplayCueParameters Params(*SpecHandle.Data.Get());
+		Params.Location = CueLocation;
+		Params.Normal = CueDirection;
+		Params.SourceObject = this->RangeSpawnSound;
+		ASC->ExecuteGameplayCue(this->RangeSpawnSound->CueTag, Params);
+	}
 }
 
 void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const
@@ -62,10 +111,22 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 		return;
 	}
 
-	// 1. 타겟 식별 및 위치 계산
-	AActor* const TargetActor = GetTargetActorFromContainer(ActiveGEContainer);
-	const FTransform OriginTransform = CalculateOriginTransform(GESpec, EffectInstigator, TargetActor);
-	const FTransform SpawnTransform = ApplyCommonSpawnOptionsToTransform(OriginTransform, EffectInstigator);
+	// 1. 타켓 식별 및 위치 계산 ([V7.2] PreApplyEffect에서 보정된 Origin 우선 사용)
+	FTransform SpawnTransform = FTransform::Identity;
+	if (ContextHandle.HasOrigin())
+	{
+		SpawnTransform.SetLocation(ContextHandle.GetOrigin());
+		if (const FHitResult* Hit = ContextHandle.GetHitResult())
+		{
+			SpawnTransform.SetRotation(Hit->Normal.Rotation().Quaternion());
+		}
+	}
+	else
+	{
+		AActor* const TargetActor = GetTargetActorFromContainer(ActiveGEContainer);
+		const FTransform OriginTransform = CalculateOriginTransform(GESpec, EffectInstigator, TargetActor);
+		SpawnTransform = ApplyCommonSpawnOptionsToTransform(OriginTransform, EffectInstigator);
+	}
 	const FVector RangeSpawnLocation = SpawnTransform.GetLocation();
 
 	// 2. 권한 확인: 실제 액터 소환은 서버에서만 수행합니다. (중복 소환 방지)
@@ -143,7 +204,7 @@ FTransform USummonRangeBaseGEC::CalculateOriginTransform(const FGameplayEffectSp
 
 void USummonRangeBaseGEC::ExecuteGameplayCues(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* EffectInstigator, ABaseRangeOverlapEffectActor* RangeActor, const FTransform& SpawnTransform, const FTransform& OriginTransform) const
 {
-	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거합니다. 
+	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 통합 처리합니다. 
 	// 이제 GE에 등록된 GameplayCue 태그가 트리거되면 UProjectERASC에서 가로채어 SourceObject(Config)를 주입합니다.
 }
 
@@ -183,8 +244,8 @@ void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* Ran
 	}
 
 	UAbilitySystemComponent* const CauserASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Instigator);
-	USkillBase* const NonConstSkill = const_cast<USkillBase*>(Cast<USkillBase>(Context.GetAbility()));
-	if (!IsValid(CauserASC) || !IsValid(NonConstSkill))
+	UGameplayAbility* const Ability = const_cast<UGameplayAbility*>(Context.GetAbility());
+	if (!IsValid(CauserASC) || !IsValid(Ability))
 	{
 		return;
 	}
@@ -197,11 +258,11 @@ void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* Ran
 			continue;
 		}
 
-		InitGEHandles.Add(CauserASC->MakeOutgoingSpec(TSubclassOf<UGameplayEffect>(EffectClass), NonConstSkill->GetAbilityLevel(), Context));
+		InitGEHandles.Add(CauserASC->MakeOutgoingSpec(TSubclassOf<UGameplayEffect>(EffectClass), Ability->GetAbilityLevel(), Context));
 	}
 
 	// 강화 효과(SkillProc) 확인 및 전이
-	UBaseGEC::GetSkillProcEffects(CauserASC, NonConstSkill, RangeActor, Context, InitGEHandles);
+	UBaseGEC::GetSkillProcEffects(CauserASC, Ability, RangeActor, Context, InitGEHandles);
 
 	RangeActor->InitializeEffectData(InitGEHandles, Instigator, this->CollisionRadius, this->bHitOncePerTarget, nullptr, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
 	RangeActor->SetLifeSpan(this->LifeSpan);

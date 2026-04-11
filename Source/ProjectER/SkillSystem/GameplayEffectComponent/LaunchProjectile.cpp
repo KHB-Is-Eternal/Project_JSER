@@ -9,10 +9,7 @@
 #include "GameFramework/Actor.h"
 #include "SkillSystem/Actor/BaseRangeOverlapEffectActor/BaseRangeOverlapEffectActor.h"
 
-#include "SkillSystem/GameAbility/SkillBase.h"
-
-#include "SkillSystem/GameplayEffectComponent/LaunchProjectile.h"
-#include "SkillSystem/GameplayEffectComponent/SummonRangeAtBone.h"
+//#include "SkillSystem/GameplayEffectComponent/SummonRangeAtBone.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 
 #include "GameFramework/Character.h"
@@ -121,4 +118,4 @@ FTransform ULaunchProjectile::CalculateSpawnTransform(const FGameplayEffectSpec&
 	ApplyCommonSpawnOptions(SpawnLocation, SpawnRotation, Instigator);
 
 	return FTransform(SpawnRotation, SpawnLocation);
-}
+}

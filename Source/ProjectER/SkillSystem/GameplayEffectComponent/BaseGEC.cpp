@@ -1,6 +1,5 @@
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 #include "SkillSystem/GameplayEffectComponent/AdditionalEffectGEC.h"
-#include "SkillSystem/GameAbility/SkillBase.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"

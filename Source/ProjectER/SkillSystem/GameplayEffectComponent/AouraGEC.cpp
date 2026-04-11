@@ -1,5 +1,6 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
+
 #include "SkillSystem/GameplayEffectComponent/AouraGEC.h"
 
 #include "Abilities/GameplayAbilityTypes.h"
@@ -8,7 +9,6 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "SkillSystem/Actor/BaseRangeOverlapEffectActor/BaseRangeOverlapEffectActor.h"
 #include "SkillSystem/Component/AreaPeriodicEffectComponent.h"
-#include "SkillSystem/GameAbility/SkillBase.h"
 
 
 UAouraGEC::UAouraGEC()

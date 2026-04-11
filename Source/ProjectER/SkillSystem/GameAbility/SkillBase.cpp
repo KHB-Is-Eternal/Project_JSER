@@ -27,6 +27,7 @@
 #include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/GameState.h"
+#include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 
 USkillBase::USkillBase()
 {
@@ -326,9 +327,40 @@ void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGamepla
 	{
 		if (!IsValid(EffectClass)) continue;
 
-		FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), ContextHandle);
+		// [Fix] 다른 GE의 PreApplyEffect에 의해 공유 Context가 오염되는 것을 방지하기 위해 Duplicate 사용
+		FGameplayEffectContextHandle EffectSpecificContext = ContextHandle.Duplicate();
+		FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), EffectSpecificContext);
 		if (SpecHandle.IsValid())
 		{
+			// [V7.2] Phase 1: 준비 (PreApplyEffect - 좌표 보정 등)
+			if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
+			{
+				for (const TObjectPtr<UGameplayEffectComponent>& Component : GEInstance->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						BaseGEC->PreApplyEffect(ASC, EffectSpecificContext, SpecHandle);
+					}
+				}
+			}
+
+			// [Phase 2] 비주얼 실행 (OnExecutePredictive)
+			// 로컬 예측 클라이언트와 서버(브로드캐스트) 양측에서 모두 실행됩니다.
+			if (IsLocallyControlled() || ASC->IsOwnerActorAuthoritative())
+			{
+				if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
+				{
+					for (const TObjectPtr<UGameplayEffectComponent>& Component : GEInstance->GetGEComponents())
+					{
+						if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+						{
+							BaseGEC->OnExecutePredictive(ASC, EffectSpecificContext, SpecHandle);
+						}
+					}
+				}
+			}
+
+			// [Phase 3] 실제 GE 적용 (서버 권한 로직 실행)
 			ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), ASC);
 		}
 	}

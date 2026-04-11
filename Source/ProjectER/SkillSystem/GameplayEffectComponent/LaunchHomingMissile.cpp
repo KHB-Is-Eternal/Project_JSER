@@ -4,7 +4,6 @@
 #include "SkillSystem/GameplayEffectComponent/LaunchHomingMissile.h"
 #include "SkillSystem/Actor/BaseMissileActor/BaseMissileActor.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
-#include "SkillSystem/GameAbility/SkillBase.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 #include "AbilitySystemComponent.h"
@@ -25,11 +24,111 @@ ULaunchHomingMissile::ULaunchHomingMissile()
 {
 }
 
-void ULaunchHomingMissile::CollectCueConfigs(TArray<const UObject*>& OutConfigs) const
+void ULaunchHomingMissile::PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const
 {
-	// 미사일 발사 시 동반되는 효과들을 수집합니다. (Phase 2)
-	if (MissileVfx) OutConfigs.Add(MissileVfx);
-	if (MissileSound) OutConfigs.Add(MissileSound);
+	if (!IsValid(ASC)) return;
+
+	AActor* const Instigator = ASC->GetAvatarActor();
+	if (!IsValid(Instigator)) return;
+
+	// 1. 타겟 정보
+	AActor* TargetActor = nullptr;
+	if (const FHitResult* HitResult = ContextHandle.GetHitResult()) TargetActor = HitResult->GetActor();
+	if (!IsValid(TargetActor)) return;
+
+	// 2. 초기 스폰 트랜스폼 계산
+	FTransform BaseTransform = CalculateSpawnTransform(Instigator, TargetActor);
+	FVector CurrentPos = BaseTransform.GetLocation();
+	FRotator CurrentRot = BaseTransform.Rotator();
+
+	// 3. 지연 시간(Lag) 계산
+	float Lag = 0.0f;
+	if (const FProjectERGameplayEffectContext* ERContext = static_cast<const FProjectERGameplayEffectContext*>(ContextHandle.Get()))
+	{
+		if (UWorld* World = ASC->GetWorld())
+		{
+			if (AGameStateBase* GameState = World->GetGameState())
+			{
+				Lag = GameState->GetServerWorldTimeSeconds() - ERContext->ClientActivationTime;
+			}
+		}
+	}
+
+	// 4. [렉 보상 엔진] 곡선 궤적 시뮬레이션(Fast-Forward)
+	// 서버에서 미사일이 스폰되는 시점의 좌표를 클라이언트의 현재 위치와 일치시킵니다.
+	if (Lag > 0.01f && IsValid(TargetActor))
+	{
+		FVector Velocity = CurrentRot.Vector() * InitialSpeed;
+		float RemainingLag = FMath::Min(Lag, 0.5f); // 최대 0.5초까지만 보정 (안전성)
+		const float SubStep = 0.016f; // 60fps 기준으로 시뮬레이션
+
+		while (RemainingLag > 0.0f)
+		{
+			float dt = FMath::Min(RemainingLag, SubStep);
+			
+			// 조종 가속도 계산 (Target 방향으로 휘어지는 힘)
+			FVector TargetLoc = TargetActor->GetActorLocation();
+			FVector DirToTarget = (TargetLoc - CurrentPos).GetSafeNormal();
+			FVector HomingAccel = DirToTarget * HomingAccelerationMagnitude;
+
+			// 물리 시뮬레이션
+			Velocity += HomingAccel * dt;
+			Velocity = Velocity.GetClampedToMaxSize(MaxSpeed);
+			CurrentPos += Velocity * dt;
+			
+			RemainingLag -= dt;
+		}
+		CurrentRot = Velocity.Rotation();
+	}
+
+	// 5. 보정된 결과(Origin, Normal)를 Context에 기록하여 공유
+	FProjectERGameplayEffectContext* const MutableContext = static_cast<FProjectERGameplayEffectContext*>(const_cast<FGameplayEffectContext*>(ContextHandle.Get()));
+	if (MutableContext)
+	{
+		MutableContext->AddOrigin(CurrentPos);
+		
+		// 방향 정보는 HitResult의 Normal 필드를 활용하여 전달
+		FHitResult SimulationHit;
+		SimulationHit.Location = CurrentPos;
+		SimulationHit.Normal = CurrentRot.Vector();
+		SimulationHit.HitObjectHandle = FActorInstanceHandle(TargetActor);
+		MutableContext->AddHitResult(SimulationHit, true);
+	}
+}
+
+void ULaunchHomingMissile::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const
+{
+	if (!IsValid(ASC)) return;
+
+	// 1. Context에서 보정된 좌표 및 방향 추출
+	FVector CueLocation = ContextHandle.GetOrigin();
+	FVector CueDirection = FVector::ForwardVector;
+	if (const FHitResult* Hit = ContextHandle.GetHitResult())
+	{
+		CueDirection = Hit->Normal;
+	}
+
+	// 2. 미사일 발사 시각 효과(VFX) 트리거
+	if (IsValid(this->MissileVfx) && this->MissileVfx->CueTag.IsValid())
+	{
+		FGameplayCueParameters Params(*SpecHandle.Data.Get());
+		Params.Location = CueLocation;
+		Params.Normal = CueDirection;
+		Params.SourceObject = this->MissileVfx;
+		
+		ASC->ExecuteGameplayCue(this->MissileVfx->CueTag, Params);
+	}
+
+	// 3. 미사일 발사 사운드 트리거
+	if (IsValid(this->MissileSound) && this->MissileSound->CueTag.IsValid())
+	{
+		FGameplayCueParameters Params(*SpecHandle.Data.Get());
+		Params.Location = CueLocation;
+		Params.Normal = CueDirection;
+		Params.SourceObject = this->MissileSound;
+		
+		ASC->ExecuteGameplayCue(this->MissileSound->CueTag, Params);
+	}
 }
 
 void ULaunchHomingMissile::OnGameplayEffectApplied(
@@ -85,9 +184,18 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 		return;
 	}
 
-	const FTransform SpawnTransform = CalculateSpawnTransform(Instigator, TargetActor);
+	// [V7.2] PreApplyEffect에서 보정된 트랜스폼을 사용합니다.
+	FTransform SpawnTransform = CalculateSpawnTransform(Instigator, TargetActor);
+	if (ContextHandle.HasOrigin())
+	{
+		SpawnTransform.SetLocation(ContextHandle.GetOrigin());
+		if (const FHitResult* Hit = ContextHandle.GetHitResult())
+		{
+			SpawnTransform.SetRotation(Hit->Normal.Rotation().Quaternion());
+		}
+	}
 
-	// 2. 권한 확인: 실제 액터 소환은 서버에서만 수행합니다.
+	// 2. 권한 확인: 실제 액터 스폰은 서버에서만 수행합니다.
 	if (!ActiveGEContainer.Owner || !ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
 	{
 		return;
@@ -108,10 +216,10 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 
 	// --- 효과 Spec 생성 --- 
 	UAbilitySystemComponent* const CauserASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Instigator);
-	USkillBase* const Skill = const_cast<USkillBase*>(Cast<USkillBase>(ContextHandle.GetAbility()));
+	UGameplayAbility* const Ability = const_cast<UGameplayAbility*>(ContextHandle.GetAbility());
 
 	TArray<FGameplayEffectSpecHandle> EffectSpecs;
-	if (IsValid(CauserASC) && IsValid(Skill))
+	if (IsValid(CauserASC) && IsValid(Ability))
 	{
 		for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : this->Applied)
 		{
@@ -125,12 +233,12 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 			}
 		}
 
-		// 강화 효과(SkillProc) 확인 및 전이
-		UBaseGEC::GetSkillProcEffects(CauserASC, Skill, MissileActor, ContextHandle, EffectSpecs);
+		// 강화 효과(SkillProc) 확인 및 적용
+		UBaseGEC::GetSkillProcEffects(CauserASC, Ability, MissileActor, ContextHandle, EffectSpecs);
 	}
 	
-	// --- 적중 효과(VFX, Sound) 큐 파라미터 구성 ---
-	// 적중 효과는 로컬 예측이 필수적이지 않으므로 기존 방식(InitializeMissile 시 전달)을 유지합니다. 
+	// --- 명중 효과(VFX, Sound)용 파라미터 구성 ---
+	// 명중 효과는 로컬 예측이 필수적이지 않으므로 기존 방식(InitializeMissile 통해 전달)을 유지합니다. 
 	FGameplayCueParameters HitVfxCueParams(GESpec);
 	if (IsValid(this->ImpactVfx) && this->ImpactVfx->CueTag.IsValid())
 	{
@@ -154,7 +262,7 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 	}
 
 	// --- 미사일 초기화 ---
-	// SpawnTransform의 방향을 직접 추출 (FinishSpawning 이전이므로 GetActorForwardVector() 불신뢰)
+	// SpawnTransform의 방향을 직접 추출 (FinishSpawning 이전이므로 GetActorForwardVector() 불확실)
 	const FVector InitialDirection = SpawnTransform.GetRotation().GetForwardVector();
 
 	MissileActor->InitializeMissile(
@@ -175,31 +283,11 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 	// --- 스폰 완료 ---
 	MissileActor->FinishSpawning(SpawnTransform);
 
-	// --- 렉 보상 (Lag Compensation / Fast-Forward) ---
-	if (const FProjectERGameplayEffectContext* ERContext = static_cast<const FProjectERGameplayEffectContext*>(ContextHandle.Get()))
-	{
-		if (ERContext->ClientActivationTime > 0.0f)
-		{
-			if (AGameStateBase* GameState = World->GetGameState())
-			{
-				float ServerTime = GameState->GetServerWorldTimeSeconds();
-				float Latency = ServerTime - ERContext->ClientActivationTime;
-				if (Latency > 0.0f)
-				{
-					FVector Velocity = MissileActor->GetVelocity();
-					if (!Velocity.IsNearlyZero())
-					{
-						FVector Correction = Velocity * Latency;
-						MissileActor->AddActorWorldOffset(Correction);
-					}
-				}
-			}
-		}
-	}
+
 
 	// --- 시각 효과 실행 ---
-	// [수정] 네이티브 GameplayCue 시스템이 UProjectERASC를 통해 자동으로 Config를 주입하여 실행합니다. (Phase 2)
-	// 시전자 관련 효과는 몽타주 AnimNotify에서 담당합니다. (Phase 3)
+	// [수정] 네이티브 GameplayCue 시스템이 기존 로직을 대체합니다.
+	// 시전자에 관여된 효과는 몽타주 AnimNotify 등에서 담당합니다.
 	ExecuteVfx(GESpec, ContextHandle, Instigator, MissileActor);
 	ExecuteSound(GESpec, ContextHandle, Instigator, MissileActor);
 }
@@ -216,7 +304,7 @@ FTransform ULaunchHomingMissile::CalculateSpawnTransform(
 	FVector SpawnLocation = Instigator->GetActorLocation();
 	FRotator SpawnRotation = Instigator->GetActorRotation();
 
-	// 1. 본(Bone) 위치 사용
+	// 1. 소켓(Bone) 위치 사용
 	if (!this->BoneName.IsNone())
 	{
 		const ACharacter* Character = Cast<ACharacter>(Instigator);
@@ -233,7 +321,7 @@ FTransform ULaunchHomingMissile::CalculateSpawnTransform(
 	// 2. 타겟을 향한 방향 계산
 	if (IsValid(TargetActor))
 	{
-		// 타겟의 중심이나 원격 위치 대신, 실제 유도 지점인 RootComponent의 위치를 정확히 조준합니다.
+		// 타겟의 중심이나 피격 위치 등의 실제 유도 지점인 RootComponent의 위치를 정확히 조준합니다.
 		const FVector TargetLocation = TargetActor->GetRootComponent()
 			? TargetActor->GetRootComponent()->GetComponentLocation()
 			: TargetActor->GetActorLocation();
@@ -259,7 +347,7 @@ void ULaunchHomingMissile::ExecuteVfx(
 	AActor* Instigator,
 	ABaseMissileActor* MissileActor) const
 {
-	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거합니다. 
+	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 예측 발사 효과를 처리합니다. 
 }
 
 void ULaunchHomingMissile::ExecuteSound(
@@ -268,5 +356,5 @@ void ULaunchHomingMissile::ExecuteSound(
 	AActor* Instigator,
 	ABaseMissileActor* MissileActor) const
 {
-	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거합니다. 
+	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 예측 발송 사운드를 처리합니다. 
 }
