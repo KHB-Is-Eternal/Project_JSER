@@ -5,8 +5,8 @@
 #include "AbilitySystemInterface.h"
 #include "BasePlayerState.generated.h"
 
-class UProjectERASC;
 class UBaseAttributeSet;
+class UAbilitySystemComponent;
 
 UCLASS()
 class PROJECTER_API ABasePlayerState : public APlayerState, public IAbilitySystemInterface
@@ -22,7 +22,7 @@ public:
 	
 private:
 	UPROPERTY(VisibleAnywhere, Category = "GAS")
-	TObjectPtr<UProjectERASC> AbilitySystemComponent;
+	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 	
 	UPROPERTY(VisibleAnywhere, Category = "GAS")
 	TObjectPtr<UBaseAttributeSet> AttributeSet;
