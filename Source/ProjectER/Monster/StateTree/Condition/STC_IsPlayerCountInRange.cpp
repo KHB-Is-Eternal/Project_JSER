@@ -22,30 +22,36 @@ const UStruct* FSTC_IsPlayerCountInRange::GetInstanceDataType() const
 
 bool FSTC_IsPlayerCountInRange::TestCondition(FStateTreeExecutionContext& Context) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
-	if (ABaseMonster* Monster = Cast<ABaseMonster>(&Actor))
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
 	{
-		uint8 CurrentCount = Monster->GetMonsterRangeComp()->GetPlayerCount();
-		
-		switch (InstanceData.Operator)
-		{
-		case EPlayerCountOperator::Equal:
-			return CurrentCount == InstanceData.CheckCount;
-		case EPlayerCountOperator::NotEqual:
-			return CurrentCount != InstanceData.CheckCount;
-		case EPlayerCountOperator::Greater:
-			return CurrentCount > InstanceData.CheckCount;
-		case EPlayerCountOperator::GreaterOrEqual:
-			return CurrentCount >= InstanceData.CheckCount;
-		case EPlayerCountOperator::Less:
-			return CurrentCount < InstanceData.CheckCount;
-		case EPlayerCountOperator::LessOrEqual:
-			return CurrentCount <= InstanceData.CheckCount;
-		default:
-			return false;
-		}
+		UE_LOG(LogTemp, Warning, TEXT("FSTC_IsPlayerCountInRange::TestCondition : Not ActorHandle"));
+		return false;
 	}
-	return false;
+	ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
+	if (IsValid(Monster) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTC_IsPlayerCountInRange::TestCondition : Not Monster"));
+		return false;
+	}
+
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	uint8 CurrentCount = Monster->GetMonsterRangeComp()->GetPlayerCount();
+	switch (InstanceData.Operator)
+	{
+	case EPlayerCountOperator::Equal:
+		return CurrentCount == InstanceData.CheckCount;
+	case EPlayerCountOperator::NotEqual:
+		return CurrentCount != InstanceData.CheckCount;
+	case EPlayerCountOperator::Greater:
+		return CurrentCount > InstanceData.CheckCount;
+	case EPlayerCountOperator::GreaterOrEqual:
+		return CurrentCount >= InstanceData.CheckCount;
+	case EPlayerCountOperator::Less:
+		return CurrentCount < InstanceData.CheckCount;
+	case EPlayerCountOperator::LessOrEqual:
+		return CurrentCount <= InstanceData.CheckCount;
+	default:
+		return false;
+	}
 }

@@ -20,14 +20,20 @@ const UStruct* FSTC_IsCombat::GetInstanceDataType() const
 
 bool FSTC_IsCombat::TestCondition(FStateTreeExecutionContext& Context) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
-	if (ABaseMonster* Monster = Cast<ABaseMonster>(&Actor))
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
 	{
-		bool IsCombat = Monster->GetbIsCombat();
-		return IsCombat != InstanceData.Invert;
+		UE_LOG(LogTemp, Warning, TEXT("FSTC_IsCombat::TestCondition : Not ActorHandle"));
+		return false;
+	}
+	ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
+	if (IsValid(Monster) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTC_IsCombat::TestCondition : Not Monster"));
+		return false;
 	}
 
-	return false;
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	bool IsCombat = Monster->GetbIsCombat();
+	return IsCombat != InstanceData.Invert;
 }
