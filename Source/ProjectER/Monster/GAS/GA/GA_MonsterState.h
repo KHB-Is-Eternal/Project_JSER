@@ -11,7 +11,7 @@ struct FMonsterStateInitData
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = "MonsterState|Montage")
-	EMonsterMontageType MontageType;
+	EMonsterMontageType MontageType = EMonsterMontageType::None;
 
 	UPROPERTY(EditAnywhere, Category = "MonsterState|Tag")
 	FGameplayTagContainer MonsterAssetTags;
