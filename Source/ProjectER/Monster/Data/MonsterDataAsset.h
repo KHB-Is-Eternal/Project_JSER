@@ -12,24 +12,6 @@ class USkillDataAsset;
 class UNiagaraSystem;
 struct FGameplayTag;
 
-UENUM(BlueprintType)
-enum class EMonsterMontageType : uint8
-{
-	Idle,
-	Alert,
-	Move,
-	Attack,
-	QSkill,
-	WSkill,
-	ESkill,
-	RSkill,
-	Dead,
-	
-	FlyStart,
-	FlyAttack,
-	FlyEnd,
-	None
-};
 
 UENUM(BlueprintType)
 enum class EMonsterActionType : uint8
@@ -163,7 +145,7 @@ public:
 
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Montage")
-	TMap<EMonsterMontageType, TObjectPtr<UAnimMontage>> Montages;
+	TMap<EMonsterActionType, TObjectPtr<UAnimMontage>> Montages;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Effect")
 	TMap<EMonsterActionType, FMonsterNiagaraData> Niagaras;
@@ -194,20 +176,8 @@ public:
 	TSubclassOf<UAnimInstance> Anim;
 
 
-	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|RangeSphere")
-	float RangeSphereRadius = 1000.f;
-
 
 	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|Reward")
 	int Exp;
-
-	// 안씀
-	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|Reward")
-	int Gold;
-
-	// 이거는 죽었을 때 로드해서
-	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|Reward")
-	TArray<UBaseItemData*> ItemList;
-
 
 };

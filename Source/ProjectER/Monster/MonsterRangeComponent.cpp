@@ -65,14 +65,6 @@ int32 UMonsterRangeComponent::GetPlayerCount()
 	return PlayerCount;
 }
 
-void UMonsterRangeComponent::SetOutSphereRadius(float Radius)
-{
-	if (IsValid(OutSphere))
-	{
-		OutSphere->SetSphereRadius(Radius);
-	}
-}
-
 //이거 스폰하고  실행
 void UMonsterRangeComponent::InitMonsterGroup()
 {

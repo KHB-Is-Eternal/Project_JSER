@@ -58,13 +58,7 @@ private:
 public:
 
 	UPROPERTY()
-	FOnAttributeChanged OnMaxHealthChanged;
-
-	UPROPERTY()
 	FOnAttributeChanged OnHealthChanged;
-
-	UPROPERTY()
-	FOnAttributeChanged OnAttackSpeedChanged;
 
 	UPROPERTY()
 	FOnAttributeChanged OnMoveSpeedChanged;
@@ -74,10 +68,6 @@ public:
 
 	UPROPERTY()
 	FOnTakeDamage OnMonsterDeath;
-protected:
-
-
-private:
 
 
 };
