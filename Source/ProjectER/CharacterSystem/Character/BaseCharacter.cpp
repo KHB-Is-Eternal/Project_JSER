@@ -761,6 +761,9 @@ void ABaseCharacter::InitAbilitySystem()
 		// Attribute Set 초기화
 		InitAttributes();
 	}
+	
+	// CC 태그 콜백 등록
+	RegisterCCTagCallbacks(); 
 }
 
 void ABaseCharacter::InitAttributes()
@@ -951,6 +954,12 @@ void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 		{
 			return; // 아무것도 하지 않고 함수 종료 (이동, 회전 차단)
 		}
+	}
+	
+	// CC 체크
+	if (IsMovementBlocked())
+	{	
+		return;
 	}
 	
 	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
@@ -1425,6 +1434,66 @@ void ABaseCharacter::ScanForEnemiesWhileMoving()
 void ABaseCharacter::Server_Revive_Implementation(FVector RespawnLocation)
 {
 	Revive(RespawnLocation);
+}
+
+void ABaseCharacter::OnCCTagChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	UCharacterMovementComponent* const MoveComp = GetCharacterMovement();
+	if (MoveComp == nullptr)
+	{
+		return;
+	}
+	
+	if (NewCount > 0)
+	{
+		// CC 적용됨 → 이동 중지 + 이동 모드 비활성화
+		StopMove();
+		MoveComp->DisableMovement();
+	}
+	else
+	{
+		// CC 해제됨 → 다른 이동 차단 CC가 남아있는지 확인
+		if (!IsMovementBlocked())
+		{
+			MoveComp->SetMovementMode(MOVE_Walking);
+		}
+	}
+}
+
+bool ABaseCharacter::IsMovementBlocked() const
+{
+	const UAbilitySystemComponent* const ASC = GetAbilitySystemComponent();
+	if (!IsValid(ASC))
+	{
+		return false;
+	}
+	
+	return ASC->HasMatchingGameplayTag(ProjectER::State::Debuff::Hard::Stun)
+		|| ASC->HasMatchingGameplayTag(ProjectER::State::Debuff::Hard::Airborne)
+		|| ASC->HasMatchingGameplayTag(ProjectER::State::Debuff::Soft::Root);
+}
+
+void ABaseCharacter::RegisterCCTagCallbacks()
+{
+	UAbilitySystemComponent* const ASC = GetAbilitySystemComponent();
+	if (!IsValid(ASC))
+	{
+		return;
+	}
+	
+	// 이동 차단 CC 태그 감시
+	ASC->RegisterGameplayTagEvent(
+		ProjectER::State::Debuff::Hard::Stun,
+		EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ABaseCharacter::OnCCTagChanged);
+	ASC->RegisterGameplayTagEvent(
+		ProjectER::State::Debuff::Hard::Airborne,
+		EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ABaseCharacter::OnCCTagChanged);
+	ASC->RegisterGameplayTagEvent(
+		ProjectER::State::Debuff::Soft::Root,
+		EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ABaseCharacter::OnCCTagChanged);
 }
 
 void ABaseCharacter::HandleDeath()
