@@ -275,3 +275,16 @@ bool UER_SessionSubsystem::GetCurrentSessionInfo(FSessionResultWrapper& OutSessi
 
 	return true;
 }
+
+bool UER_SessionSubsystem::IsRunningInPIE() const
+{
+#if WITH_EDITOR
+	if (GetWorld() != nullptr)
+	{
+		return GetWorld()->IsPlayInEditor();
+	}
+	return true;
+#else
+	return false;
+#endif
+}

@@ -85,6 +85,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ER|Session")
 	bool GetCurrentSessionInfo(FSessionResultWrapper& OutSessionInfo) const;
 
+	/** Checks if the game is currently running in the Play In Editor (PIE) environment */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ER|Utils")
+	bool IsRunningInPIE() const;
+
 public:
 	// Delegates for UI or to notify other systems
 	UPROPERTY(BlueprintAssignable, Category = "ER|Session|Delegates")
