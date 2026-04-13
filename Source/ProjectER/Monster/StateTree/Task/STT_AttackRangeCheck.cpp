@@ -25,32 +25,52 @@ const UStruct* FSTT_AttackRangeCheck::GetInstanceDataType() const
 
 EStateTreeRunStatus FSTT_AttackRangeCheck::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	FAttackRangeCheckData& InstanceData = Context.GetInstanceData(*this);
-
-	if (ABaseMonster* Monster = Cast<ABaseMonster>(&Actor))
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
 	{
-		AActor* Target = Monster->GetTargetPlayer();
-		if (IsValid(Target))
-		{
-			float AttackRange = 0.f;
-			AttackRange = Monster->GetAttributeSet()->GetAttackRange();
-			const float DistanceSq = FVector::DistSquared(Target->GetActorLocation(), Actor.GetActorLocation());
-			const float RangeSq = AttackRange * AttackRange;
-
-			if (DistanceSq <= RangeSq)
-			{
-				Monster->SendStateTreeEvent(Monster->GetMonsterTags().AttackEventTag);
-				return EStateTreeRunStatus::Running;
-			}
-			else
-			{
-				Monster->SendStateTreeEvent(Monster->GetMonsterTags().TargetOnEventTag);
-				return EStateTreeRunStatus::Running;
-			}
-		}
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_AttackRangeCheck::EnterState : Not ActorHandle"));
+		return EStateTreeRunStatus::Failed;
+	}
+	ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
+	if (IsValid(Monster) == false)
+	{ 
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_AttackRangeCheck::EnterState : Not Monster"));
+		return EStateTreeRunStatus::Failed;
+	}
+	AActor* Target = Monster->GetTargetPlayer();
+	if (IsValid(Target) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_AttackRangeCheck::EnterState : Not Target"));
+		return EStateTreeRunStatus::Failed;
 	}
 
+	FAttackRangeCheckData& InstanceData = Context.GetInstanceData(*this);
+
+	float AttackRange = Monster->GetAttributeSet()->GetAttackRange();
+	float DistanceSq = FVector::DistSquared(Target->GetActorLocation(), Actor->GetActorLocation());
+	float RangeSq = AttackRange * AttackRange;
+
+	if (DistanceSq <= RangeSq)
+	{
+		if (InstanceData.AttackEventTag.IsValid() == false)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("FSTT_AttackRangeCheck::EnterState : Not AttackEventTag"));
+			return EStateTreeRunStatus::Failed;
+		}
+		Monster->SendStateTreeEvent(InstanceData.AttackEventTag);
+		return EStateTreeRunStatus::Running;
+	}
+	else
+	{
+		if (InstanceData.TargetOnEventTag.IsValid() == false)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("FSTT_AttackRangeCheck::EnterState : Not TargetOnEventTag"));
+			return EStateTreeRunStatus::Failed;
+		}
+		Monster->SendStateTreeEvent(InstanceData.TargetOnEventTag);
+		return EStateTreeRunStatus::Running;
+	}
+	
 	return EStateTreeRunStatus::Failed;
 }
 

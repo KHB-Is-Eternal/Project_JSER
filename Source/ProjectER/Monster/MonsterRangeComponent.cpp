@@ -23,7 +23,7 @@ void UMonsterRangeComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (!GetOwner()->HasAuthority())
+	if (GetOwner()->HasAuthority() == false)
 	{
 		return;
 	}
@@ -65,7 +65,7 @@ int32 UMonsterRangeComponent::GetPlayerCount()
 	return PlayerCount;
 }
 
-//이거 스폰하고  실행
+//GameManager에서 스폰하고 실행
 void UMonsterRangeComponent::InitMonsterGroup()
 {
 	ABaseMonster* OwnerMonster = Cast<ABaseMonster>(GetOwner());
