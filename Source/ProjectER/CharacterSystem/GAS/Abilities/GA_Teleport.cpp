@@ -1,4 +1,4 @@
-#include "GA_Teleport.h"
+﻿#include "GA_Teleport.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "GameFramework/PlayerState.h"
 #include "NavigationSystem.h"
@@ -8,6 +8,7 @@
 #include "Abilities/Tasks/AbilityTask_WaitDelay.h"
 #include "Engine/World.h"
 #include "LevelManagement/LevelAreaTrackerComponent.h"
+#include "Components/CapsuleComponent.h"
 
 
 UGA_Teleport::UGA_Teleport()
@@ -26,6 +27,10 @@ void UGA_Teleport::ActivateAbility(const FGameplayAbilitySpecHandle Handle, cons
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
 	}
+
+	// 이전 액티베이션에서 남아있는 잔여 데이터 초기화
+	TargetAllyActor = nullptr;
+	TargetRegionIndex = -1;
 
 	// 1. 아군 텔레포트 식별: UI가 넘겨준 GameplayEventData->Target에 액터 객체가 있다면 아군 텔레포트로 간주
 	if (TriggerEventData->Target != nullptr)
@@ -111,6 +116,12 @@ void UGA_Teleport::OnDelayFinish()
 				{
 					// 정상적으로 보정 성공: 벽 바깥쪽/절벽 안쪽 등 안전한(Walkable) 지표면 적용
 					DestLocation = ProjectedLocation.Location;
+					
+					// 내비메시 투영점은 정확히 바닥(Z)이므로, 캐릭터 캡슐 절반 높이만큼 올려주지 않으면 땅에 파묻혀 TeleportTo가 취소됨
+					if (UCapsuleComponent* Capsule = Char->GetComponentByClass<UCapsuleComponent>())
+					{
+						DestLocation.Z += Capsule->GetScaledCapsuleHalfHeight();
+					}
 				}
 				else
 				{
