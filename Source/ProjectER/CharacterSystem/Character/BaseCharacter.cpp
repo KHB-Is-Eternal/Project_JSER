@@ -6,6 +6,7 @@
 #include "CharacterSystem/Player/BasePlayerController.h"
 #include "ItemSystem/Component/LootableComponent.h" // [김현수 추가분]
 #include "ItemSystem/Component/BaseInventoryComponent.h" // [김현수 추가분] 빈사/사망 전환 시 food 효과 정리용
+#include "ItemSystem/UI/W_FloatingRecoveryTextActor.h" // [김현수 추가분] 체력,마나 회복 아이템 플로팅 텍스트용
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -2212,5 +2213,39 @@ void ABaseCharacter::UpdateCraftingUIVisibility()
 	{
 		// 안 가려져 있으면 보임
 		CraftingWidgetComp->SetVisibility(true);
+	}
+}
+
+void ABaseCharacter::Multicast_ShowRecoveryText_Implementation(int32 Amount, bool bIsMana)
+{
+	if (!FloatingRecoveryTextActorClass || Amount <= 0)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const FVector SpawnLocation = GetActorLocation() + FVector(
+		FMath::FRandRange(-20.f, 20.f),
+		FMath::FRandRange(-20.f, 20.f),
+		110.f);
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	AW_FloatingRecoveryTextActor* TextActor =
+		World->SpawnActor<AW_FloatingRecoveryTextActor>(
+			FloatingRecoveryTextActorClass,
+			SpawnLocation,
+			FRotator::ZeroRotator,
+			SpawnParams);
+
+	if (TextActor)
+	{
+		TextActor->InitRecoveryText(Amount, bIsMana);
 	}
 }

@@ -19,6 +19,7 @@ class UGameplayEffect;
 class UCharacterData;
 class UWidgetComponent; // 체력 바 머리 위에 띄우는 용
 class UUI_HP_Bar; // 체력 바 머리 위에 띄우는 용
+class AW_FloatingRecoveryTextActor; // [김현수 추가분] 체력,마나 회복 아이템 플로팅 텍스트용
 
 class UTopDownCameraComp;//main camera comp
 
@@ -418,6 +419,12 @@ public:
 
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_ToggleCraftingUI(bool bShow);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|FloatingText")
+	TSubclassOf<AW_FloatingRecoveryTextActor> FloatingRecoveryTextActorClass;
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_ShowRecoveryText(int32 Amount, bool bIsMana);
 
 protected:
 	// 크래프팅 시야 판정용 타이머
