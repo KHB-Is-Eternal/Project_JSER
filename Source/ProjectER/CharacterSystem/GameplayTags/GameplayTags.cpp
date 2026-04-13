@@ -84,7 +84,12 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Health, "Data.Amount.Heal", "Heal Amount");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damage, "Data.Amount.Damage", "Damage Amount");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(IncomingXP, "Data.Amount.IncomingXP", "Incoming XP Amount");
-		} 
+		}
+		
+		namespace CC
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Duration, "Data.CC.Duration", "CC Duration (SetByCaller)");
+		}
 	}
 
 
@@ -230,6 +235,16 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Range, "GameplayCue.Skill.Range", "Cue for RangeVFX");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(HitTarget, "GameplayCue.Skill.HitTarget", "Cue for HitTargetVFX");
 		}
+		
+		namespace CC
+        {
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Slow, "GameplayCue.CC.Slow", "Slow VFX/SFX");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Root, "GameplayCue.CC.Root", "Root VFX/SFX");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Silence, "GameplayCue.CC.Silence", "Silence VFX/SFX");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Stun, "GameplayCue.CC.Stun", "Stun VFX/SFX");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Airborne, "GameplayCue.CC.Airborne", "Airborne VFX/SFX");
+        }
+            
 	}
 	
 	namespace State
@@ -362,6 +377,8 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(CriticalHit, "Montage.Common.CriticalHit", "CriticalHit Action Montage");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(TryRevive, "Montage.Common.TryRevive", "TryRevive Action Montage");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Revive, "Montage.Common.Revive", "Revive Action Montage");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Stun, "Montage.Common.Stun", "Stun Reaction Montage");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Airborne, "Montage.Common.Airborne", "Airborne Reaction Montage");
 		}
 	}
 }
