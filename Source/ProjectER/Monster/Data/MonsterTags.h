@@ -17,14 +17,6 @@ public:
 
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FGameplayTag AttackAbilityTag;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FGameplayTag QSkillAbilityTag;
-
-
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FGameplayTag AttackEventTag;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
@@ -44,15 +36,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FGameplayTag TargetOffEventTag;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FGameplayTag ReturnEventTag;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FGameplayTag Phase1EventTag;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FGameplayTag Phase2EventTag;
 
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)

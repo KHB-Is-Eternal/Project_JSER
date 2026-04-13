@@ -1,4 +1,4 @@
-#include "CharacterSystem/Player/BasePlayerController.h"
+﻿#include "CharacterSystem/Player/BasePlayerController.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -37,7 +37,7 @@
 #include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Preload/ER_AssetPreloadSubsystem.h"
-#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h" // 스팀 세션 파괴를 위해 추가
+#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Blueprint/UserWidget.h"
 #include "CharacterSystem/Data/CharacterData.h"
@@ -1200,16 +1200,16 @@ void ABasePlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 
 // ------------------------------------------------------------
 // [전민성 추가분]
-void ABasePlayerController::ConnectToDedicatedServer(const FString& Ip, int32 Port, const FString& PlayerName)
+void ABasePlayerController::ReturnToMainMenu()
 {
 	if (!IsLocalController())
 		return;
 
-	const FString Address = FString::Printf(TEXT("%s:%d?PlayerName=%s"), *Ip, Port, *PlayerName);
+	UE_LOG(LogTemp, Log, TEXT("[PC] Return To MainMenu requested. Routing to Server Disconnect logic..."));
 
-	UE_LOG(LogTemp, Log, TEXT("[PC] Connecting to server: %s"), *Address);
-
-	ClientTravel(Address, TRAVEL_Absolute);
+	// 혼자 로컬에서 세션을 부수고 강제 이동하던 기존 방식을 버리고,
+	// 방금 구축한 완벽한 네트워크 퇴장/방 폭파 파이프라인으로 연결해줍니다.
+	Server_DisConnectServer();
 }
 
 void ABasePlayerController::Client_SetLose_Implementation()
@@ -1340,17 +1340,29 @@ void ABasePlayerController::Server_StartGame_Implementation()
 
 void ABasePlayerController::Server_DisConnectServer_Implementation()
 {
-	if (AER_InGameMode* InGameMode = Cast<AER_InGameMode>(GetWorld()->GetAuthGameMode()))
+	if (AGameModeBase* AuthGameMode = GetWorld()->GetAuthGameMode())
 	{
-		// 이 코드가 서버(호스트) 본인의 컨트롤러에서 실행된 것이라면 안전한 서버 종료를 트리거합니다.
-		if (IsLocalController())
+		if (AER_InGameMode* InGameMode = Cast<AER_InGameMode>(AuthGameMode))
 		{
-			InGameMode->ShutdownServerForHost();
+			if (IsLocalController())
+			{
+				InGameMode->ShutdownServerForHost();
+			}
+			else
+			{
+				InGameMode->DisConnectClient(this);
+			}
 		}
-		else
+		else if (AER_OutGameMode* OutGameMode = Cast<AER_OutGameMode>(AuthGameMode))
 		{
-			// 클라이언트인 경우 기존의 단일 퇴장 로직을 수행합니다.
-			InGameMode->DisConnectClient(this);
+			if (IsLocalController())
+			{
+				OutGameMode->ShutdownServerForHost();
+			}
+			else
+			{
+				OutGameMode->DisConnectClient(this);
+			}
 		}
 	}
 }
@@ -1660,7 +1672,7 @@ void ABasePlayerController::Server_RequestTeleport_Implementation(int32 RegionIn
 	{
 		FGameplayEventData Payload;
 		Payload.Instigator = Char;
-		Payload.Target = Char;
+		Payload.Target = nullptr;
 		Payload.EventMagnitude = RegionIndex;
 
 		const FGameplayTag EventTag = ProjectER::Event::Interact::Teleport;
@@ -2594,26 +2606,6 @@ void ABasePlayerController::Server_RequestTeleportToTeam_Implementation(APlayerS
 		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PS, EventTag, Payload);
 	}
 }
-
-//void ABasePlayerController::Server_RequestTeleport_Implementation(int32 RegionIndex)
-//{
-//	Client_CloseTeleportUI();
-//	Client_CloseRespawnTeleportUI();
-//
-//	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
-//	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
-//	if (PS && Char)
-//	{
-//		FGameplayEventData Payload;
-//		Payload.Instigator = Char;
-//		Payload.Target = Char;
-//		Payload.EventMagnitude = RegionIndex;
-//
-//		const FGameplayTag EventTag = ProjectER::Event::Interact::Teleport;
-//		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PS, EventTag, Payload);
-//		UE_LOG(LogTemp, Log, TEXT("[Teleport] Server sent GameplayEvent %s with Magnitude %d"), *EventTag.ToString(), RegionIndex);
-//	}
-//}
 
 bool ABasePlayerController::CanInteractWithItemsInCurrentLifeState(APawn* InPawn) const
 {

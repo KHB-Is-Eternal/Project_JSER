@@ -13,19 +13,10 @@ public:
 	float BaseMaxLevel = 0;
 
 	UPROPERTY(EditAnywhere)
-	float BaseMaxXP = 0;
-
-	UPROPERTY(EditAnywhere)
 	float BaseMaxHealth = 0;
 
 	UPROPERTY(EditAnywhere)
 	float BaseHealthRegen = 0;
-
-	UPROPERTY(EditAnywhere)
-	float BaseMaxStamina = 0;
-
-	UPROPERTY(EditAnywhere)
-	float BaseStaminaRegen = 0;
 
 	UPROPERTY(EditAnywhere)
 	float BaseAttackPower = 0;
@@ -50,11 +41,5 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float BaseMoveSpeed = 0;
-
-	UPROPERTY(EditAnywhere)
-	float BaseCooldownReduction = 0;
-
-	UPROPERTY(EditAnywhere)
-	float BaseTenacity = 0;
 
 };

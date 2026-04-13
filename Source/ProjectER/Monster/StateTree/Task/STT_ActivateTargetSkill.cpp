@@ -24,45 +24,56 @@ const UStruct* FSTT_ActivateTargetSkill::GetInstanceDataType() const
 
 EStateTreeRunStatus FSTT_ActivateTargetSkill::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FStateTreeExecutionContext::EnterState : Not ActorHandle"));
+		return EStateTreeRunStatus::Failed;
+	}
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Actor);
+	if (IsValid(ASC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FStateTreeExecutionContext::EnterState : Not ASC"));
+		return EStateTreeRunStatus::Failed;
+	}
 
-	UAbilitySystemComponent* ASC = 
-		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(&Actor);
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	if (InstanceData.AbilityTag.IsValid() == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FStateTreeExecutionContext::EnterState : Not AbilityTag"));
+		return EStateTreeRunStatus::Failed;
+	}
 
 	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
 	{
 		if (Spec.DynamicAbilityTags.HasTagExact(InstanceData.AbilityTag))
 		{
-			if (ASC->TryActivateAbility(Spec.Handle))
+			// Ability 실행 시도
+			if (ASC->TryActivateAbility(Spec.Handle) == false)
 			{
-				FGameplayEventData Payload;
-				Payload.Instigator = &Actor;
-				if (ABaseMonster* Monster = Cast<ABaseMonster>(&Actor))
-				{
-					Payload.Target = Monster->GetTargetPlayer();
-
-					FGameplayAbilityTargetDataHandle TargetDataHandle = 
-						UAbilitySystemBlueprintLibrary::AbilityTargetDataFromActor(Monster->GetTargetPlayer());
-					Payload.TargetData = TargetDataHandle;
-						
-				}
-
-				UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(&Actor, InstanceData.EventTag, Payload);
-			
-				return EStateTreeRunStatus::Running;
-			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("Try Activate Skill Fail"));
-
+				UE_LOG(LogTemp, Warning, TEXT("FStateTreeExecutionContext::EnterState : Try Activate Skill Fail"));
 				return EStateTreeRunStatus::Failed;
 			}
+
+			// Ability 실행 성공했으면
+			ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
+			if (IsValid(Monster) == false)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("FStateTreeExecutionContext::EnterState : Not Monster"));
+				return EStateTreeRunStatus::Failed;
+			}
+
+			FGameplayEventData Payload;
+			Payload.Instigator = Actor;
+			Payload.Target = Monster->GetTargetPlayer();
+			Payload.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromActor(Monster->GetTargetPlayer());
+			UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Actor, InstanceData.EventTag, Payload);
+
 			break;
 		}
 	}
 
-	return EStateTreeRunStatus::Failed;
+	return EStateTreeRunStatus::Running;
 }
 
 void FSTT_ActivateTargetSkill::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const

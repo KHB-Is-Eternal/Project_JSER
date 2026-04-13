@@ -87,6 +87,11 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage); // 피해량
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(IncomingXP); // 경험치 습득량
 		}
+		
+		namespace CC
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Duration);  // SetByCaller 예비용
+		}
 	}
 	
 	
@@ -223,6 +228,15 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(TryRevive);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(LevelUp);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Death);
+		}
+		
+		namespace CC
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Slow);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Root);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Silence);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stun);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Airborne);
 		}
 
 		namespace Skill
@@ -368,6 +382,8 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(CriticalHit);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(TryRevive);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Revive);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stun);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Airborne);
 		}
 	}
 }

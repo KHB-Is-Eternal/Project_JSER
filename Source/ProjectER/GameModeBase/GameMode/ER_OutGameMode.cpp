@@ -1,10 +1,12 @@
-#include "ER_OutGameMode.h"
-#include "GameModeBase/State/ER_PlayerState.h"
-#include "GameModeBase/State/ER_GameState.h"
+﻿#include "ER_OutGameMode.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "CharacterSystem/Player/BasePlayerController.h"
-#include "GameModeBase/ER_OutGamePlayerController.h"
+
+#include "GameModeBase/State/ER_PlayerState.h"
+#include "GameModeBase/State/ER_GameState.h"
+#include "GameFramework/GameSession.h"
+
 
 AER_OutGameMode::AER_OutGameMode()
 {
@@ -264,7 +266,70 @@ void AER_OutGameMode::MoveTeam(APlayerController* Player, int32 TeamIdx)
 
     }
 
+}
 
+void AER_OutGameMode::ShutdownServerForHost()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[GM] Host requested server shutdown from Lobby. Evacuating clients..."));
 
+	// 1. 호스트를 제외한 모든 클라이언트에게 귀환 명령 송신
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		
+		if (IsValid(PC) && !PC->IsLocalController()) 
+		{
+			if (ABasePlayerController* ERPC = Cast<ABasePlayerController>(PC))
+			{
+				ERPC->Client_ReturnToMainMenu(TEXT("Host Closed Server"));
+			}
+		}
+	}
 
+	// 2. 1초 대기 후 호스트 본인도 로비(메인메뉴)로 이동하며 방 폭파
+	FTimerHandle ShutdownTimer;
+	TWeakObjectPtr<AER_OutGameMode> WeakThis(this);
+	GetWorld()->GetTimerManager().SetTimer(ShutdownTimer, [WeakThis]()
+	{
+		if (WeakThis.IsValid())
+		{
+			if (UWorld* World = WeakThis->GetWorld())
+			{
+				if (APlayerController* HostPC = World->GetFirstPlayerController())
+				{
+					if (ABasePlayerController* HostERPC = Cast<ABasePlayerController>(HostPC))
+					{
+						HostERPC->Client_ReturnToMainMenu(TEXT("Server Shutdown Complete"));
+					}
+				}
+			}
+		}
+	}, 1.0f, false);
+}
+
+void AER_OutGameMode::DisConnectClient(APlayerController* PC)
+{
+	if (!PC) return;
+
+	if (ABasePlayerController* ERPC = Cast<ABasePlayerController>(PC))
+	{
+		ERPC->Client_ReturnToMainMenu(TEXT("Disconnected by Host or Self"));
+	}
+
+	if (PC->IsLocalController())
+	{
+		return;
+	}
+
+	TWeakObjectPtr<APlayerController> WeakPC(PC);
+	TWeakObjectPtr<AER_OutGameMode> WeakThis(this);
+
+	FTimerHandle Tmp;
+	GetWorld()->GetTimerManager().SetTimer(Tmp, [WeakThis, WeakPC]()
+		{
+			if (WeakThis.IsValid() && WeakThis->GameSession && WeakPC.IsValid())
+			{
+				WeakThis->GameSession->KickPlayer(WeakPC.Get(), FText::FromString(TEXT("Disconnected")));
+			}
+		}, 0.2f, false);
 }

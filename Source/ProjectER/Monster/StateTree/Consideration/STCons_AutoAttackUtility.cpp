@@ -22,17 +22,16 @@ const UStruct* FSTCons_AutoAttackUtility::GetInstanceDataType() const
 
 float FSTCons_AutoAttackUtility::GetScore(FStateTreeExecutionContext& Context) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	if (!IsValid(&Actor))
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTCons_AutoAttackUtility::GetScore : Not ActorHandle"));
 		return -1.f;
 	}
-
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	ABaseMonster* Monster = Cast<ABaseMonster>(&Actor);
-
-	if (!IsValid(Monster))
+	ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
+	if (IsValid(Monster) == false)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTCons_AutoAttackUtility::GetScore : Not Monster"));
 		return -1.f;
 	}
 

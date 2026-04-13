@@ -7,25 +7,28 @@ void UAnimNotify_SendStateTreeEventTag::Notify(USkeletalMeshComponent* MeshComp,
 {
 	Super::Notify(MeshComp, Animation, EventReference);
 
-	if (!MeshComp || !MeshComp->GetWorld()->IsGameWorld())
+	if (IsValid(MeshComp) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UAnimNotify_SendStateTreeEventTag::Notify : Not MeshComp"));
+		return;
+	}
+	AActor* Owner = MeshComp->GetOwner();
+	if (IsValid(Owner) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UAnimNotify_SendStateTreeEventTag::Notify : Not Owner"));
+		return;
+	}
+	if (Owner->HasAuthority() == false)
 	{
 		return;
 	}
-	if (!MeshComp || !MeshComp->GetOwner())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("UAnimNotify_SendStateTreeEventTag::Notify : Not Mesh"));
-		return;
-	}
-	if (!MeshComp->GetOwner()->HasAuthority())
-	{
-		return;
-	}
-	ABaseMonster* Monster = Cast<ABaseMonster>(MeshComp->GetOwner());
+
+	ABaseMonster* Monster = Cast<ABaseMonster>(Owner);
 	if (IsValid(Monster) == false)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UAnimNotify_SendStateTreeEventTag::Notify : Not Monster"));
 		return;
 	}
-	//UE_LOG(LogTemp, Warning, TEXT("Animation : %s"), *Animation->GetName());
+
 	Monster->SendStateTreeEvent(EventTag);
 }
