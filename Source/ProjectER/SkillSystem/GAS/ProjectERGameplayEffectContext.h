@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayEffectTypes.h"
+#include "GameplayPrediction.h"
 #include "ProjectERGameplayEffectContext.generated.h"
 
 /**
@@ -22,6 +23,10 @@ struct PROJECTER_API FProjectERGameplayEffectContext : public FGameplayEffectCon
 	}
 
 	virtual ~FProjectERGameplayEffectContext() {}
+
+	/** 예측 키 주입 및 추출 헬퍼 */
+	void SetPredictionKey(FPredictionKey InKey) { PredictionKey = InKey; }
+	FPredictionKey GetPredictionKey() const { return PredictionKey; }
 
 	/** 클라이언트가 스킬을 시전한 시점의 정확한 서버 시간 (GetServerWorldTime() 기준) */
 	UPROPERTY(NotReplicated)
@@ -43,6 +48,7 @@ struct PROJECTER_API FProjectERGameplayEffectContext : public FGameplayEffectCon
 		if (OutContext)
 		{
 			OutContext->ClientActivationTime = ClientActivationTime;
+			OutContext->PredictionKey = PredictionKey;
 		}
 	}
 
@@ -72,6 +78,11 @@ struct PROJECTER_API FProjectERGameplayEffectContext : public FGameplayEffectCon
 	 * 네트워크 전송을 위해 직렬화 정보를 구성합니다.
 	 */
 	virtual bool NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess) override;
+
+protected:
+	/** 예측 키 (동기화 핸드셰이크용) */
+	UPROPERTY()
+	FPredictionKey PredictionKey;
 };
 
 /** FProjectERGameplayEffectContext에 대한 기능 허용 트레이츠 (상속 기반 직렬화 등 활성화) */

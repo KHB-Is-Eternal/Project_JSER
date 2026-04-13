@@ -114,7 +114,7 @@ void ULaunchHomingMissile::OnExecutePredictive(UAbilitySystemComponent* ASC, con
 		FGameplayCueParameters Params(*SpecHandle.Data.Get());
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
-		Params.SourceObject = this->MissileVfx;
+		// [삭제] 시각 정보(ClientActivationTime)가 이미 컨텍스트에 담겨 있으므로 별도의 예측 키 주입이 불필요합니다.
 		
 		ASC->ExecuteGameplayCue(this->MissileVfx->CueTag, Params);
 	}
@@ -125,7 +125,7 @@ void ULaunchHomingMissile::OnExecutePredictive(UAbilitySystemComponent* ASC, con
 		FGameplayCueParameters Params(*SpecHandle.Data.Get());
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
-		Params.SourceObject = this->MissileSound;
+		// [삭제] 시각 정보(ClientActivationTime)가 이미 컨텍스트에 담겨 있으므로 별도의 예측 키 주입이 불필요합니다.
 		
 		ASC->ExecuteGameplayCue(this->MissileSound->CueTag, Params);
 	}
@@ -279,6 +279,12 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 		InitialDirection
 	);
 	MissileActor->SetLifeSpan(this->LifeSpan);
+
+	// 컨텍스트로부터 시전 시간 추출 및 판정 액터에 주입 (VFX 핸드셰이크용)
+	if (const FProjectERGameplayEffectContext* ErContext = static_cast<const FProjectERGameplayEffectContext*>(ContextHandle.Get()))
+	{
+		MissileActor->SetClientActivationTime(ErContext->ClientActivationTime);
+	}
 
 	// --- 스폰 완료 ---
 	MissileActor->FinishSpawning(SpawnTransform);

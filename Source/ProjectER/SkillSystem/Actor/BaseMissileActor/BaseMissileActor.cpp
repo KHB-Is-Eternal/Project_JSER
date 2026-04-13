@@ -6,6 +6,9 @@
 #include "Components/SceneComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "Net/UnrealNetwork.h"
+#include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
+#include "SkillSystem/GameplayEffectComponent/LaunchHomingMissile.h"
 
 ABaseMissileActor::ABaseMissileActor()
 {
@@ -26,6 +29,54 @@ ABaseMissileActor::ABaseMissileActor()
 	
 	ProjectileMovement->bRotationFollowsVelocity = true;
 	ProjectileMovement->ProjectileGravityScale = 0.0f;
+}
+
+#include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
+
+void ABaseMissileActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ABaseMissileActor, ClientActivationTime);
+}
+
+void ABaseMissileActor::PostNetInit()
+{
+	Super::PostNetInit();
+
+	// 클라이언트에서만 작동
+	if (GetNetMode() == NM_DedicatedServer) return;
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+		{
+			// (시전자 + 시전 시간) 조합으로 검색
+			if (AActor* VfxActor = Registry->GetAndUnregisterVfxActor(InstigatorActor, ClientActivationTime))
+			{
+				// 찾았다면 자신에게 부착 (Snap to Target)
+				FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
+				VfxActor->AttachToActor(this, AttachRules);
+
+				// [고급 동기화] 비주얼 액터가 들고 있는 SourceObject(GEC)로부터 물리 설정값 동기화
+				if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
+				{
+					if (const ULaunchHomingMissile* MissileGEC = Cast<ULaunchHomingMissile>(SummonedGCN->GetSourceObject()))
+					{
+						if (IsValid(ProjectileMovement))
+						{
+							ProjectileMovement->InitialSpeed = MissileGEC->InitialSpeed;
+							ProjectileMovement->MaxSpeed = MissileGEC->MaxSpeed;
+							ProjectileMovement->HomingAccelerationMagnitude = MissileGEC->HomingAccelerationMagnitude;
+							ProjectileMovement->bIsHomingProjectile = (MissileGEC->HomingAccelerationMagnitude > 0.f);
+							
+							UE_LOG(LogTemp, Log, TEXT("ABaseMissileActor: Synced physics from GEC (Speed: %f, Homing: %f)"), MissileGEC->InitialSpeed, MissileGEC->HomingAccelerationMagnitude);
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 void ABaseMissileActor::InitializeMissile(

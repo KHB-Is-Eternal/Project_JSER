@@ -62,7 +62,10 @@ void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, cons
 		FGameplayCueParameters Params(*SpecHandle.Data.Get());
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
-		Params.SourceObject = this->RangeSpawnVfx;
+		Params.SourceObject = const_cast<USummonRangeBaseGEC*>(this);
+
+		// [삭제] 시각 정보(ClientActivationTime)가 이미 컨텍스트에 담겨 있으므로 별도의 예측 키 주입이 불필요합니다.
+
 		ASC->ExecuteGameplayCue(this->RangeSpawnVfx->CueTag, Params);
 	}
 
@@ -71,7 +74,10 @@ void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, cons
 		FGameplayCueParameters Params(*SpecHandle.Data.Get());
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
-		Params.SourceObject = this->RangeSpawnSound;
+		Params.SourceObject = const_cast<USummonRangeBaseGEC*>(this);
+
+		// [삭제] 시각 정보(ClientActivationTime)가 이미 컨텍스트에 담겨 있으므로 별도의 예측 키 주입이 불필요합니다.
+
 		ASC->ExecuteGameplayCue(this->RangeSpawnSound->CueTag, Params);
 	}
 }
@@ -160,7 +166,14 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 				RangeSpawnLocation,
 				this->HitTargetSound.Get());
 
+			// 컨텍스트로부터 시전 시간 추출 및 장판 액터에 주입 (VFX 핸드셰이크용)
+			if (const FProjectERGameplayEffectContext* ErContext = static_cast<const FProjectERGameplayEffectContext*>(ContextHandle.Get()))
+			{
+				DeferredSpawnedActor->SetClientActivationTime(ErContext->ClientActivationTime);
+			}
+
 			InitializeRangeActor(DeferredSpawnedActor, EffectInstigator, ContextHandle, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
+
 			DeferredSpawnedActor->FinishSpawning(SpawnTransform);
 
 			// 5. 렉 보상 (Lag Compensation / Fast-Forward)

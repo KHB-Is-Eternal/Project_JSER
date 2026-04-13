@@ -8,12 +8,62 @@
 #include "CharacterSystem/Interface/TargetableInterface.h"
 #include "SkillSystem/Component/AreaPeriodicEffectComponent.h"
 #include "UObject/Object.h"
+#include "Net/UnrealNetwork.h"
+#include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
 
 // Sets default values
 ABaseRangeOverlapEffectActor::ABaseRangeOverlapEffectActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
+}
+
+#include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
+#include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
+
+void ABaseRangeOverlapEffectActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ABaseRangeOverlapEffectActor, ClientActivationTime);
+}
+
+void ABaseRangeOverlapEffectActor::PostNetInit()
+{
+	Super::PostNetInit();
+
+	// 클라이언트에서만 작동 (로컬 서버 포함)
+	if (GetNetMode() == NM_DedicatedServer) return;
+
+	// 서브시스템에서 일치하는 비주얼 액터 검색
+	if (UWorld* World = GetWorld())
+	{
+		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+		{
+			// (시전자 + 시전 시간) 조합으로 검색
+			if (AActor* VfxActor = Registry->GetAndUnregisterVfxActor(InstigatorActor, ClientActivationTime))
+			{
+				// 찾았다면 자신에게 부착 (Snap to Target)
+				FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
+				VfxActor->AttachToActor(this, AttachRules);
+				
+				// [고급 동기화] 비주얼 액터가 들고 있는 SourceObject(GEC)로부터 콜리전 설정값 동기화
+				if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
+				{
+					if (const USummonRangeBaseGEC* RangeGEC = Cast<USummonRangeBaseGEC>(SummonedGCN->GetSourceObject()))
+					{
+						// 장판 크기 적용 (CollisionRadius가 FVector 타입이므로 X나 적절한 성분 활용)
+						float Radius = (float)RangeGEC->CollisionRadius.X;
+						ApplyCollisionSize(FVector(Radius, Radius, 100.0f));
+						
+						UE_LOG(LogTemp, Log, TEXT("ABaseRangeOverlapEffectActor: Synced CollisionSize from GEC (Radius: %f)"), Radius);
+					}
+				}
+				
+				UE_LOG(LogTemp, Log, TEXT("ABaseRangeOverlapEffectActor: Successfully attached VFX Actor with ClientActivationTime"));
+			}
+		}
+	}
 }
 
 void ABaseRangeOverlapEffectActor::InitializeEffectData(const TArray<FGameplayEffectSpecHandle>& InEffectSpecHandles, AActor* InInstigatorActor, const FVector& InCollisionSize, bool bInHitOncePerTarget, const UObject* InHitTargetCueSourceObject, const FGameplayCueParameters& InHitTargetVfxCueParameters, const FGameplayCueParameters& InHitTargetSoundCueParameters)

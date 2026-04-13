@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayEffectTypes.h"
+#include "GameplayPrediction.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnSettings.h"
 #include "BaseRangeOverlapEffectActor.generated.h"
 
@@ -34,8 +35,12 @@ public:
 
   void InitializePeriodicCues(const FGameplayCueParameters& InPeriodicVfxCueParameters, const FGameplayCueParameters& InPeriodicSoundCueParameters);
 
+  /** 서버에서 시전 시간을 초기화합니다. */
+  void SetClientActivationTime(float InTime) { ClientActivationTime = InTime; }
+
 protected:
   virtual void BeginPlay() override;
+  virtual void PostNetInit() override;
   virtual void ApplyCollisionSize(const FVector &InCollisionSize);
   void SetCollisionComponent(UShapeComponent *InCollisionComponent);
 
@@ -97,4 +102,9 @@ protected:
 
   UPROPERTY()
   FGameplayCueParameters PeriodicSoundCueParameters;
+
+protected:
+  /** 리플리케이션된 시전 시간 */
+  UPROPERTY(Replicated)
+  float ClientActivationTime;
 };

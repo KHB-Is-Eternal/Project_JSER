@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayEffectTypes.h"
+#include "GameplayPrediction.h"
 #include "BaseMissileActor.generated.h"
 
 class UProjectileMovementComponent;
@@ -40,8 +41,12 @@ public:
 		const FVector& InInitialDirection = FVector::ForwardVector
 	);
 
+	/** 서버에서 시전 시간을 초기화합니다. */
+	void SetClientActivationTime(float InTime) { ClientActivationTime = InTime; }
+
 protected:
 	virtual void BeginPlay() override;
+	virtual void PostNetInit() override;
 	virtual void Tick(float DeltaTime) override;
 
 	/** 대상에 도달했을 때 호출. 효과 적용 및 파괴를 수행합니다. */
@@ -86,4 +91,9 @@ protected:
 	FRotator InitialTargetRotation; // 추가: 엔진에 의한 회전값 왜곡 방지용
 
 	bool bHasReached = false;
+
+protected:
+	/** 리플리케이션된 시전 시간 (VFX 핸드셰이크용) */
+	UPROPERTY(Replicated)
+	float ClientActivationTime;
 };
