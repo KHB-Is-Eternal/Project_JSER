@@ -37,7 +37,7 @@
 #include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Preload/ER_AssetPreloadSubsystem.h"
-#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h" // 스팀 세션 파괴를 위해 추가
+#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Blueprint/UserWidget.h"
 #include "CharacterSystem/Data/CharacterData.h"
@@ -1200,16 +1200,31 @@ void ABasePlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 
 // ------------------------------------------------------------
 // [전민성 추가분]
-void ABasePlayerController::ConnectToDedicatedServer(const FString& Ip, int32 Port, const FString& PlayerName)
+void ABasePlayerController::ReturnToMainMenu()
 {
 	if (!IsLocalController())
 		return;
 
-	const FString Address = FString::Printf(TEXT("%s:%d?PlayerName=%s"), *Ip, Port, *PlayerName);
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UER_SessionSubsystem* SessionSubsystem = GI->GetSubsystem<UER_SessionSubsystem>())
+		{
+			SessionSubsystem->DestroyGameSession();
+		}
+	}
 
-	UE_LOG(LogTemp, Log, TEXT("[PC] Connecting to server: %s"), *Address);
+	UE_LOG(LogTemp, Log, TEXT("[PC] Return To MainMenu..."));
 
-	ClientTravel(Address, TRAVEL_Absolute);
+	// GetAssetName()만 사용할 경우 패키지 경로 누락으로 ClientTravel이 실패할 수 있습니다.
+	// 명시적인 긴 패키지 경로로 이동하기 위해 UGameplayStatics::OpenLevel 혹은 OpenLevelBySoftObjectPtr를 사용합니다.
+	if (!MainMenuMap.IsNull())
+	{
+		UGameplayStatics::OpenLevelBySoftObjectPtr(this, MainMenuMap);
+	}
+	else
+	{
+		UGameplayStatics::OpenLevel(this, FName(TEXT("/Game/Level/Level_MainMenu")));
+	}
 }
 
 void ABasePlayerController::Client_SetLose_Implementation()

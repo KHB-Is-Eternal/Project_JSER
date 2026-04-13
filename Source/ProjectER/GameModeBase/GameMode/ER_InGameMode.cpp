@@ -1,4 +1,4 @@
-#include "GameModeBase/GameMode/ER_InGameMode.h"
+﻿#include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Respawn/ER_RespawnSubsystem.h"
@@ -10,7 +10,7 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
-#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h" // 호스트 스팀 세션 파괴 위해 추가
+#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h"
 #include "Engine/GameInstance.h"
 
 #include "Monster/BaseMonster.h"
@@ -125,8 +125,6 @@ void AER_InGameMode::Logout(AController* Exiting)
 						PC->UnPossess();
 					}
 
-					// ★ 핵심: Owner 체인을 끊어야 PC 파괴 시 Pawn이 같이 파괴되지 않음
-					// UnPossess()는 Controller 포인터만 null로 만들 뿐, Owner는 여전히 PC를 가리킴
 					OwnedPawn->SetOwner(nullptr);
 
 					Data.PreservedPawn = OwnedPawn;
@@ -168,11 +166,6 @@ void AER_InGameMode::Logout(AController* Exiting)
 					// 인벤토리 데이터 추출
 					if (UBaseInventoryComponent* Inv = OwnedPawn->FindComponentByClass<UBaseInventoryComponent>())
 					{
-						// Internal array 직접 접근을 못하므로 getter가 필요할 수 있으나, 
-						// .h에서 InventoryContents가 protected이므로 헬퍼가 필요함.
-						// 일단 리플렉션이나 다른 방법을 고려하거나, .h를 수정하여 접근 허용.
-						// (이미 h에서 protected이므로 파생클래스가 아니면 접근 불가)
-						// 하지만 TFieldIterator로 가져올 수 있음.
 						for (TFieldIterator<FArrayProperty> It(UBaseInventoryComponent::StaticClass()); It; ++It)
 						{
 							if (It->GetName() == TEXT("InventoryContents"))
@@ -192,9 +185,6 @@ void AER_InGameMode::Logout(AController* Exiting)
 					}
 				}
 
-				// [전민성 요구사항] 도중 퇴장한 플레이어 강제 사망 및 팀 승패 처리
-				// 데이터(HP, 인벤토리 등)를 살아있던 원 상태 그대로 데이터 구조체(Data)에 안전하게 보존한 뒤,
-				// 실제 게임 월드 상의 폰은 사망(Death) 처리하여 팀 탈락 여부(EndGame) 로직을 정상 진행시킵니다.
 				if (!Data.bIsDead && ERPS)
 				{
 					if (OwnedPawn)
@@ -307,7 +297,7 @@ void AER_InGameMode::PreLogin(const FString& InAddress, const FString& Options, 
 	{
 		const FDisconnectedPlayerData& Data = DisconnectedPlayers[UniqueIdStr];
 
-		// [전민성 요구사항] 탈락 확정(Eliminated) 팀은 재접속 불가
+		// 탈락 확정 팀은 재접속 불가
 		if (AER_GameState* ERGS = GetGameState<AER_GameState>())
 		{
 			const int32 TeamIdx = static_cast<int32>(Data.TeamType);
@@ -440,8 +430,6 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 			*UniqueIdStr, static_cast<int32>(NewERPS->TeamType), NewERPS->KillCount, NewERPS->DeathCount, NewERPS->AssistCount);
 	}
 
-	// [전민성 요구사항] 재접속에 성공하면 다시 생존 상태(Revive)로 복귀
-	// (로그아웃 직전에 살아있었음 -> FoundData->bIsDead == false 이므로 NewERPS->bIsDead 도 이미 false로 복원됨)
 	if (FoundData->PreservedPawn.IsValid() && !FoundData->bIsDead) 
 	{
 		if (ABaseCharacter* Char = Cast<ABaseCharacter>(FoundData->PreservedPawn.Get()))
@@ -563,8 +551,6 @@ void AER_InGameMode::DisConnectClient(APlayerController* PC)
 		ERPC->Client_ReturnToMainMenu(TEXT("GameOver"));
 	}
 
-	// 호스트(Listen Server 본인)는 자신을 Kick 할 수 없습니다. 
-	// 호스트는 OpenLevel을 통해 메인 메뉴로 이동하면 자동으로 방이 터지고 넷드라이버가 닫힙니다.
 	if (PC->IsLocalController())
 	{
 		return;
