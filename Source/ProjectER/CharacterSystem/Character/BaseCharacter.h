@@ -317,6 +317,21 @@ protected:
 	TObjectPtr<UNiagaraSystem> CachedBasicHitVFX;
 	
 #pragma endregion
+	
+#pragma region CrowdControl
+public:
+	// CC 태그 변경 감지 콜백 (ASC 델리게이트 바인딩)
+	void OnCCTagChanged(const FGameplayTag Tag, int32 NewCount);
+
+	// 이동 차단 CC가 활성화되어 있는지
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "CC")
+	bool IsMovementBlocked() const;
+
+protected:
+	// ASC에 CC 태그 감시 델리게이트 등록
+	void RegisterCCTagCallbacks();
+#pragma endregion
+
 
 #pragma region DeathRevive
 public:

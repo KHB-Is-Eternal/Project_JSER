@@ -11,7 +11,15 @@ UBaseGameplayEffect::UBaseGameplayEffect() {
 #if WITH_EDITOR
 void UBaseGameplayEffect::PostEditChangeProperty(FPropertyChangedEvent &PropertyChangedEvent) {
     Super::PostEditChangeProperty(PropertyChangedEvent);
-
+    
+    // Duration/Infinite GE는 Modifier/Execution 강제를 스킵
+    // CC GE 등 단순 비율 Modifier를 사용하는 경우를 위해
+    if (DurationPolicy != EGameplayEffectDurationType::Instant)
+    {
+        this->MarkPackageDirty();
+        return;
+    }
+    
     // 1. Executions 고정: 하나라도 존재할 때만 클래스를 강제함 (자동 추가 X)
     for (FGameplayEffectExecutionDefinition &ExecDef : Executions) {
         if (ExecDef.CalculationClass == nullptr ||
