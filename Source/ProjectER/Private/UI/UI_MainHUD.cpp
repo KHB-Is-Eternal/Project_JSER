@@ -442,6 +442,24 @@ void UUI_MainHUD::NativeConstruct()
     TeamLevel_01->SetVisibility(ESlateVisibility::Collapsed);
     TeamLevel_02->SetVisibility(ESlateVisibility::Collapsed);
 
+    if (WarningSkull)
+    {
+        WarningSkull->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+    if (WarningNumber_ten)
+    {
+        WarningNumber_ten->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+    if (WarningNumber_one)
+    {
+        WarningNumber_one->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+    showWarningAnim = GetWidgetAnimationByName(TEXT("AN_ShowWarning"));
+    hideWarningAnim = GetWidgetAnimationByName(TEXT("AN_HideWarning"));
+
+    // 금구 타이머 숨김
+    hideWarningSign();
+
     //// 디버그용
     //SetKillCount(0);
     //SetDeathCount(41);
@@ -466,6 +484,7 @@ void UUI_MainHUD::NativeDestruct()
             World->GetTimerManager().ClearTimer(SkillTimerHandles[i]);
         }
         World->GetTimerManager().ClearTimer(PhaseAndTimeTimer);
+		World->GetTimerManager().ClearTimer(UI_WarningTimerHandle);
     }
 
     Super::NativeDestruct();
@@ -1398,6 +1417,15 @@ void UUI_MainHUD::WarningSign(int number)
 
     int32 SecTenDigit = Seconds / 10;
     int32 SecOneDigit = Seconds % 10;
+    if(!bIsWarningActive)
+        showWarningSign();
+
+    GetWorld()->GetTimerManager().SetTimer(
+        UI_WarningTimerHandle,
+        this,
+        &UUI_MainHUD::hideWarningSign,
+        3.0f,
+        false);
 
     if (RestrictedSign_01 && !IsAnimationPlaying(RestrictedSign_01))
     {
@@ -1413,6 +1441,54 @@ void UUI_MainHUD::WarningSign(int number)
         WarningNumber_one->SetBrushFromTexture(SegmentTextures[SecOneDigit]);
     }
 
+}
+
+void UUI_MainHUD::showWarningSign()
+{
+    bool bShow = true;
+    bIsWarningActive = true;
+
+    if (showWarningAnim && !IsAnimationPlaying(showWarningAnim))
+    {
+        PlayAnimation(showWarningAnim);
+    }
+
+  //  if (IsValid(WarningSkull))
+  //  {
+		//WarningSkull->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+  //  }
+  //  if (IsValid(WarningNumber_ten))
+  //  {
+  //      WarningNumber_ten->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+  //  }
+  //  if (IsValid(WarningNumber_one))
+  //  {
+  //      WarningNumber_one->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+  //  }
+}
+
+void UUI_MainHUD::hideWarningSign()
+{
+    bool bShow = false;
+    bIsWarningActive = false;
+
+    if (hideWarningAnim && !IsAnimationPlaying(hideWarningAnim))
+    {
+        PlayAnimation(hideWarningAnim);
+    }
+
+    //if (IsValid(WarningSkull))
+    //{
+    //    WarningSkull->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    //}
+    //if (IsValid(WarningNumber_ten))
+    //{
+    //    WarningNumber_ten->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    //}
+    //if (IsValid(WarningNumber_one))
+    //{
+    //    WarningNumber_one->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    //}
 }
 
 void UUI_MainHUD::UpdateTeamHP(int32 TeamIndex, float CurrentHP, float MaxHP)

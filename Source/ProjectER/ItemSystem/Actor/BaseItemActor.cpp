@@ -4,6 +4,9 @@
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "GameplayTagContainer.h"
 
 ABaseItemActor::ABaseItemActor()
 {
@@ -153,6 +156,22 @@ void ABaseItemActor::PickupItem(APawn* InHandler)
 	}
 
 	if (!InHandler || !ItemData)
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(InHandler);
+	if (!IsValid(ASC))
+	{
+		return;
+	}
+
+	const bool bIsDown = ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+	const bool bIsDead = ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
+
+	if (bIsDown || bIsDead)
 	{
 		return;
 	}

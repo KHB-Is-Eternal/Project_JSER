@@ -24,15 +24,22 @@ void UGA_MonsterState_Death::ActivateAbility(const FGameplayAbilitySpecHandle Ha
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
 	ABaseMonster* Monster = Cast<ABaseMonster>(GetOwningActorFromActorInfo());
-	if (IsValid(Monster) == false || IsValid(Monster->MonsterData) == false)
+	if (IsValid(Monster) == false)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Death::ActivateAbility : Not Monster"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
-
+	if (IsValid(Monster->MonsterData) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Death::ActivateAbility : Not MonsterData"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
 	UCharacterMovementComponent* MoveComp = Monster->GetCharacterMovement();
 	if (IsValid(MoveComp) == false)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Death::ActivateAbility : Not MoveComp"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}

@@ -7,14 +7,12 @@
 
 UGA_MonsterState::UGA_MonsterState()
 {
-	//Input
-	bReplicateInputDirectly = false;
-
-	//Advanced
-	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly; // LocalPredicted;
-	ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateNo; // ReplicateYes;
-	NetSecurityPolicy = EGameplayAbilityNetSecurityPolicy::ServerOnly; // ClientOrServer;
+	bReplicateInputDirectly = false;                                    // 예측 실행 하려면..?
+	ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateNo; // ReplicateYes
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly; // LocalPredicted
+	NetSecurityPolicy = EGameplayAbilityNetSecurityPolicy::ServerOnly;
+	
 	bServerRespectsRemoteAbilityCancellation = false;
 	bRetriggerInstancedAbility = false;
 }
@@ -35,51 +33,59 @@ void UGA_MonsterState::ActivateAbility(const FGameplayAbilitySpecHandle Handle, 
 		return;
 	}
 
-	if (StateInitData.WaitTag.IsValid())
+	if (bIsUseWaitTag)
 	{
-		if (bIsUseWaitTag)
+		if (StateInitData.WaitTag.IsValid())
 		{
 			UAbilityTask_WaitGameplayTagRemoved* WaitRemoveTask = UAbilityTask_WaitGameplayTagRemoved::WaitGameplayTagRemove(this, StateInitData.WaitTag);
 			WaitRemoveTask->Removed.AddDynamic(this, &UGA_MonsterState::OnTagRemoved);
 			WaitRemoveTask->ReadyForActivation();
 		}
 	}
-	
+
 	ABaseMonster* Monster = Cast<ABaseMonster>(GetOwningActorFromActorInfo());
-	if (IsValid(Monster) == false || IsValid(Monster->MonsterData) == false)
+	if (IsValid(Monster) == false)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState::ActivateAbility : Not Monster"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+	if (IsValid(Monster->MonsterData) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState::ActivateAbility : Not MonsterData"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
 	TObjectPtr<UAnimMontage> Montage = *Monster->MonsterData->Montages.Find(StateInitData.MontageType);
-	if (IsValid(Montage))
+	if (IsValid(Montage) == false)
 	{
-		UAbilityTask_PlayMontageAndWait* WaitPlayMontageTask =
-			UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-				this,
-				NAME_None,
-				Montage,
-				1.f,
-				NAME_None,
-				true,
-				1.f,
-				0.f,
-				false
-			);
-		WaitPlayMontageTask->OnCompleted.AddDynamic(this, &UGA_MonsterState::OnMontageCompleted);
-		WaitPlayMontageTask->OnBlendedIn.AddDynamic(this, &UGA_MonsterState::OnMontageBlendIn);
-		WaitPlayMontageTask->OnBlendOut.AddDynamic(this, &UGA_MonsterState::OnMontageBlendOut);
-		WaitPlayMontageTask->OnInterrupted.AddDynamic(this, &UGA_MonsterState::OnMontageInterrupt);
-		WaitPlayMontageTask->OnCancelled.AddDynamic(this, &UGA_MonsterState::OnMontageCancel);
-		WaitPlayMontageTask->ReadyForActivation();
-	}
-	else
-	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState::ActivateAbility : Not Montage"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
+	
+	UAbilityTask_PlayMontageAndWait* WaitPlayMontageTask =
+		UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+			this,
+			NAME_None,
+			Montage,
+			1.f,
+			NAME_None,
+			true,
+			1.f,
+			0.f,
+			false
+		);
 
+	WaitPlayMontageTask->OnCompleted.AddDynamic(this, &UGA_MonsterState::OnMontageCompleted);
+	WaitPlayMontageTask->OnBlendedIn.AddDynamic(this, &UGA_MonsterState::OnMontageBlendIn);
+	WaitPlayMontageTask->OnBlendOut.AddDynamic(this, &UGA_MonsterState::OnMontageBlendOut);
+	WaitPlayMontageTask->OnInterrupted.AddDynamic(this, &UGA_MonsterState::OnMontageInterrupt);
+	WaitPlayMontageTask->OnCancelled.AddDynamic(this, &UGA_MonsterState::OnMontageCancel);
+	WaitPlayMontageTask->ReadyForActivation();
+	
+	
 	if (StateInitData.SoundCueTag.IsValid())
 	{
 		FGameplayCueParameters Params;
