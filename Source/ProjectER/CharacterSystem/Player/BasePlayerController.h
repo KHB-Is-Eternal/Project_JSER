@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "ItemSystem/Interface/I_ItemInteractable.h" // [김현수 추가분]
 #include "ItemSystem/Data/ItemRecipeRow.h" // [김현수 추가분]
@@ -246,7 +246,7 @@ public:
 /// [전민성 추가분] - 시작
 public:
 	UFUNCTION(BlueprintCallable, Category = "Network")
-	void ConnectToDedicatedServer(const FString& Ip, int32 Port, const FString& PlayerName);
+	void ReturnToMainMenu();
 
 	// Clinet RPC
 	UFUNCTION(BlueprintCallable, Client, Reliable)
@@ -477,6 +477,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> RespawnTeleportUIInstance;
+
+	// 메인 메뉴 이동을 위한 지정
+	UPROPERTY(EditDefaultsOnly, Category = "Level Config")
+	TSoftObjectPtr<UWorld> MainMenuMap;
 	
 	// 거리 측정을 위한 타겟 캐싱
 	UPROPERTY(Transient)
