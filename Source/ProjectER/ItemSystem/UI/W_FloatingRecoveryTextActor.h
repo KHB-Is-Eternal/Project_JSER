@@ -20,6 +20,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<USceneComponent> SceneRoot;
@@ -29,4 +30,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "RecoveryText")
 	float LifeSeconds = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "RecoveryText")
+	float FloatUpSpeed = 35.0f;
+
+private:
+	float ElapsedTime = 0.0f;
 };

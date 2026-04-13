@@ -5,7 +5,6 @@
 #include "W_FloatingRecoveryText.generated.h"
 
 class UTextBlock;
-class UWidgetAnimation;
 
 UCLASS()
 class PROJECTER_API UW_FloatingRecoveryText : public UUserWidget
@@ -16,12 +15,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RecoveryText")
 	void SetRecoveryText(int32 Amount, bool bIsMana);
 
-protected:
-	virtual void NativeConstruct() override;
+	UFUNCTION(BlueprintCallable, Category = "RecoveryText")
+	void SetRecoveryAlpha(float Alpha);
 
+protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> TXT_Value;
 
-	UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
-	TObjectPtr<UWidgetAnimation> ANIM_FloatFade;
+private:
+	bool bCachedIsMana = false;
 };

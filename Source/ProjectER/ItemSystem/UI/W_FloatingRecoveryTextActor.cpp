@@ -6,7 +6,7 @@
 
 AW_FloatingRecoveryTextActor::AW_FloatingRecoveryTextActor()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = false;
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
@@ -22,7 +22,35 @@ AW_FloatingRecoveryTextActor::AW_FloatingRecoveryTextActor()
 void AW_FloatingRecoveryTextActor::BeginPlay()
 {
 	Super::BeginPlay();
-	SetLifeSpan(LifeSeconds);
+}
+
+void AW_FloatingRecoveryTextActor::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	ElapsedTime += DeltaSeconds;
+
+	// 위로 이동
+	FVector NewLocation = GetActorLocation();
+	NewLocation.Z += FloatUpSpeed * DeltaSeconds;
+	SetActorLocation(NewLocation);
+
+	// 알파 감소
+	const float Alpha = 1.0f - (ElapsedTime / FMath::Max(LifeSeconds, KINDA_SMALL_NUMBER));
+
+	if (WidgetComp)
+	{
+		if (UW_FloatingRecoveryText* Widget = Cast<UW_FloatingRecoveryText>(WidgetComp->GetUserWidgetObject()))
+		{
+			Widget->SetRecoveryAlpha(Alpha);
+		}
+	}
+
+	// 수명 종료
+	if (ElapsedTime >= LifeSeconds)
+	{
+		Destroy();
+	}
 }
 
 void AW_FloatingRecoveryTextActor::InitRecoveryText(int32 Amount, bool bIsMana)
@@ -41,4 +69,5 @@ void AW_FloatingRecoveryTextActor::InitRecoveryText(int32 Amount, bool bIsMana)
 	}
 
 	Widget->SetRecoveryText(Amount, bIsMana);
+	Widget->SetRecoveryAlpha(1.0f);
 }
