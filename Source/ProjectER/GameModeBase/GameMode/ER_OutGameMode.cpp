@@ -1,10 +1,11 @@
-#include "ER_OutGameMode.h"
-#include "GameModeBase/State/ER_PlayerState.h"
-#include "GameModeBase/State/ER_GameState.h"
+﻿#include "ER_OutGameMode.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "CharacterSystem/Player/BasePlayerController.h"
-#include "GameModeBase/ER_OutGamePlayerController.h"
+
+#include "GameModeBase/State/ER_PlayerState.h"
+#include "GameModeBase/State/ER_GameState.h"
+
 
 AER_OutGameMode::AER_OutGameMode()
 {
