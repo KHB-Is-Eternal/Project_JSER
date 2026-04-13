@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
@@ -27,6 +27,12 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void MoveTeam(APlayerController* Player, int32 TeamIdx);
+
+	UFUNCTION(BlueprintCallable)
+	void ShutdownServerForHost();
+
+	UFUNCTION(BlueprintCallable)
+	void DisConnectClient(APlayerController* PC);
 
 protected:
 	virtual FString InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal) override;
