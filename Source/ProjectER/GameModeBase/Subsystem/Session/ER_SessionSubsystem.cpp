@@ -26,7 +26,7 @@ void UER_SessionSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
-void UER_SessionSubsystem::CreateSession(int32 NumPublicConnections, bool bIsLANMatch)
+void UER_SessionSubsystem::CreateSession(int32 NumPublicConnections, bool bIsLANMatch, const FString& CustomRoomName)
 {
 	if (!SessionInterface.IsValid())
 	{
@@ -57,6 +57,7 @@ void UER_SessionSubsystem::CreateSession(int32 NumPublicConnections, bool bIsLAN
 	SessionSettings->bUsesPresence = true;
 	SessionSettings->bUseLobbiesIfAvailable = true;
 	SessionSettings->Set(FName("CUSTOM_GAME_ID"), FString("ProjectER_Sparta"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	SessionSettings->Set(FName("CUSTOM_ROOM_NAME"), CustomRoomName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 
 	// Get Local Player
 
@@ -224,10 +225,53 @@ TArray<FSessionResultWrapper> UER_SessionSubsystem::GetCustomSearchResults() con
 				Wrapper.CurrentPlayers = Wrapper.MaxPlayers - Result.Session.NumOpenPublicConnections;
 				Wrapper.OwningUserName = Result.Session.OwningUserName;
 				
+				FString FoundRoomName;
+				if (Result.Session.SessionSettings.Get(FName("CUSTOM_ROOM_NAME"), FoundRoomName))
+				{
+					Wrapper.CustomRoomName = FoundRoomName;
+				}
+				else
+				{
+					Wrapper.CustomRoomName = Wrapper.OwningUserName;
+				}
+				
 				CustomResults.Add(Wrapper);
 			}
 		}
 	}
 
 	return CustomResults;
+}
+
+bool UER_SessionSubsystem::GetCurrentSessionInfo(FSessionResultWrapper& OutSessionInfo) const
+{
+	if (!SessionInterface.IsValid())
+	{
+		return false;
+	}
+
+	const FNamedOnlineSession* CurrentSession = SessionInterface->GetNamedSession(NAME_GameSession);
+
+	if (CurrentSession == nullptr)
+	{
+		return false;
+	}
+
+	OutSessionInfo.SessionIndex = -1; // Not from searching
+	OutSessionInfo.Ping = 0; 
+	OutSessionInfo.MaxPlayers = CurrentSession->SessionSettings.NumPublicConnections;
+	OutSessionInfo.CurrentPlayers = OutSessionInfo.MaxPlayers - CurrentSession->NumOpenPublicConnections;
+	OutSessionInfo.OwningUserName = CurrentSession->OwningUserName;
+
+	FString RoomName;
+	if (CurrentSession->SessionSettings.Get(FName("CUSTOM_ROOM_NAME"), RoomName))
+	{
+		OutSessionInfo.CustomRoomName = RoomName;
+	}
+	else
+	{
+		OutSessionInfo.CustomRoomName = CurrentSession->OwningUserName;
+	}
+
+	return true;
 }

@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -36,6 +36,9 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "ER|Session")
 	FString OwningUserName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "ER|Session")
+	FString CustomRoomName;
 };
 
 /**
@@ -56,7 +59,7 @@ public:
 
 	/** Creates a new online session */
 	UFUNCTION(BlueprintCallable, Category = "ER|Session")
-	void CreateSession(int32 NumPublicConnections, bool bIsLANMatch);
+	void CreateSession(int32 NumPublicConnections, bool bIsLANMatch, const FString& CustomRoomName = TEXT("Default Room"));
 
 	/** Finds available online sessions */
 	UFUNCTION(BlueprintCallable, Category = "ER|Session")
@@ -78,6 +81,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ER|Session")
 	TArray<FSessionResultWrapper> GetCustomSearchResults() const;
 
+	/** Gets the comprehensive information of the currently joined session */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ER|Session")
+	bool GetCurrentSessionInfo(FSessionResultWrapper& OutSessionInfo) const;
 
 public:
 	// Delegates for UI or to notify other systems
