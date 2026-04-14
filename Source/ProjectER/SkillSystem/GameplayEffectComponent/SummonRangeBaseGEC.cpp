@@ -64,7 +64,6 @@ void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, cons
 		Params.Normal = CueDirection;
 		Params.SourceObject = const_cast<USummonRangeBaseGEC*>(this);
 
-		// [삭제] 시각 정보(ClientActivationTime)가 이미 컨텍스트에 담겨 있으므로 별도의 예측 키 주입이 불필요합니다.
 
 		ASC->ExecuteGameplayCue(this->RangeSpawnVfx->CueTag, Params);
 	}
@@ -76,7 +75,6 @@ void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, cons
 		Params.Normal = CueDirection;
 		Params.SourceObject = const_cast<USummonRangeBaseGEC*>(this);
 
-		// [삭제] 시각 정보(ClientActivationTime)가 이미 컨텍스트에 담겨 있으므로 별도의 예측 키 주입이 불필요합니다.
 
 		ASC->ExecuteGameplayCue(this->RangeSpawnSound->CueTag, Params);
 	}
@@ -117,7 +115,7 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 		return;
 	}
 
-	// 1. 타켓 식별 및 위치 계산 ([V7.2] PreApplyEffect에서 보정된 Origin 우선 사용)
+	// 1. 타켓 식별 및 위치 계산 (PreApplyEffect에서 보정된 Origin 우선 사용)
 	FTransform SpawnTransform = FTransform::Identity;
 	if (ContextHandle.HasOrigin())
 	{
@@ -215,11 +213,7 @@ FTransform USummonRangeBaseGEC::CalculateOriginTransform(const FGameplayEffectSp
 	return FTransform::Identity;
 }
 
-void USummonRangeBaseGEC::ExecuteGameplayCues(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* EffectInstigator, ABaseRangeOverlapEffectActor* RangeActor, const FTransform& SpawnTransform, const FTransform& OriginTransform) const
-{
-	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 통합 처리합니다. 
-	// 이제 GE에 등록된 GameplayCue 태그가 트리거되면 UProjectERASC에서 가로채어 SourceObject(Config)를 주입합니다.
-}
+
 
 AActor* USummonRangeBaseGEC::GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const
 {

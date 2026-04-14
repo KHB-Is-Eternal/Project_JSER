@@ -114,7 +114,7 @@ void ULaunchHomingMissile::OnExecutePredictive(UAbilitySystemComponent* ASC, con
 		FGameplayCueParameters Params(*SpecHandle.Data.Get());
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
-		// [삭제] 시각 정보(ClientActivationTime)가 이미 컨텍스트에 담겨 있으므로 별도의 예측 키 주입이 불필요합니다.
+
 		
 		ASC->ExecuteGameplayCue(this->MissileVfx->CueTag, Params);
 	}
@@ -125,7 +125,7 @@ void ULaunchHomingMissile::OnExecutePredictive(UAbilitySystemComponent* ASC, con
 		FGameplayCueParameters Params(*SpecHandle.Data.Get());
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
-		// [삭제] 시각 정보(ClientActivationTime)가 이미 컨텍스트에 담겨 있으므로 별도의 예측 키 주입이 불필요합니다.
+
 		
 		ASC->ExecuteGameplayCue(this->MissileSound->CueTag, Params);
 	}
@@ -184,7 +184,7 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 		return;
 	}
 
-	// [V7.2] PreApplyEffect에서 보정된 트랜스폼을 사용합니다.
+	// PreApplyEffect에서 보정된 트랜스폼을 사용합니다.
 	FTransform SpawnTransform = CalculateSpawnTransform(Instigator, TargetActor);
 	if (ContextHandle.HasOrigin())
 	{
@@ -292,7 +292,7 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 
 
 	// --- 시각 효과 실행 ---
-	// [수정] 네이티브 GameplayCue 시스템이 기존 로직을 대체합니다.
+	// 네이티브 GameplayCue 시스템이 기존 로직을 대체합니다.
 	// 시전자에 관여된 효과는 몽타주 AnimNotify 등에서 담당합니다.
 	ExecuteVfx(GESpec, ContextHandle, Instigator, MissileActor);
 	ExecuteSound(GESpec, ContextHandle, Instigator, MissileActor);
@@ -353,7 +353,7 @@ void ULaunchHomingMissile::ExecuteVfx(
 	AActor* Instigator,
 	ABaseMissileActor* MissileActor) const
 {
-	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 예측 발사 효과를 처리합니다. 
+	// 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 예측 발사 효과를 처리합니다. 
 }
 
 void ULaunchHomingMissile::ExecuteSound(
@@ -362,5 +362,5 @@ void ULaunchHomingMissile::ExecuteSound(
 	AActor* Instigator,
 	ABaseMissileActor* MissileActor) const
 {
-	// [수정] 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 예측 발송 사운드를 처리합니다. 
+	// 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 예측 발송 사운드를 처리합니다. 
 }
