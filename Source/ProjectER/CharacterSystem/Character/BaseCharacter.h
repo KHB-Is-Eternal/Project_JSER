@@ -237,6 +237,16 @@ private:
 	// 갱신 타이머
 	float PathfindingTimer = 0.0f;
 	
+	// ─── 경로 캐싱 ───
+	/** 마지막으로 경로를 계산한 목적지 */
+	FVector LastPathDestination = FVector::ZeroVector;
+	/** 경로 재계산을 건너뛸 거리 임계값 (cm) */
+	static constexpr float PathReuseThreshold = 100.0f;
+	/** 캐싱된 경로가 생성된 이후 경과 시간 (초) */
+	float TimeSinceLastPathCalc = 0.0f;
+	/** 최대 캐싱 유효기간 (초) — 초과 시 강제 재계산 */
+	static constexpr float MaxPathCacheAge = 1.0f;
+	
 #pragma endregion
 	
 #pragma region Combat
