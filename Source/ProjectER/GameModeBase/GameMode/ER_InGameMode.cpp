@@ -1,4 +1,4 @@
-﻿#include "GameModeBase/GameMode/ER_InGameMode.h"
+#include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Respawn/ER_RespawnSubsystem.h"
@@ -166,17 +166,13 @@ void AER_InGameMode::Logout(AController* Exiting)
 					// 인벤토리 데이터 추출
 					if (UBaseInventoryComponent* Inv = OwnedPawn->FindComponentByClass<UBaseInventoryComponent>())
 					{
-						for (TFieldIterator<FArrayProperty> It(UBaseInventoryComponent::StaticClass()); It; ++It)
+						if (FArrayProperty* ArrayProp = FindFProperty<FArrayProperty>(UBaseInventoryComponent::StaticClass(), TEXT("InventoryContents")))
 						{
-							if (It->GetName() == TEXT("InventoryContents"))
+							FScriptArrayHelper Helper(ArrayProp, ArrayProp->ContainerPtrToValuePtr<void>(Inv));
+							for (int32 i = 0; i < Helper.Num(); ++i)
 							{
-								FScriptArrayHelper Helper(*It, It->ContainerPtrToValuePtr<void>(Inv));
-								for (int32 i = 0; i < Helper.Num(); ++i)
-								{
-									UBaseItemData* Item = *reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i));
-									Data.SavedInventory.Add(Item);
-								}
-								break;
+								UBaseItemData* Item = *reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i));
+								Data.SavedInventory.Add(Item);
 							}
 						}
 						
@@ -380,15 +376,10 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 			// ASC ActorInfo가 먼저 설정되어 있어야 함 (Possess 이후 시점이므로 안전)
 			for (const auto& Pair : FoundData->SavedAttributes)
 			{
-				FGameplayAttribute Attribute;
-				for (TFieldIterator<FProperty> It(UBaseAttributeSet::StaticClass()); It; ++It)
-				{
-					if (It->GetName() == Pair.Key)
-					{
-						Attribute = FGameplayAttribute(*It);
-						break;
-					}
-				}
+				FProperty* FoundProp = FindFProperty<FProperty>(UBaseAttributeSet::StaticClass(), FName(*Pair.Key));
+				if (!FoundProp) continue;
+
+				FGameplayAttribute Attribute(FoundProp);
 
 				if (Attribute.IsValid())
 				{
@@ -407,17 +398,13 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 		{
 			if (UBaseInventoryComponent* Inv = PreservedPawn->FindComponentByClass<UBaseInventoryComponent>())
 			{
-				for (TFieldIterator<FArrayProperty> It(UBaseInventoryComponent::StaticClass()); It; ++It)
+				if (FArrayProperty* ArrayProp = FindFProperty<FArrayProperty>(UBaseInventoryComponent::StaticClass(), TEXT("InventoryContents")))
 				{
-					if (It->GetName() == TEXT("InventoryContents"))
+					FScriptArrayHelper Helper(ArrayProp, ArrayProp->ContainerPtrToValuePtr<void>(Inv));
+					Helper.EmptyAndAddValues(FoundData->SavedInventory.Num());
+					for (int32 i = 0; i < FoundData->SavedInventory.Num(); ++i)
 					{
-						FScriptArrayHelper Helper(*It, It->ContainerPtrToValuePtr<void>(Inv));
-						Helper.EmptyAndAddValues(FoundData->SavedInventory.Num());
-						for (int32 i = 0; i < FoundData->SavedInventory.Num(); ++i)
-						{
-							*reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i)) = FoundData->SavedInventory[i];
-						}
-						break;
+						*reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i)) = FoundData->SavedInventory[i];
 					}
 				}
 				
