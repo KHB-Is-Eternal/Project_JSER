@@ -4,6 +4,10 @@
 #include "GameplayCueNotify_Actor.h"
 #include "AGCN_SummonedActor.generated.h"
 
+class UNiagaraComponent;
+class UProjectileMovementComponent;
+class USkillNiagaraSpawnConfig;
+
 /**
  * 소환물 비주얼을 담당하며 예측 키를 통해 판정 액터와 동기화되는 GCN 액터
  */
@@ -25,6 +29,25 @@ protected:
 
 	/** GEC 데이터로부터 속성 초기화 */
 	void InitializeFromGEC(const UObject* SourceObject);
+
+	/** Parameters와 Context로부터 실제 시전자를 찾아 반환합니다. */
+	AActor* GetActualInstigator(const FGameplayCueParameters& Parameters) const;
+
+protected:
+	/** 나이아가라 컴포넌트 초기화 및 재생 */
+	void SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig);
+
+	/** 이동 컴포넌트 초기화 및 활성화 */
+	void SetupMovementComponent(const UObject* SourceObject);
+
+public:
+	/** 비주얼을 담당하는 나이아가라 컴포넌트 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Visual")
+	TObjectPtr<UNiagaraComponent> VfxComponent;
+
+	/** 예측 이동을 담당하는 컴포넌트 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Movement")
+	TObjectPtr<UProjectileMovementComponent> MovementComponent;
 
 public:
 	/** 캐싱된 GEC 데이터를 반환합니다. */

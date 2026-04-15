@@ -32,7 +32,7 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 			Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
 			{
-				FScopedPredictionWindow ForcedWindow(TargetASC, FPredictionKey(), false);
+				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 				TargetASC->AddGameplayCue(this->ActiveVfxConfig->CueTag, Params);
 			}
 
@@ -41,7 +41,7 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 				{
 					if (IsValid(TargetASC))
 					{
-						FScopedPredictionWindow ForcedWindow(TargetASC, FPredictionKey(), false);
+						FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 						TargetASC->RemoveGameplayCue(CueTag);
 					}
 				});
@@ -56,7 +56,7 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 			Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
 			{
-				FScopedPredictionWindow ForcedWindow(TargetASC, FPredictionKey(), false);
+				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 				TargetASC->AddGameplayCue(this->ActiveSoundConfig->CueTag, Params);
 			}
 
@@ -65,7 +65,7 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 				{
 					if (IsValid(TargetASC))
 					{
-						FScopedPredictionWindow ForcedWindow(TargetASC, FPredictionKey(), false);
+						FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 						TargetASC->RemoveGameplayCue(CueTag);
 					}
 				});

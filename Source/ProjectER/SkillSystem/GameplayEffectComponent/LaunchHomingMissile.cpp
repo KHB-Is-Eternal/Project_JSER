@@ -24,7 +24,7 @@ ULaunchHomingMissile::ULaunchHomingMissile()
 {
 }
 
-void ULaunchHomingMissile::PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const
+void ULaunchHomingMissile::PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
 {
 	if (!IsValid(ASC)) return;
 
@@ -96,7 +96,14 @@ void ULaunchHomingMissile::PreApplyEffect(UAbilitySystemComponent* ASC, const FG
 	}
 }
 
-void ULaunchHomingMissile::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const
+void ULaunchHomingMissile::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
+{
+	// [V7.3] 시전자 클라이언트의 예측 VFX 로직을 OnExecuteVFXCue로 통합하여 호출합니다.
+	// SkillBase에서 IsLocallyControlled()일 때만 OnExecutePredictive를 호출하므로 안전합니다.
+	OnExecuteVFXCue(ASC, ContextHandle, GESpec);
+}
+
+void ULaunchHomingMissile::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
 {
 	if (!IsValid(ASC)) return;
 
@@ -111,23 +118,33 @@ void ULaunchHomingMissile::OnExecutePredictive(UAbilitySystemComponent* ASC, con
 	// 2. 미사일 발사 시각 효과(VFX) 트리거
 	if (IsValid(this->MissileVfx) && this->MissileVfx->CueTag.IsValid())
 	{
-		FGameplayCueParameters Params(*SpecHandle.Data.Get());
+		FGameplayCueParameters Params(GESpec);
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
-
 		
-		ASC->ExecuteGameplayCue(this->MissileVfx->CueTag, Params);
+		Params.Instigator = ContextHandle.GetInstigator();
+		Params.EffectCauser = ASC->GetAvatarActor();
+		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
+
+		{
+			ASC->ExecuteGameplayCue(this->MissileVfx->CueTag, Params);
+		}
 	}
 
 	// 3. 미사일 발사 사운드 트리거
 	if (IsValid(this->MissileSound) && this->MissileSound->CueTag.IsValid())
 	{
-		FGameplayCueParameters Params(*SpecHandle.Data.Get());
+		FGameplayCueParameters Params(GESpec);
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
 
-		
-		ASC->ExecuteGameplayCue(this->MissileSound->CueTag, Params);
+		Params.Instigator = ContextHandle.GetInstigator();
+		Params.EffectCauser = ASC->GetAvatarActor();
+		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
+
+		{
+			ASC->ExecuteGameplayCue(this->MissileSound->CueTag, Params);
+		}
 	}
 }
 
@@ -200,6 +217,9 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 	{
 		return;
 	}
+
+	// [V7.3] 서버에서 실제 GE가 적용되는 시점에 관전자들에게 VFX를 브로드캐스트합니다.
+	OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec);
 
 	// --- 미사일 액터 지연 생성 ---
 	APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
@@ -291,11 +311,8 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 
 
 
-	// --- 시각 효과 실행 ---
-	// 네이티브 GameplayCue 시스템이 기존 로직을 대체합니다.
-	// 시전자에 관여된 효과는 몽타주 AnimNotify 등에서 담당합니다.
-	ExecuteVfx(GESpec, ContextHandle, Instigator, MissileActor);
-	ExecuteSound(GESpec, ContextHandle, Instigator, MissileActor);
+	// --- 스폰 완료 ---
+	MissileActor->FinishSpawning(SpawnTransform);
 }
 
 FTransform ULaunchHomingMissile::CalculateSpawnTransform(

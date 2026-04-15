@@ -1,14 +1,59 @@
 #include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
+#include "SkillSystem/GameplayCueNotify/ProjectERSummonedActorInterface.h"
 
 void UGCN_SummonedRegistrySubsystem::RegisterVfxActor(AActor* Instigator, float ActivationTime, AActor* VfxActor)
 {
-	if (!VfxActor)
+	if (!VfxActor) return;
+
+	// 1. 이미 기다리고 있는 판정 액터가 있는지 확인 (Late Binding)
+	float Tolerance = 0.5f;
+	float BestDelta = Tolerance;
+	FGCN_SummonedKey BestKey;
+	AActor* BestPendingActor = nullptr;
+
+	for (auto& Pair : PendingActors)
 	{
+		if (Pair.Key.Instigator == Instigator && Pair.Value.IsValid())
+		{
+			float Delta = FMath::Abs(Pair.Key.ActivationTime - ActivationTime);
+			if (Delta < BestDelta)
+			{
+				BestDelta = Delta;
+				BestKey = Pair.Key;
+				BestPendingActor = Pair.Value.Get();
+			}
+		}
+	}
+
+	if (BestPendingActor)
+	{
+		PendingActors.Remove(BestKey);
+		
+		// 2. 즉시 핸드셰이크 수행 (VFX를 액터에 부착)
+		FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
+		VfxActor->AttachToActor(BestPendingActor, AttachRules);
+
+		// 판정 액터에게 핸드셰이크 완료 알림 (데이터 동기화 등 수행)
+		// 액터가 해당 인터페이스를 가지고 있다면 호출하거나, 직접 캐스팅 시도
+		if (BestPendingActor->GetClass()->ImplementsInterface(UProjectERSummonedActorInterface::StaticClass()) || 
+			BestPendingActor->Implements<UProjectERSummonedActorInterface>())
+		{
+			IProjectERSummonedActorInterface::Execute_OnVfxHandshakeCompleted(BestPendingActor, VfxActor);
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Late Handshake Success! Bound VFX: %s to Waiting Actor: %s"), 
+			*VfxActor->GetName(), *BestPendingActor->GetName());
 		return;
 	}
 
+	// 3. 기다리는 액터가 없다면 VFX 레지스트리에 등록
 	FGCN_SummonedKey RegistryKey(Instigator, ActivationTime);
 	VfxRegistry.Add(RegistryKey, VfxActor);
+
+	UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Register VFX: %s (%p) for Instigator: %s (%p) at Time: %f"), 
+		*VfxActor->GetName(), VfxActor,
+		Instigator ? *Instigator->GetName() : TEXT("nullptr"), Instigator,
+		ActivationTime);
 }
 
 AActor* UGCN_SummonedRegistrySubsystem::GetAndUnregisterVfxActor(AActor* Instigator, float ActivationTime)
@@ -19,8 +64,74 @@ AActor* UGCN_SummonedRegistrySubsystem::GetAndUnregisterVfxActor(AActor* Instiga
 	{
 		AActor* VfxActor = FoundActorPtr->Get();
 		VfxRegistry.Remove(RegistryKey);
-		return VfxActor;
+
+		if (VfxActor)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Handshake Success! Found VFX: %s for Instigator: %s at Time: %f"), 
+				*VfxActor->GetName(), 
+				Instigator? *Instigator->GetName() : TEXT("nullptr"), 
+				ActivationTime);
+				
+			return VfxActor;
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[GCNRegistry] Handshake Failed. No entry for Instigator: %s (%p) at Time: %f"), 
+		Instigator ? *Instigator->GetName() : TEXT("nullptr"), Instigator,
+		ActivationTime);
+
+	return nullptr;
+}
+
+AActor* UGCN_SummonedRegistrySubsystem::FindAndUnregisterVfxActorFuzzy(AActor* Instigator, float TargetTime, float Tolerance)
+{
+	// 1. 정확한 매칭 우선 시도
+	if (AActor* ExactMatch = GetAndUnregisterVfxActor(Instigator, TargetTime))
+	{
+		return ExactMatch;
+	}
+
+	// 2. Instigator 기준 최근접 시간 퍼지 매칭 (클라이언트-서버 시간 차이 보상)
+	float BestDelta = Tolerance;
+	FGCN_SummonedKey BestKey;
+	AActor* BestActor = nullptr;
+
+	for (auto& Pair : VfxRegistry)
+	{
+		if (Pair.Key.Instigator == Instigator && Pair.Value.IsValid())
+		{
+			float Delta = FMath::Abs(Pair.Key.ActivationTime - TargetTime);
+			if (Delta < BestDelta)
+			{
+				BestDelta = Delta;
+				BestKey = Pair.Key;
+				BestActor = Pair.Value.Get();
+			}
+		}
+	}
+
+	if (BestActor)
+	{
+		VfxRegistry.Remove(BestKey);
+		UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Fuzzy Handshake Success! Found VFX: %s for Instigator: %s (TimeDelta: %f)"), 
+			*BestActor->GetName(), 
+			Instigator ? *Instigator->GetName() : TEXT("nullptr"),
+			BestDelta);
+		return BestActor;
 	}
 
 	return nullptr;
+}
+
+void UGCN_SummonedRegistrySubsystem::RegisterPendingActorFuzzy(AActor* Instigator, float ActivationTime, AActor* PendingActor)
+{
+	if (!PendingActor) return;
+
+	FGCN_SummonedKey RegistryKey(Instigator, ActivationTime);
+	PendingActors.Add(RegistryKey, PendingActor);
+
+	UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Register Pending Actor: %s for Instigator: %s at Time: %f (Waiting for VFX)"), 
+		*PendingActor->GetName(), 
+		Instigator ? *Instigator->GetName() : TEXT("nullptr"), 
+		ActivationTime);
 }

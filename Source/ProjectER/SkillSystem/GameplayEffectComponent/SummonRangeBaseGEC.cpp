@@ -19,7 +19,7 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/GameState.h"
 
-void USummonRangeBaseGEC::PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const
+void USummonRangeBaseGEC::PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
 {
 	if (!IsValid(ASC)) return;
 
@@ -30,7 +30,7 @@ void USummonRangeBaseGEC::PreApplyEffect(UAbilitySystemComponent* ASC, const FGa
 
 	// 1. 타겟 식별 및 기준 위치(Origin) 계산
 	AActor* const TargetActor = nullptr; // Target을 뽑아오는건 Container에서 해야 가장 정확하지만, 여기서는 Context의 HitResult 사용
-	const FTransform OriginTransform = CalculateOriginTransform(*SpecHandle.Data.Get(), EffectInstigator, TargetActor);
+	const FTransform OriginTransform = CalculateOriginTransform(GESpec, EffectInstigator, TargetActor);
 	const FTransform SpawnTransform = ApplyCommonSpawnOptionsToTransform(OriginTransform, EffectInstigator);
 
 	// 2. 보정된 결과(Origin)를 Context에 기록
@@ -46,7 +46,14 @@ void USummonRangeBaseGEC::PreApplyEffect(UAbilitySystemComponent* ASC, const FGa
 	}
 }
 
-void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpecHandle& SpecHandle) const
+void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
+{
+	// [V7.3] 시전자 클라이언트의 예측 VFX 로직을 OnExecuteVFXCue로 통합하여 호출합니다.
+	// SkillBase에서 IsLocallyControlled()일 때만 OnExecutePredictive를 호출하므로 안전합니다.
+	OnExecuteVFXCue(ASC, ContextHandle, GESpec);
+}
+
+void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
 {
 	if (!IsValid(ASC)) return;
 
@@ -59,24 +66,36 @@ void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, cons
 
 	if (IsValid(this->RangeSpawnVfx) && this->RangeSpawnVfx->CueTag.IsValid())
 	{
-		FGameplayCueParameters Params(*SpecHandle.Data.Get());
+		FGameplayCueParameters Params(GESpec);
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
 		Params.SourceObject = const_cast<USummonRangeBaseGEC*>(this);
+		
+		// 1. 시전자 정보 명시적 주입 (핸드셰이크 필수)
+		Params.Instigator = ContextHandle.GetInstigator();
+		Params.EffectCauser = ASC->GetAvatarActor();
+		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
 
-
-		ASC->ExecuteGameplayCue(this->RangeSpawnVfx->CueTag, Params);
+		{
+			// GEC 내부의 개별 예측 창은 Leak의 원인이 되므로 제거하고 상위(SkillBase)의 창을 따릅니다.
+			ASC->ExecuteGameplayCue(this->RangeSpawnVfx->CueTag, Params);
+		}
 	}
 
 	if (IsValid(this->RangeSpawnSound) && this->RangeSpawnSound->CueTag.IsValid())
 	{
-		FGameplayCueParameters Params(*SpecHandle.Data.Get());
+		FGameplayCueParameters Params(GESpec);
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
 		Params.SourceObject = const_cast<USummonRangeBaseGEC*>(this);
 
+		Params.Instigator = ContextHandle.GetInstigator();
+		Params.EffectCauser = ASC->GetAvatarActor();
+		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
 
-		ASC->ExecuteGameplayCue(this->RangeSpawnSound->CueTag, Params);
+		{
+			ASC->ExecuteGameplayCue(this->RangeSpawnSound->CueTag, Params);
+		}
 	}
 }
 
@@ -136,6 +155,9 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 	// 2. 권한 확인: 실제 액터 소환은 서버에서만 수행합니다. (중복 소환 방지)
 	if (ActiveGEContainer.Owner && ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
 	{
+		// [V7.3] 서버에서 실제 GE가 적용되는 시점에 관전자들에게 VFX를 브로드캐스트합니다.
+		OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec);
+
 		// 3. 액터 소환 (지연 생성)
 		APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
 		ABaseRangeOverlapEffectActor* const DeferredSpawnedActor = World->SpawnActorDeferred<ABaseRangeOverlapEffectActor>(
@@ -144,6 +166,11 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 			EffectInstigator,
 			SpawnInstigator,
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+
+		UE_LOG(LogTemp, Log, TEXT("SummonRangeBaseGEC::OnGameplayEffectApplied - Server Spawn. Actor: %s, Instigator: %s, Time: %f"), 
+			DeferredSpawnedActor ? *DeferredSpawnedActor->GetName() : TEXT("nullptr"),
+			EffectInstigator ? *EffectInstigator->GetName() : TEXT("nullptr"),
+			ContextHandle.Get() ? static_cast<const FProjectERGameplayEffectContext*>(ContextHandle.Get())->ClientActivationTime : 0.0f);
 			
 		if (IsValid(DeferredSpawnedActor))
 		{

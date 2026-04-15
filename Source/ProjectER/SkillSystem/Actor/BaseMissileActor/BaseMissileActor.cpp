@@ -51,29 +51,41 @@ void ABaseMissileActor::PostNetInit()
 	{
 		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
-			// (시전자 + 시전 시간) 조합으로 검색
-			if (AActor* VfxActor = Registry->GetAndUnregisterVfxActor(InstigatorActor, ClientActivationTime))
+			// (시전자 + 시전 시간) 조합으로 퍼지 비주얼 검색 (서버-클라이언트 간의 작은 시간 오차 보정, 0.5초 허용)
+			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
 			{
-				// 찾았다면 자신에게 부착 (Snap to Target)
-				FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
-				VfxActor->AttachToActor(this, AttachRules);
+				OnVfxHandshakeCompleted_Implementation(VfxActor);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("ABaseMissileActor: Handshake Failed in PostNetInit. (Registering as Pending)"));
+				Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);
+			}
+		}
+	}
+}
 
-				// [고급 동기화] 비주얼 액터가 들고 있는 SourceObject(GEC)로부터 물리 설정값 동기화
-				if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
-				{
-					if (const ULaunchHomingMissile* MissileGEC = Cast<ULaunchHomingMissile>(SummonedGCN->GetSourceObject()))
-					{
-						if (IsValid(ProjectileMovement))
-						{
-							ProjectileMovement->InitialSpeed = MissileGEC->InitialSpeed;
-							ProjectileMovement->MaxSpeed = MissileGEC->MaxSpeed;
-							ProjectileMovement->HomingAccelerationMagnitude = MissileGEC->HomingAccelerationMagnitude;
-							ProjectileMovement->bIsHomingProjectile = (MissileGEC->HomingAccelerationMagnitude > 0.f);
-							
-							UE_LOG(LogTemp, Log, TEXT("ABaseMissileActor: Synced physics from GEC (Speed: %f, Homing: %f)"), MissileGEC->InitialSpeed, MissileGEC->HomingAccelerationMagnitude);
-						}
-					}
-				}
+void ABaseMissileActor::OnVfxHandshakeCompleted_Implementation(AActor* VfxActor)
+{
+	if (!VfxActor) return;
+
+	// 찾았다면 자신에게 부착 (Snap to Target)
+	FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
+	VfxActor->AttachToActor(this, AttachRules);
+
+	// [고급 동기화] 비주얼 액터가 들고 있는 SourceObject(GEC)로부터 물리 설정값 동기화
+	if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
+	{
+		if (const ULaunchHomingMissile* MissileGEC = Cast<ULaunchHomingMissile>(SummonedGCN->GetSourceObject()))
+		{
+			if (IsValid(ProjectileMovement))
+			{
+				ProjectileMovement->InitialSpeed = MissileGEC->InitialSpeed;
+				ProjectileMovement->MaxSpeed = MissileGEC->MaxSpeed;
+				ProjectileMovement->HomingAccelerationMagnitude = MissileGEC->HomingAccelerationMagnitude;
+				ProjectileMovement->bIsHomingProjectile = (MissileGEC->HomingAccelerationMagnitude > 0.f);
+				
+				UE_LOG(LogTemp, Log, TEXT("ABaseMissileActor: Synced physics from GEC (Speed: %f, Homing: %f)"), MissileGEC->InitialSpeed, MissileGEC->HomingAccelerationMagnitude);
 			}
 		}
 	}

@@ -7,6 +7,7 @@
 #include "GameplayEffectTypes.h"
 #include "GameplayPrediction.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnSettings.h"
+#include "SkillSystem/GameplayCueNotify/ProjectERSummonedActorInterface.h"
 #include "BaseRangeOverlapEffectActor.generated.h"
 
 class UShapeComponent;
@@ -16,12 +17,15 @@ class UCapsuleComponent;
 class UAreaPeriodicEffectComponent;
 
 UCLASS()
-class PROJECTER_API ABaseRangeOverlapEffectActor : public AActor {
+class PROJECTER_API ABaseRangeOverlapEffectActor : public AActor, public IProjectERSummonedActorInterface {
   GENERATED_BODY()
 
 public:
   // Sets default values for this actor's properties
   ABaseRangeOverlapEffectActor();
+
+  // IProjectERSummonedActorInterface interface implementation
+  virtual void OnVfxHandshakeCompleted_Implementation(AActor* VfxActor) override;
 
   void InitializeEffectData(
       const TArray<FGameplayEffectSpecHandle> &InEffectSpecHandles,
@@ -69,7 +73,7 @@ protected:
   UPROPERTY()
   TArray<FGameplayEffectSpecHandle> EffectSpecHandles;
 
-  UPROPERTY()
+  UPROPERTY(Replicated)
   TObjectPtr<AActor> InstigatorActor;
 
   UPROPERTY()

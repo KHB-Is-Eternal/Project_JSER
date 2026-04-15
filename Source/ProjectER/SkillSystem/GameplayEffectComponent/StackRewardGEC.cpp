@@ -74,12 +74,15 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 				{
 					// --- VFX 발동 로직 ---
 					// 1. 시전자(Instigator) 피드백 VFX
-					FScopedPredictionWindow ForcedWindow(SourceASC, FPredictionKey(), false);
 					if (IsValid(RewardInfo.InstigatorVfxConfig.Get()) && RewardInfo.InstigatorVfxConfig->CueTag.IsValid())
 					{
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorVfxConfig.Get();
-						SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorVfxConfig->CueTag, Params);
+
+						{
+							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
+							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorVfxConfig->CueTag, Params);
+						}
 					}
 					// 2. 발동 대상(Target) 피드백 VFX
 					if (IsValid(RewardInfo.TargetVfxConfig.Get()) && RewardInfo.TargetVfxConfig->CueTag.IsValid())
@@ -93,18 +96,24 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 						
-						SourceASC->ExecuteGameplayCue(RewardInfo.TargetVfxConfig->CueTag, Params);
+						{
+							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
+							SourceASC->ExecuteGameplayCue(RewardInfo.TargetVfxConfig->CueTag, Params);
+						}
 					}
 				}
 
 				{
 					// --- Sound 발동 로직 ---
-					FScopedPredictionWindow ForcedWindow(SourceASC, FPredictionKey(), false);
 					if (IsValid(RewardInfo.InstigatorSoundConfig.Get()) && RewardInfo.InstigatorSoundConfig->CueTag.IsValid())
 					{
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorSoundConfig.Get();
-						SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorSoundConfig->CueTag, Params);
+
+						{
+							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
+							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorSoundConfig->CueTag, Params);
+						}
 					}
 
 					if (IsValid(RewardInfo.TargetSoundConfig.Get()) && RewardInfo.TargetSoundConfig->CueTag.IsValid())
@@ -117,7 +126,10 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 
-						SourceASC->ExecuteGameplayCue(RewardInfo.TargetSoundConfig->CueTag, Params);
+						{
+							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
+							SourceASC->ExecuteGameplayCue(RewardInfo.TargetSoundConfig->CueTag, Params);
+						}
 					}
 				}
 			}

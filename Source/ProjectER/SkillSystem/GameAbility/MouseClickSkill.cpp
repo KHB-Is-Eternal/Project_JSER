@@ -8,8 +8,12 @@
 #include "Monster/BaseMonster.h"
 #include "SkillSystem/GameplayAbilityTargetActor/MouseLocationTargetActor.h"
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
+#include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "AbilitySystemComponent.h"
+#include "GameFramework/GameStateBase.h"
 
 UMouseClickSkill::UMouseClickSkill()
 {
@@ -82,50 +86,28 @@ void UMouseClickSkill::ExecuteSkill()
 	AActor* Avatar = GetAvatarActorFromActorInfo();
 	if (IsValid(Avatar) == false) return;
 
-	if (HasAuthority(&CurrentActivationInfo))
+	UAbilitySystemComponent* InstigatorASC = GetAbilitySystemComponentFromActorInfo();
+	if (!IsValid(InstigatorASC)) return;
+
+	const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
+	FGameplayEffectContext* EffectContext = TargetLocationEffectContext.Get();
+	if (EffectContext == nullptr || !EffectContext->HasOrigin())
 	{
-		FGameplayEffectContext* EffectContext = TargetLocationEffectContext.Get();
-		if (EffectContext == nullptr || !EffectContext->HasOrigin())
-		{
-			UE_LOG(LogTemp, Warning, TEXT("ExecuteSkill::TargetLocationEffectContext has no valid origin"));
-			//FinishSkill();
-			return;
-		}
-
-		EffectContext->SetAbility(this);
-
-		UAbilitySystemComponent* InstigatorASC = GetAbilitySystemComponentFromActorInfo();
-		if (!IsValid(InstigatorASC))
-		{
-			//FinishSkill();
-			return;
-		}
-
-		// const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
-		// for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : ExecutionEffects)
-		// {
-		// 	if (!IsValid(EffectClass)) continue;
-
-		// 	FGameplayEffectSpecHandle SpecHandle = InstigatorASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), TargetLocationEffectContext);
-		// 	if (SpecHandle.IsValid())
-		// 	{
-				
-		// 		InstigatorASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get(), InstigatorASC->GetPredictionKeyForNewAction());
-		// 	}
-		// }
-
-		const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
-		ApplyExcutionEffectToSelf(ExecutionEffects, TargetLocationEffectContext);
-
-		ABaseCharacter* Character = Cast<ABaseCharacter>(Avatar);
-		if (Character) Character->StopMove();
+		UE_LOG(LogTemp, Warning, TEXT("ExecuteSkill::TargetLocationEffectContext has no valid origin"));
+		return;
 	}
+	EffectContext->SetAbility(this);
+	
+	ApplyExcutionEffectToSelf(ExecutionEffects, TargetLocationEffectContext);
+	ABaseCharacter* Character = Cast<ABaseCharacter>(Avatar);
+	if (Character) Character->StopMove();
 
 	if (IsLocallyControlled())
 	{
 		OnExecuteSkill_InClient();
 	}
 }
+
 
 void UMouseClickSkill::OnCancelAbility()
 {

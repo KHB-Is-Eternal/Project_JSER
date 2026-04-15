@@ -216,6 +216,10 @@ void USkillBase::OnActiveTagEventReceived(FGameplayEventData Payload)
 	else{
 		SetSkillTagCount(CastingTag, 0);
 		SetSkillTagCount(ActiveTag, 1);
+		
+		// 클라이언트가 전달한 정확한 시전 시작 시간을 저장 (렉 보상 및 VFX 동기화용)
+		this->SyncedActivationTime = Payload.EventMagnitude;
+
 		ExecuteSkill();
 	}
 }
@@ -313,9 +317,15 @@ void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGamepla
 
 	if (FProjectERGameplayEffectContext* ERContext = static_cast<FProjectERGameplayEffectContext*>(ContextHandle.Get()))
 	{
-		// 클라이언트 시전 시간 기록 (렉 보상용)
-		if (UWorld* World = GetWorld())
+		// 클라이언트 시전 시간 기록 (렉 보상 및 VFX 동기화용)
+		if (this->SyncedActivationTime > 0.0f)
 		{
+			// 클라이언트가 전송한 정확한 시간을 사용 (서버와 클라이언트 값이 동일함을 보장)
+			ERContext->ClientActivationTime = this->SyncedActivationTime;
+		}
+		else if (UWorld* World = GetWorld())
+		{
+			// 백업 (예: AI 시전)
 			if (AGameStateBase* GameState = World->GetGameState())
 			{
 				ERContext->ClientActivationTime = GameState->GetServerWorldTimeSeconds();
@@ -339,26 +349,32 @@ void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGamepla
 				{
 					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
 					{
-						BaseGEC->PreApplyEffect(ASC, EffectSpecificContext, SpecHandle);
-					}
-				}
-			}
-
-			// [Phase 2] 비주얼 실행 (OnExecutePredictive)
-			// 로컬 예측 클라이언트와 서버(브로드캐스트) 양측에서 모두 실행됩니다.
-			if (IsLocallyControlled() || ASC->IsOwnerActorAuthoritative())
-			{
-				if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
-				{
-					for (const TObjectPtr<UGameplayEffectComponent>& Component : GEInstance->GetGEComponents())
-					{
-						if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+						BaseGEC->PreApplyEffect(ASC, EffectSpecificContext, *SpecHandle.Data.Get());
+						
+						// [V7.3] Phase 2: 비주얼 실행 (시전자 클라이언트 예측 전용)
+						if (IsLocallyControlled())
 						{
-							BaseGEC->OnExecutePredictive(ASC, EffectSpecificContext, SpecHandle);
+							BaseGEC->OnExecutePredictive(ASC, EffectSpecificContext, *SpecHandle.Data.Get());
 						}
 					}
 				}
 			}
+
+			// // [Phase 2] 비주얼 실행 (OnExecutePredictive)
+			// // 로컬 예측 클라이언트와 서버(브로드캐스트) 양측에서 모두 실행됩니다.
+			// if (IsLocallyControlled() || ASC->IsOwnerActorAuthoritative())
+			// {
+			// 	if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
+			// 	{
+			// 		for (const TObjectPtr<UGameplayEffectComponent>& Component : GEInstance->GetGEComponents())
+			// 		{
+			// 			if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+			// 			{
+			// 				BaseGEC->OnExecutePredictive(ASC, EffectSpecificContext, SpecHandle);
+			// 			}
+			// 		}
+			// 	}
+			// }
 
 			// [Phase 3] 실제 GE 적용 (서버 권한 로직 실행)
 			ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), ASC);
