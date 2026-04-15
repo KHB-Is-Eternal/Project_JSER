@@ -5,7 +5,7 @@
 UGA_MonsterState_Death::UGA_MonsterState_Death()
 {
 	StateInitData.MonsterAssetTags = FGameplayTagContainer(FGameplayTag::RequestGameplayTag("Ability.Action.Death"));
-	StateInitData.MontageType = EMonsterMontageType::Dead;
+	StateInitData.MontageType = EMonsterActionType::Death;
 	StateInitData.NiagaraCueTag = FGameplayTag::RequestGameplayTag("GameplayCue.Particle.Action.Death");
 	StateInitData.SoundCueTag = FGameplayTag::RequestGameplayTag("GameplayCue.Sound.Action.Death");
 	StateInitData.WaitTag = FGameplayTag::RequestGameplayTag("State.Life.Death");

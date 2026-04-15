@@ -11,7 +11,7 @@
 UGA_MonsterState_Chase::UGA_MonsterState_Chase()
 {
 	StateInitData.MonsterAssetTags = FGameplayTagContainer(FGameplayTag::RequestGameplayTag("Ability.Action.Chase"));
-	StateInitData.MontageType = EMonsterMontageType::Move;
+	StateInitData.MontageType = EMonsterActionType::Move;
 	StateInitData.NiagaraCueTag = FGameplayTag::RequestGameplayTag("GameplayCue.Particle.Action.Move");
 	StateInitData.SoundCueTag = FGameplayTag::RequestGameplayTag("GameplayCue.Sound.Action.Move");
 	StateInitData.WaitTag = FGameplayTag::RequestGameplayTag("State.Action.Move");

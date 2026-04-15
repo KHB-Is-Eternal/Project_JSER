@@ -21,8 +21,7 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void SetPlayerCount(int32 Amount);
-	int32 GetPlayerCount();
-	void SetOutSphereRadius(float Radius);
+	int32 GetPlayerCount();	
 
 	void InitMonsterGroup();
 
@@ -69,7 +68,7 @@ private:
 	float PlayerCountSphereRadius = 800;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MonsterRange", meta = (AllowprivateAccess = "true"), meta = (ClampMin = "0.0"))
-	float PlayerOutSphereRadius = 1500;
+	float PlayerOutSphereRadius = 1800;
 
 	UPROPERTY(EditAnywhere, Category = "MonsterRange")
 	bool Debug = false;

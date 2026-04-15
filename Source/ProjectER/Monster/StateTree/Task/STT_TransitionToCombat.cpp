@@ -22,15 +22,22 @@ const UStruct* FSTT_TransitionToCombat::GetInstanceDataType() const
 
 EStateTreeRunStatus FSTT_TransitionToCombat::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	ABaseMonster* Monster = Cast<ABaseMonster>(&Actor);
-	if (IsValid(Monster))
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
 	{
-		Monster->OffCCChanged();
-		return EStateTreeRunStatus::Running;
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_TransitionToCombat::EnterState : Not ActorHandle"));
+		return EStateTreeRunStatus::Failed;;
 	}
-		
-	return EStateTreeRunStatus::Failed;
+	ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
+	if (IsValid(Monster) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_TransitionToCombat::EnterState : Not Monster"));
+		return EStateTreeRunStatus::Failed;;
+	}
+
+	Monster->OffCCChanged();
+
+	return EStateTreeRunStatus::Running;
 }
 
 void FSTT_TransitionToCombat::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const

@@ -23,11 +23,19 @@ const UStruct* FSTC_HasTag::GetInstanceDataType() const
 
 bool FSTC_HasTag::TestCondition(FStateTreeExecutionContext& Context) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTC_HasTag::TestCondition : Not ActorHandle"));
+		return false;
+	}
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Actor);
+	if (IsValid(ASC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTC_HasTag::TestCondition : Not ASC"));
+		return false;
+	}
+
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
-	UAbilitySystemComponent* ASC = 
-		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(&Actor);
-
 	return ASC->HasMatchingGameplayTag(InstanceData.CheckTag) != InstanceData.Invert;
 }

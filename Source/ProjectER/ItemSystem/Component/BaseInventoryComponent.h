@@ -113,6 +113,7 @@ private:
 	void StartNextDrinkManaEffect();
 	void StopDrinkManaTimer();
 	void HandleDrinkManaTick();
+	void ShowRecoveryFloatingText(float Amount, bool bIsMana);
 
 public:
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")

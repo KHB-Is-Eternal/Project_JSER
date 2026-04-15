@@ -22,24 +22,29 @@ const UStruct* FSTCons_AttackCountUtility::GetInstanceDataType() const
 
 float FSTCons_AttackCountUtility::GetScore(FStateTreeExecutionContext& Context) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	if (!IsValid(&Actor))
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTCons_AttackCountUtility::GetScore : Not ActorHandle"));
+		return -1.f;
+	}
+	ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
+	if (IsValid(Monster) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTCons_AttackCountUtility::GetScore : Not Monster"));
+		return -1.f;
+	}
+	UAbilitySystemComponent* ASC = Monster->GetAbilitySystemComponent();
+	if (IsValid(ASC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTCons_AttackCountUtility::GetScore : Not ASC"));
 		return -1.f;
 	}
 
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	ABaseMonster* Monster = Cast<ABaseMonster>(&Actor);
-
-	if (!IsValid(Monster))
-	{
-		return -1.f;
-	}
-
 	if (InstanceData.AttackCountThreshold <= Monster->GetAttackCount())
 	{
-		UAbilitySystemComponent* ASC = Monster->GetAbilitySystemComponent();
-		if (ASC && ASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag("Cooldown.Skill.R")))
+		if (ASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag("Cooldown.Skill.R")))
 		{
 			return 0.f;
 		}
