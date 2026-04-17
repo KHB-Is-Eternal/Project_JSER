@@ -3,6 +3,7 @@
 
 #include "SkillSystem/Actor/BaseRangeOverlapEffectActor/BaseRangeOverlapEffectActor.h"
 #include "Components/ShapeComponent.h"
+#include "NiagaraComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "CharacterSystem/Interface/TargetableInterface.h"
@@ -10,16 +11,19 @@
 #include "UObject/Object.h"
 #include "Net/UnrealNetwork.h"
 #include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
+#include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
+#include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
 
 // Sets default values
 ABaseRangeOverlapEffectActor::ABaseRangeOverlapEffectActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
-}
 
-#include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
-#include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
+	// [Network Optimization] 장판 생성/파괴 소식을 클라이언트에 최고 속도로 전송합니다.
+	//SetNetUpdateFrequency(100.0f);
+	//NetPriority = 3.0f;
+}
 
 void ABaseRangeOverlapEffectActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -27,6 +31,24 @@ void ABaseRangeOverlapEffectActor::GetLifetimeReplicatedProps(TArray<FLifetimePr
 
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, ClientActivationTime);
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, InstigatorActor);
+}
+
+void ABaseRangeOverlapEffectActor::OnRep_InstigatorActor()
+{
+	// 데이터가 도착하면 핸드셰이크 재시도
+	if (InstigatorActor && ClientActivationTime > 0.0f)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+			{
+				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
+				{
+					OnVfxHandshakeCompleted_Implementation(VfxActor);
+				}
+			}
+		}
+	}
 }
 
 void ABaseRangeOverlapEffectActor::PostNetInit()
@@ -41,6 +63,9 @@ void ABaseRangeOverlapEffectActor::PostNetInit()
 	{
 		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
+			// [Debug] 클라이언트의 현재 시간을 함께 출력하여 서버와의 시계 오차(Clock Offset)를 측정합니다.
+			UE_LOG(LogTemp, Warning, TEXT("[CLIENT] ABaseRangeOverlapEffectActor::PostNetInit - WorldTime: %f, KeyTime: %f"), GetWorld()->GetTimeSeconds(), ClientActivationTime);
+
 			UE_LOG(LogTemp, Log, TEXT("ABaseRangeOverlapEffectActor::PostNetInit - Attempting Handshake. Instigator: %s, Time: %f"), 
 				InstigatorActor ? *InstigatorActor->GetName() : TEXT("nullptr"), 
 				ClientActivationTime);
@@ -63,13 +88,21 @@ void ABaseRangeOverlapEffectActor::OnVfxHandshakeCompleted_Implementation(AActor
 {
 	if (!VfxActor) return;
 
-	// 찾았다면 자신에게 부착 (Snap to Target)
-	FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
-	VfxActor->AttachToActor(this, AttachRules);
+	UE_LOG(LogTemp, Log, TEXT("ABaseRangeOverlapEffectActor: VfxActor Name : %s"), *VfxActor->GetName());
 	
-	// [고급 동기화] 비주얼 액터가 들고 있는 SourceObject(GEC)로부터 콜리전 설정값 동기화
+	// [Fix] 언리얼 생명주기 싱크 맞추기 위해 OnDestroyed 델리게이트에 VFX 액터를 바인딩
 	if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
 	{
+		// 액터 전체를 붙이는 대신 알맹이인 나이아가라 컴포넌트만 스킬 액터로 이전해서 부착합니다!
+		if (UNiagaraComponent* NiagaraComp = SummonedGCN->GetVfxComponent())
+		{
+			FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
+			NiagaraComp->AttachToComponent(this->GetRootComponent(), AttachRules);
+		}
+
+		this->OnDestroyed.AddDynamic(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed);
+
+		// [고급 동기화] 비주얼 액터가 들고 있는 SourceObject(GEC)로부터 콜리전 설정값 동기화
 		if (const USummonRangeBaseGEC* RangeGEC = Cast<USummonRangeBaseGEC>(SummonedGCN->GetSourceObject()))
 		{
 			// 장판 크기 적용 (CollisionRadius가 FVector 타입이므로 X나 적절한 성분 활용)
@@ -182,6 +215,7 @@ void ABaseRangeOverlapEffectActor::OnShapeBeginOverlap(UPrimitiveComponent* Over
 
 	if (bDestroyOnOverlap)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[SERVER] BaseRangeOverlapEffectActor::OnShapeBeginOverlap - Time: %f, Destroying Actor: %s"), GetWorld()->GetTimeSeconds(), *GetName());
 		Destroy();
 	}
 }

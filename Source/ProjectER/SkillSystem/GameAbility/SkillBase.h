@@ -65,12 +65,12 @@ private:
 	FORCEINLINE UAbilitySystemComponent* GetASC() const { return GetAbilitySystemComponentFromActorInfo(); }
 	FORCEINLINE AActor* GetAvatar() const { return GetAvatarActorFromActorInfo(); }
 
-	/** 클라이언트로부터 직렬화되어 전달된 정확한 시전 시작 시간 (동기화 및 렉보상용) */
-	float SyncedActivationTime = 0.0f;
-
 public:
 
 protected:
+	/** 클라이언트로부터 직렬화되어 전달된 정확한 시전 시작 시간 (동기화 및 렉보상용) */
+	float SyncedActivationTime = 0.0f;
+
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UBaseSkillConfig> CachedConfig;
 

@@ -50,10 +50,15 @@ void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, cons
 {
 	// [V7.3] 시전자 클라이언트의 예측 VFX 로직을 OnExecuteVFXCue로 통합하여 호출합니다.
 	// SkillBase에서 IsLocallyControlled()일 때만 OnExecutePredictive를 호출하므로 안전합니다.
-	OnExecuteVFXCue(ASC, ContextHandle, GESpec);
+
+	// [Fix] 현재 스코프의 예측 키를 전달하여 로컬 예측 실행을 보장합니다.
+	FPredictionKey PredictionKey;
+	if (ASC) PredictionKey = ASC->ScopedPredictionKey;
+
+	OnExecuteVFXCue(ASC, ContextHandle, GESpec, PredictionKey);
 }
 
-void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
+void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const
 {
 	if (!IsValid(ASC)) return;
 
@@ -77,8 +82,10 @@ void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FG
 		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
 
 		{
-			// GEC 내부의 개별 예측 창은 Leak의 원인이 되므로 제거하고 상위(SkillBase)의 창을 따릅니다.
-			ASC->ExecuteGameplayCue(this->RangeSpawnVfx->CueTag, Params);
+			if (UGameplayCueManager* CueManager = UAbilitySystemGlobals::Get().GetGameplayCueManager())
+			{
+				CueManager->InvokeGameplayCueExecuted_WithParams(ASC, this->RangeSpawnVfx->CueTag, PredictionKey, Params);
+			}
 		}
 	}
 
@@ -94,7 +101,10 @@ void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FG
 		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
 
 		{
-			ASC->ExecuteGameplayCue(this->RangeSpawnSound->CueTag, Params);
+			if (UGameplayCueManager* CueManager = UAbilitySystemGlobals::Get().GetGameplayCueManager())
+			{
+				CueManager->InvokeGameplayCueExecuted_WithParams(ASC, this->RangeSpawnSound->CueTag, PredictionKey, Params);
+			}
 		}
 	}
 }
@@ -156,7 +166,7 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 	if (ActiveGEContainer.Owner && ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
 	{
 		// [V7.3] 서버에서 실제 GE가 적용되는 시점에 관전자들에게 VFX를 브로드캐스트합니다.
-		OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec);
+		OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec, PredictionKey);
 
 		// 3. 액터 소환 (지연 생성)
 		APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());

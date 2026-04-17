@@ -83,6 +83,12 @@ AActor* UGCN_SummonedRegistrySubsystem::GetAndUnregisterVfxActor(AActor* Instiga
 	return nullptr;
 }
 
+bool UGCN_SummonedRegistrySubsystem::IsVfxActorRegistered(AActor* Instigator, float ActivationTime) const
+{
+	FGCN_SummonedKey RegistryKey(Instigator, ActivationTime);
+	return VfxRegistry.Contains(RegistryKey);
+}
+
 AActor* UGCN_SummonedRegistrySubsystem::FindAndUnregisterVfxActorFuzzy(AActor* Instigator, float TargetTime, float Tolerance)
 {
 	// 1. 정확한 매칭 우선 시도

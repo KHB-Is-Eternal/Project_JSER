@@ -55,6 +55,14 @@ public:
 
 private:
 	/** 비주얼/물리 설정값이 담긴 GEC 객체 */
-	UPROPERTY()
 	TWeakObjectPtr<UObject> CachedSourceObject;
+
+public:
+	/** 타겟 액터가 파괴될 때 호출되어 자신도 파괴합니다. */
+	UFUNCTION()
+	void OnTargetActorDestroyed(AActor* DestroyedActor);
+
+	/** 나이아가라 컴포넌트를 외부에서 부착할 수 있도록 반환합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	UNiagaraComponent* GetVfxComponent() const { return VfxComponent; }
 };

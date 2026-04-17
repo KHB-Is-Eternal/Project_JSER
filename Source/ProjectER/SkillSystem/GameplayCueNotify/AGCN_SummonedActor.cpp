@@ -15,6 +15,10 @@ AGCN_SummonedActor::AGCN_SummonedActor()
 	// GCN 액터는 기본적으로 클라이언트에서 실행되므로 리플리케이션은 끄는 것이 일반적입니다.
 	bReplicates = false;
 
+	// [Fix] RootComponent 생성 (루트가 없으면 월드 위치 설정이 불가능합니다.)
+	USceneComponent* SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	RootComponent = SceneRoot;
+
 	// 예측 이동을 위한 컴포넌트 생성 (기본은 비활성)
 	MovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("MovementComponent"));
 	MovementComponent->bAutoActivate = false;
@@ -70,6 +74,20 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 		{
 			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 			{
+				// [Fix] 시전자 클라이언트에서 이미 예측 실행된 VFX가 있다면 서버에서 온 중복 실행은 무시합니다.
+				bool bIsLocallyControlled = false;
+				if (APawn* InstigatorPawn = Cast<APawn>(ActualInstigator))
+				{
+					bIsLocallyControlled = InstigatorPawn->IsLocallyControlled();
+				}
+
+				if (bIsLocallyControlled && Registry->IsVfxActorRegistered(ActualInstigator, Context->ClientActivationTime))
+				{
+					UE_LOG(LogTemp, Log, TEXT("AGCN_SummonedActor::HandleSummonedVfx - Duplicate VFX suppressed for local instigator. Time: %f"), Context->ClientActivationTime);
+					Destroy();
+					return;
+				}
+
 				// 시전자 + 시전 시간을 키로 사용하여 비주얼 액터 등록
 				Registry->RegisterVfxActor(ActualInstigator, Context->ClientActivationTime, this);
 			}
@@ -94,15 +112,14 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 	// 1. 공통 설정 (수명 등)
 	if (const USummonRangeBaseGEC* RangeGEC = Cast<USummonRangeBaseGEC>(SourceObject))
 	{
-		SetLifeSpan(RangeGEC->LifeSpan);
+		// [Fix] 수동 LifeSpan은 제거하고 부모 액터의 소멸에만 100% 의존하도록 변경합니다.
+		// (주기적 장판 등이 LifeSpan에 의해 먼저 사라지는 현상 방지)
 		
 		// 2. 비주얼(VFX) 초기화
 		SetupVfxComponent(RangeGEC->RangeSpawnVfx.Get());
 	}
 	else if (const ULaunchHomingMissile* MissileGEC = Cast<ULaunchHomingMissile>(SourceObject))
 	{
-		SetLifeSpan(MissileGEC->LifeSpan);
-		
 		// 2. 비주얼(VFX) 초기화
 		SetupVfxComponent(MissileGEC->MissileVfx.Get());
 	}
@@ -129,6 +146,15 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 	// 기존 컴포넌트가 없다면 생성 (미래의 풀링을 위해 별도 함수화 고려 가능)
 	if (!VfxComponent)
 	{
+		if (USceneComponent* RootComp = GetRootComponent())
+		{
+			UE_LOG(LogTemp, Log, TEXT("AGCN_SummonedActor::SetupVfxComponent - Attaching VFX to RootComponent: %s"), *RootComp->GetName());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AGCN_SummonedActor::SetupVfxComponent - RootComponent is null!"));
+		}
+
 		VfxComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
 			NiagaraConfig->NiagaraSystem.LoadSynchronous(),
 			GetRootComponent(),
@@ -198,4 +224,20 @@ AActor* AGCN_SummonedActor::GetActualInstigator(const FGameplayCueParameters& Pa
 	}
 
 	return nullptr;
+}
+
+void AGCN_SummonedActor::OnTargetActorDestroyed(AActor* DestroyedActor)
+{
+	UE_LOG(LogTemp, Warning, TEXT("[CLIENT] AGCN_SummonedActor::OnTargetActorDestroyed - Time: %f, Target: %s, VFX: %s"), 
+		GetWorld()->GetTimeSeconds(),
+		DestroyedActor ? *DestroyedActor->GetName() : TEXT("nullptr"),
+		*GetName());
+		
+	if (VfxComponent)
+	{
+		// 파티클 잔상이나 페이드 아웃 없이 즉시 월드에서 컴포넌트 자체를 강제 파괴/제거합니다.
+		VfxComponent->DestroyComponent();
+	}
+
+	Destroy();
 }

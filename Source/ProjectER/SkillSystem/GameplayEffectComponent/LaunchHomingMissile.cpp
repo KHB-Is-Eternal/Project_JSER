@@ -8,6 +8,8 @@
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemGlobals.h"
+#include "GameplayCueManager.h"
 #include "GameplayEffect.h"
 #include "GameplayEffectTypes.h"
 #include "GameFramework/Character.h"
@@ -86,6 +88,8 @@ void ULaunchHomingMissile::PreApplyEffect(UAbilitySystemComponent* ASC, const FG
 	if (MutableContext)
 	{
 		MutableContext->AddOrigin(CurrentPos);
+		APawn* const AvatarPawn = (ASC ? Cast<APawn>(ASC->GetAvatarActor()) : nullptr);
+		UE_LOG(LogTemp, Warning, TEXT("[GEC] PreApplyEffect - Setting Origin: %s (IsLocallyControlled: %d)"), *CurrentPos.ToString(), AvatarPawn ? AvatarPawn->IsLocallyControlled() : -1);
 		
 		// 방향 정보는 HitResult의 Normal 필드를 활용하여 전달
 		FHitResult SimulationHit;
@@ -100,10 +104,15 @@ void ULaunchHomingMissile::OnExecutePredictive(UAbilitySystemComponent* ASC, con
 {
 	// [V7.3] 시전자 클라이언트의 예측 VFX 로직을 OnExecuteVFXCue로 통합하여 호출합니다.
 	// SkillBase에서 IsLocallyControlled()일 때만 OnExecutePredictive를 호출하므로 안전합니다.
-	OnExecuteVFXCue(ASC, ContextHandle, GESpec);
+	
+	// [Fix] 현재 스코프의 예측 키를 전달하여 로컬 예측 실행을 보장합니다.
+	FPredictionKey PredictionKey;
+	if (ASC) PredictionKey = ASC->ScopedPredictionKey;
+	
+	OnExecuteVFXCue(ASC, ContextHandle, GESpec, PredictionKey);
 }
 
-void ULaunchHomingMissile::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
+void ULaunchHomingMissile::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const
 {
 	if (!IsValid(ASC)) return;
 
@@ -121,13 +130,17 @@ void ULaunchHomingMissile::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const F
 		FGameplayCueParameters Params(GESpec);
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;
+		Params.SourceObject = const_cast<ULaunchHomingMissile*>(this);
 		
 		Params.Instigator = ContextHandle.GetInstigator();
 		Params.EffectCauser = ASC->GetAvatarActor();
 		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
 
 		{
-			ASC->ExecuteGameplayCue(this->MissileVfx->CueTag, Params);
+			if (UGameplayCueManager* CueManager = UAbilitySystemGlobals::Get().GetGameplayCueManager())
+			{
+				CueManager->InvokeGameplayCueExecuted_WithParams(ASC, this->MissileVfx->CueTag, PredictionKey, Params);
+			}
 		}
 	}
 
@@ -143,7 +156,10 @@ void ULaunchHomingMissile::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const F
 		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
 
 		{
-			ASC->ExecuteGameplayCue(this->MissileSound->CueTag, Params);
+			if (UGameplayCueManager* CueManager = UAbilitySystemGlobals::Get().GetGameplayCueManager())
+			{
+				CueManager->InvokeGameplayCueExecuted_WithParams(ASC, this->MissileSound->CueTag, PredictionKey, Params);
+			}
 		}
 	}
 }
@@ -203,6 +219,10 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 
 	// PreApplyEffect에서 보정된 트랜스폼을 사용합니다.
 	FTransform SpawnTransform = CalculateSpawnTransform(Instigator, TargetActor);
+	
+	// [Fix] Context의 Origin 정보가 네트워크 전송 중 오염(0,0,0)되어 스폰 위치를 망가뜨리는 문제가 확인되었습니다.
+	// 서버가 CalculateSpawnTransform으로 직접 계산한 값을 우선적으로 사용하도록 동기화 로직을 제거합니다.
+	/*
 	if (ContextHandle.HasOrigin())
 	{
 		SpawnTransform.SetLocation(ContextHandle.GetOrigin());
@@ -211,6 +231,10 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 			SpawnTransform.SetRotation(Hit->Normal.Rotation().Quaternion());
 		}
 	}
+	*/
+
+	UE_LOG(LogTemp, Warning, TEXT("[SERVER] LaunchHomingMissile::OnGEApplied - Final SpawnLocation: %s"), 
+		*SpawnTransform.GetLocation().ToString());
 
 	// 2. 권한 확인: 실제 액터 스폰은 서버에서만 수행합니다.
 	if (!ActiveGEContainer.Owner || !ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
@@ -219,7 +243,7 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 	}
 
 	// [V7.3] 서버에서 실제 GE가 적용되는 시점에 관전자들에게 VFX를 브로드캐스트합니다.
-	OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec);
+	OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec, PredictionKey);
 
 	// --- 미사일 액터 지연 생성 ---
 	APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
@@ -305,11 +329,6 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 	{
 		MissileActor->SetClientActivationTime(ErContext->ClientActivationTime);
 	}
-
-	// --- 스폰 완료 ---
-	MissileActor->FinishSpawning(SpawnTransform);
-
-
 
 	// --- 스폰 완료 ---
 	MissileActor->FinishSpawning(SpawnTransform);

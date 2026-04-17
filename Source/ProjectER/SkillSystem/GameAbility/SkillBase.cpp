@@ -349,12 +349,15 @@ void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGamepla
 				{
 					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
 					{
-						BaseGEC->PreApplyEffect(ASC, EffectSpecificContext, *SpecHandle.Data.Get());
+						// [Fix] SpecHandle 내부에 이미 복사된 Context를 가져와서 수정해야 서버로 값이 전달됩니다.
+						FGameplayEffectContextHandle SpecContext = SpecHandle.Data.Get()->GetContext();
+
+						BaseGEC->PreApplyEffect(ASC, SpecContext, *SpecHandle.Data.Get());
 						
 						// [V7.3] Phase 2: 비주얼 실행 (시전자 클라이언트 예측 전용)
 						if (IsLocallyControlled())
 						{
-							BaseGEC->OnExecutePredictive(ASC, EffectSpecificContext, *SpecHandle.Data.Get());
+							BaseGEC->OnExecutePredictive(ASC, SpecContext, *SpecHandle.Data.Get());
 						}
 					}
 				}

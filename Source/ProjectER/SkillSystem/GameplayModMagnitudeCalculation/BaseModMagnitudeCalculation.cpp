@@ -103,3 +103,7 @@ float UBaseModMagnitudeCalculation::FindValueByAttribute(const FGameplayEffectSp
     return FoundValue;
 }
 
+
+#undef ATTRIBUTE_CLASS
+#undef DECLARE_ST_CAPTUREDEF
+#undef DEFINE_ST_CAPTUREDEF

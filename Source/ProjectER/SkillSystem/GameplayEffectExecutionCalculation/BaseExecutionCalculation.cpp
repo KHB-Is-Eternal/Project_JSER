@@ -123,3 +123,7 @@ float UBaseExecutionCalculation::FindValueByAttribute(const FGameplayEffectCusto
     return FoundValue;
 }
 
+
+#undef ATTRIBUTE_CLASS
+#undef DECLARE_ST_CAPTUREDEF
+#undef DEFINE_ST_CAPTUREDEF

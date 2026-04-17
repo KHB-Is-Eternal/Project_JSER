@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayEffectComponent.h"
+#include "GameplayPrediction.h"
 #include "BaseGEC.generated.h"
 
 /**
@@ -56,7 +57,7 @@ public:
 	 * 서버에서 GameplayEffect가 적용된 후 호출되어 관전자들에게 VFX를 브로드캐스트합니다.
 	 * OnExecutePredictive와 달리, 이 함수는 서버 권한으로만 실행됩니다.
 	 */
-	virtual void OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const {}
+	virtual void OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey = FPredictionKey()) const {}
 
 protected:
 

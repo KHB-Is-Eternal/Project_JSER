@@ -51,6 +51,9 @@ public:
 	/** 시전자와 시각 정보에 매칭되는 비주얼 액터를 찾아 반환하고 레지스트리에서 제거합니다. */
 	AActor* GetAndUnregisterVfxActor(AActor* Instigator, float ActivationTime);
 
+	/** 특정 시전자와 시각 정보에 매칭되는 비주얼 액터가 등록되어 있는지 확인합니다. */
+	bool IsVfxActorRegistered(AActor* Instigator, float ActivationTime) const;
+
 	/** 시전자 기준으로 허용 오차 내에서 비주얼 액터를 검색합니다. (클라이언트-서버 시간 불일치 보상용) */
 	AActor* FindAndUnregisterVfxActorFuzzy(AActor* Instigator, float TargetTime, float Tolerance = 0.5f);
 

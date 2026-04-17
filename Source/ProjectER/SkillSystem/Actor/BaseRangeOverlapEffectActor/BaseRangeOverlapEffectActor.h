@@ -27,6 +27,9 @@ public:
   // IProjectERSummonedActorInterface interface implementation
   virtual void OnVfxHandshakeCompleted_Implementation(AActor* VfxActor) override;
 
+  UFUNCTION()
+  void OnRep_InstigatorActor();
+
   void InitializeEffectData(
       const TArray<FGameplayEffectSpecHandle> &InEffectSpecHandles,
       AActor *InInstigatorActor, const FVector &InCollisionSize,
@@ -73,7 +76,7 @@ protected:
   UPROPERTY()
   TArray<FGameplayEffectSpecHandle> EffectSpecHandles;
 
-  UPROPERTY(Replicated)
+  UPROPERTY(ReplicatedUsing = OnRep_InstigatorActor)
   TObjectPtr<AActor> InstigatorActor;
 
   UPROPERTY()

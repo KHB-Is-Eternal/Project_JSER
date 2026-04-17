@@ -52,6 +52,7 @@ void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* Range
 
 			// 기준 컴포넌트 지정 (반드시 Register 이후에 호출)
 			MovementComp->SetUpdatedComponent(RangeActor->GetRootComponent());
+			// [Revert] UProjectileMovementComponent는 bInitialVelocityInLocalSpace가 기본 true이므로, 항상 (1,0,0)을 주어야 올바른 정면 방향으로 날아갑니다.
 			MovementComp->Velocity = FVector::ForwardVector * Speed;
 			MovementComp->Activate(true);
 		}

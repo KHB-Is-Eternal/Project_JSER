@@ -55,22 +55,16 @@ struct PROJECTER_API FProjectERGameplayEffectContext : public FGameplayEffectCon
 	virtual FGameplayEffectContext* Duplicate() const override
 	{
 		FProjectERGameplayEffectContext* NewContext = new FProjectERGameplayEffectContext();
-		*NewContext = *this;
-		if (GetInstigator())
-		{
-			NewContext->AddInstigator(GetInstigator(), GetEffectCauser());
-		}
-		if (GetHitResult())
-		{
-			NewContext->AddHitResult(*GetHitResult(), true);
-		}
-		NewContext->AddOrigin(GetOrigin());
-		NewContext->SourceObject = SourceObject;
-		NewContext->AbilityCDO = AbilityCDO;
-		NewContext->AbilityInstanceNotReplicated = AbilityInstanceNotReplicated;
-		NewContext->AbilityLevel = AbilityLevel;
-		NewContext->bHasWorldOrigin = bHasWorldOrigin;
-		NewContext->Duplicate(NewContext);
+		*NewContext = *this; // 모든 필드 복사
+		
+		// [GCN Registry용] 데이터 명시적 복사 확인
+		NewContext->ClientActivationTime = this->ClientActivationTime;
+		NewContext->PredictionKey = this->PredictionKey;
+		
+		// [Debug] 복제 시점 좌표 유실 여부 추적
+		UE_LOG(LogTemp, Log, TEXT("[CONTEXT] Duplicate - Origin: %s, HasOrigin: %d"), 
+			*GetOrigin().ToString(), (int32)bHasWorldOrigin);
+		
 		return NewContext;
 	}
 

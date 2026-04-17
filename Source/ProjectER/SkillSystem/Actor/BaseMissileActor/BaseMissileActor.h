@@ -26,6 +26,9 @@ public:
 
 	// IProjectERSummonedActorInterface interface implementation
 	virtual void OnVfxHandshakeCompleted_Implementation(AActor* VfxActor) override;
+	
+	UFUNCTION()
+	void OnRep_InstigatorActor();
 
 	/**
 	 * GEC에서 호출하여 미사일의 모든 데이터를 초기화합니다.
@@ -73,7 +76,7 @@ protected:
 	UPROPERTY()
 	TArray<FGameplayEffectSpecHandle> EffectSpecHandles;
 
-	UPROPERTY()
+	UPROPERTY(ReplicatedUsing = OnRep_InstigatorActor)
 	TObjectPtr<AActor> InstigatorActor;
 
 	UPROPERTY()
@@ -91,7 +94,7 @@ protected:
 	UPROPERTY()
 	bool bDestroyOnHit = true;
 
-	UPROPERTY()
+	UPROPERTY(Replicated)
 	FRotator InitialTargetRotation; // 추가: 엔진에 의한 회전값 왜곡 방지용
 
 	bool bHasReached = false;

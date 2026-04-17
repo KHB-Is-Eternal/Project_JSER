@@ -4,6 +4,7 @@
 #include "SkillSystem/Actor/BaseMissileActor/BaseMissileActor.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Components/SceneComponent.h"
+#include "NiagaraComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Net/UnrealNetwork.h"
@@ -29,6 +30,10 @@ ABaseMissileActor::ABaseMissileActor()
 	
 	ProjectileMovement->bRotationFollowsVelocity = true;
 	ProjectileMovement->ProjectileGravityScale = 0.0f;
+
+	// [Network Optimization] 파괴 및 위치 동기화 속도를 획기적으로 높입니다.
+	//SetNetUpdateFrequency(100.0f);
+	//NetPriority = 3.0f;
 }
 
 #include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
@@ -38,6 +43,26 @@ void ABaseMissileActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ABaseMissileActor, ClientActivationTime);
+	DOREPLIFETIME(ABaseMissileActor, InitialTargetRotation);
+	DOREPLIFETIME(ABaseMissileActor, InstigatorActor);
+}
+
+void ABaseMissileActor::OnRep_InstigatorActor()
+{
+	// 데이터가 늦게 도착했을 경우 핸드셰이크 재시도
+	if (InstigatorActor && ClientActivationTime > 0.f)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+			{
+				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
+				{
+					OnVfxHandshakeCompleted_Implementation(VfxActor);
+				}
+			}
+		}
+	}
 }
 
 void ABaseMissileActor::PostNetInit()
@@ -51,6 +76,9 @@ void ABaseMissileActor::PostNetInit()
 	{
 		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
+			// [Debug] 클라이언트의 현재 시간을 함께 출력하여 서버와의 시계 오차(Clock Offset)를 측정합니다.
+			UE_LOG(LogTemp, Warning, TEXT("[CLIENT] ABaseMissileActor::PostNetInit - WorldTime: %f, KeyTime: %f"), GetWorld()->GetTimeSeconds(), ClientActivationTime);
+
 			// (시전자 + 시전 시간) 조합으로 퍼지 비주얼 검색 (서버-클라이언트 간의 작은 시간 오차 보정, 0.5초 허용)
 			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
 			{
@@ -69,13 +97,18 @@ void ABaseMissileActor::OnVfxHandshakeCompleted_Implementation(AActor* VfxActor)
 {
 	if (!VfxActor) return;
 
-	// 찾았다면 자신에게 부착 (Snap to Target)
-	FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
-	VfxActor->AttachToActor(this, AttachRules);
-
-	// [고급 동기화] 비주얼 액터가 들고 있는 SourceObject(GEC)로부터 물리 설정값 동기화
+	// [Fix] 언리얼 생명주기 싱크 맞추기 위해 OnDestroyed 델리게이트에 VFX 액터를 바인딩
 	if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
 	{
+		// 액터 통째 부착이 아니라, 알맹이인 나이아가라 컴포넌트만 뽑아서 미사일에 직접 부착합니다!
+		if (UNiagaraComponent* NiagaraComp = SummonedGCN->GetVfxComponent())
+		{
+			FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
+			NiagaraComp->AttachToComponent(this->GetRootComponent(), AttachRules);
+		}
+
+		this->OnDestroyed.AddDynamic(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed);
+
 		if (const ULaunchHomingMissile* MissileGEC = Cast<ULaunchHomingMissile>(SummonedGCN->GetSourceObject()))
 		{
 			if (IsValid(ProjectileMovement))
@@ -187,6 +220,7 @@ void ABaseMissileActor::OnReachedTarget()
 	// 3. 파괴 처리
 	if (bDestroyOnHit)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[SERVER] BaseMissileActor::OnReachedTarget - Time: %f, Destroying Actor: %s"), GetWorld()->GetTimeSeconds(), *GetName());
 		Destroy();
 	}
 }
