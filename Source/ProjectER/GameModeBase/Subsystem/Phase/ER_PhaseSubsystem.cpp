@@ -11,6 +11,31 @@
 #include "GameplayEffect.h"
 #include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
 
+UGameplayEffect* UER_PhaseSubsystem::GetOrCreateHazardDamageEffect()
+{
+    if (CachedHazardDamageEffect)
+    {
+        return CachedHazardDamageEffect;
+    }
+
+    CachedHazardDamageEffect = NewObject<UGameplayEffect>(this, FName(TEXT("HazardDamage")));
+    if (!CachedHazardDamageEffect)
+    {
+        return nullptr;
+    }
+
+    CachedHazardDamageEffect->DurationPolicy = EGameplayEffectDurationType::Instant;
+
+    FGameplayModifierInfo ModInfo;
+    ModInfo.ModifierMagnitude = FScalableFloat(999999.0f);
+    ModInfo.ModifierOp = EGameplayModOp::Additive;
+    ModInfo.Attribute = UBaseAttributeSet::GetIncomingDamageAttribute();
+    CachedHazardDamageEffect->Modifiers.Add(ModInfo);
+
+    return CachedHazardDamageEffect;
+}
+
+
 void UER_PhaseSubsystem::StartPhaseTimer(AER_GameState& GS, float Duration)
 {
     UWorld* World = GetWorld();
@@ -146,14 +171,11 @@ void UER_PhaseSubsystem::OnPeriodicCheckTick()
                             {
                                 if (UAbilitySystemComponent* ASC = ERPS->GetAbilitySystemComponent())
                                 {
-                                    UGameplayEffect* DamageEffect = NewObject<UGameplayEffect>(GetTransientPackage(), FName(TEXT("HazardDamage")));
-                                    DamageEffect->DurationPolicy = EGameplayEffectDurationType::Instant;
-
-                                    FGameplayModifierInfo ModInfo;
-                                    ModInfo.ModifierMagnitude = FScalableFloat(999999.0f);
-                                    ModInfo.ModifierOp = EGameplayModOp::Additive;
-                                    ModInfo.Attribute = UBaseAttributeSet::GetIncomingDamageAttribute();
-                                    DamageEffect->Modifiers.Add(ModInfo);
+                                    UGameplayEffect* DamageEffect = GetOrCreateHazardDamageEffect();
+                                    if (!DamageEffect)
+                                    {
+                                        continue;
+                                    }
 
                                     FGameplayEffectContextHandle EffectContext = ASC->MakeEffectContext();
                                     // 데미지가 자신의 데미지로 판정되어 자살로 인해 킬이 오르는 것을 막기 위해 Instigator를 변경

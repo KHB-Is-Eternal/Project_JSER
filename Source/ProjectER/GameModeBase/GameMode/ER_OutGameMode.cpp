@@ -1,4 +1,4 @@
-﻿#include "ER_OutGameMode.h"
+#include "ER_OutGameMode.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "CharacterSystem/Player/BasePlayerController.h"
@@ -6,6 +6,9 @@
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameFramework/GameSession.h"
+#include "OnlineSubsystem.h"
+#include "Interfaces/OnlineSessionInterface.h"
+#include "OnlineSessionSettings.h"
 
 
 AER_OutGameMode::AER_OutGameMode()
@@ -74,10 +77,27 @@ FString AER_OutGameMode::InitNewPlayer(APlayerController* NewPlayerController,
     return TEXT("");
 }
 
+void AER_OutGameMode::UpdateSessionBackend()
+{
+    if (IOnlineSubsystem* OnlineSub = IOnlineSubsystem::Get())
+    {
+        if (IOnlineSessionPtr SessionInt = OnlineSub->GetSessionInterface())
+        {
+            if (FNamedOnlineSession* Session = SessionInt->GetNamedSession(NAME_GameSession))
+            {
+                SessionInt->UpdateSession(NAME_GameSession, Session->SessionSettings, true);
+            }
+        }
+    }
+}
+
 void AER_OutGameMode::PostLogin(APlayerController* NewPlayer)
 {
     Super::PostLogin(NewPlayer);
-
+    
+    // 플레이어 접속 시 세션 인원수를 스팀(백엔드)에 강제로 동기화하여 방 목록에 즉시 반영
+    UpdateSessionBackend();
+    
     if (!HasAuthority() || !NewPlayer) return;
 
     if (APlayerState* PS = NewPlayer->GetPlayerState<APlayerState>())
@@ -130,6 +150,13 @@ void AER_OutGameMode::PostLogin(APlayerController* NewPlayer)
     }
 }
 
+void AER_OutGameMode::Logout(AController* Exiting)
+{
+    Super::Logout(Exiting);
+
+    // 플레이어 퇴장 시 세션 인원수를 스팀(백엔드)에 강제로 동기화하여 방 목록에 즉시 반영
+    UpdateSessionBackend();
+}
 
 void AER_OutGameMode::StartGame()
 {

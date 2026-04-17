@@ -1,4 +1,4 @@
-﻿#include "LevelAreaGameModeComponent.h"
+#include "LevelAreaGameModeComponent.h"
 
 #include "Net/UnrealNetwork.h"
 #include "Engine/World.h"
@@ -406,6 +406,35 @@ void ULevelAreaGameModeComponent::ApplyInstantDeathToNode(int32 NodeID)
 
     UE_LOG(LevelAreaGraphManagement, Log,
         TEXT("ApplyInstantDeathToNode >> NodeID %d escalated to InstantDeath"), NodeID);
+}
+
+TArray<int32> ULevelAreaGameModeComponent::GetNextPhaseZoneIDs(int32 ReferencePhase) const
+{
+    TArray<int32> Result;
+
+    if (HazardOrder.IsEmpty())
+    {
+        return Result;
+    }
+
+    // ReferencePhase 기준으로 다음 페이즈 계산 (Phase 0,1은 안전 구간이므로 EffectivePhase = Phase - 1)
+    const int32 NextPhase = ReferencePhase + 1;
+    const int32 NextEffective = NextPhase - 1;
+
+    if (NextEffective <= 0)
+    {
+        return Result;
+    }
+
+    const int32 PrevCount = FMath::Min((NextEffective - 1) * HazardsPerPhase, HazardOrder.Num());
+    const int32 NextCount = FMath::Min(NextEffective * HazardsPerPhase, HazardOrder.Num());
+
+    for (int32 i = PrevCount; i < NextCount; i++)
+    {
+        Result.Add(HazardOrder[i]);
+    }
+
+    return Result;
 }
 
 
