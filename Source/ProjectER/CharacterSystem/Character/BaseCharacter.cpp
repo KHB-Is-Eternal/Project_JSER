@@ -49,6 +49,63 @@
 #include "LineOfSight/MainVisionRTManager.h"
 #include "LineOfSight/Management/VisionPlayerStateComp.h"
 
+// 길찾기 성능 프로파일링 — 콘솔: stat ProjectER_Pathfinding
+DECLARE_STATS_GROUP(TEXT("ProjectER_Pathfinding"), STATGROUP_ERPathfinding, STATCAT_Advanced);
+
+DECLARE_CYCLE_STAT(TEXT("MoveToLocation (Total)"),       STAT_MoveToLocation,        STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("FindPath Sync"),                 STAT_FindPathSync,           STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("Server_MoveToLocation (Total)"), STAT_ServerMoveToLocation,   STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("Server_FindPath Sync"),          STAT_ServerFindPathSync,     STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("CheckCombatTarget (Total)"),     STAT_CheckCombatTarget,      STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("UpdatePathFollowing"),           STAT_UpdatePathFollowing,    STATGROUP_ERPathfinding);
+
+// 길찾기 메트릭 수집 (개발/테스트 빌드 전용)
+#if !UE_BUILD_SHIPPING
+
+struct FPathfindingMetrics
+{
+	int32 RequestCount = 0;
+	double TotalTimeSeconds = 0.0;
+	double WorstTimeSeconds = 0.0;
+	float AccumulatedDelta = 0.0f;
+
+	void RecordRequest(const double ElapsedSeconds)
+	{
+		RequestCount++;
+		TotalTimeSeconds += ElapsedSeconds;
+		WorstTimeSeconds = FMath::Max(WorstTimeSeconds, ElapsedSeconds);
+	}
+
+	void TickAndLog(const float DeltaTime)
+	{
+		AccumulatedDelta += DeltaTime;
+		if (AccumulatedDelta < 1.0f)
+		{
+			return;
+		}
+
+		if (RequestCount > 0)
+		{
+			const double AvgMs = (TotalTimeSeconds / RequestCount) * 1000.0;
+			const double TotalMs = TotalTimeSeconds * 1000.0;
+			const double WorstMs = WorstTimeSeconds * 1000.0;
+
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Pathfinding Metrics] Requests/s: %d | Total: %.3fms | Avg: %.3fms | Worst: %.3fms"),
+				RequestCount, TotalMs, AvgMs, WorstMs);
+		}
+
+		RequestCount = 0;
+		TotalTimeSeconds = 0.0;
+		WorstTimeSeconds = 0.0;
+		AccumulatedDelta = 0.0f;
+	}
+};
+
+static FPathfindingMetrics GPathfindingMetrics;
+
+#endif // !UE_BUILD_SHIPPING
+
 
 ABaseCharacter::ABaseCharacter()
 {
@@ -207,6 +264,13 @@ void ABaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+#if !UE_BUILD_SHIPPING
+	if (HasAuthority() && IsLocallyControlled())
+	{
+		GPathfindingMetrics.TickAndLog(DeltaTime);
+	}
+#endif
+
 	/// UI TEST를 위함 지우진 말아주세요!! {차후 제거할 예정}
 	/// mpyi
 	//{
@@ -232,6 +296,9 @@ void ABaseCharacter::Tick(float DeltaTime)
 		return; // 죽었으면 아무것도 안 함
 	}
 	
+	// 경로 캐싱 타이머 갱신 (Phase 1)
+	TimeSinceLastPathCalc += DeltaTime;
+
 	if (IsLocallyControlled() || HasAuthority())
 	{
 		// Tick 활성화 시 경로 탐색 (서버)
@@ -895,15 +962,42 @@ void ABaseCharacter::InitVisuals()
 
 void ABaseCharacter::Server_MoveToLocation_Implementation(FVector TargetLocation)
 {
+	SCOPE_CYCLE_COUNTER(STAT_ServerMoveToLocation);
+
+	// ─── 경로 캐싱 체크 (Phase 1) ───
+	const float DistToPrevDest = FVector::Dist(TargetLocation, LastPathDestination);
+	if (DistToPrevDest < PathReuseThreshold
+		&& TimeSinceLastPathCalc < MaxPathCacheAge
+		&& PathPoints.Num() > 0
+		&& CurrentPathIndex != INDEX_NONE)
+	{
+		return; // 기존 경로 재사용
+	}
+
 	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
 	if (NavSys == nullptr) return;
 
-	UNavigationPath* NavPath = NavSys->FindPathToLocationSynchronously(this, GetActorLocation(), TargetLocation);
+	UNavigationPath* NavPath = nullptr;
+	{
+		SCOPE_CYCLE_COUNTER(STAT_ServerFindPathSync);
+
+#if !UE_BUILD_SHIPPING
+		const double StartTime = FPlatformTime::Seconds();
+#endif
+
+		NavPath = NavSys->FindPathToLocationSynchronously(this, GetActorLocation(), TargetLocation);
+
+#if !UE_BUILD_SHIPPING
+		GPathfindingMetrics.RecordRequest(FPlatformTime::Seconds() - StartTime);
+#endif
+	}
 
 	if (NavPath != nullptr && NavPath->PathPoints.Num() > 1)
 	{
 		PathPoints = NavPath->PathPoints;
 		CurrentPathIndex = 1;
+		LastPathDestination = TargetLocation;  // 캐시 갱신
+		TimeSinceLastPathCalc = 0.0f;          // 타이머 리셋
 		SetActorTickEnabled(true);
 		
 		if (AbilitySystemComponent.IsValid() && MovingStateEffectClass)
@@ -945,6 +1039,8 @@ void ABaseCharacter::Server_StopMove_Implementation()
 
 void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 {
+	SCOPE_CYCLE_COUNTER(STAT_MoveToLocation);
+
 	if (AbilitySystemComponent.IsValid())
 	{
 		static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
@@ -963,15 +1059,40 @@ void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 		return;
 	}
 	
+	// ─── 경로 캐싱 체크 (Phase 1) ───
+	const float DistToPrevDest = FVector::Dist(TargetLocation, LastPathDestination);
+	if (DistToPrevDest < PathReuseThreshold
+		&& TimeSinceLastPathCalc < MaxPathCacheAge
+		&& PathPoints.Num() > 0
+		&& CurrentPathIndex != INDEX_NONE)
+	{
+		return; // 기존 경로 재사용
+	}
+
 	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
 	if (!NavSys) return;
 
-	UNavigationPath* NavPath = NavSys->FindPathToLocationSynchronously(this, GetActorLocation(), TargetLocation);
+	UNavigationPath* NavPath = nullptr;
+	{
+		SCOPE_CYCLE_COUNTER(STAT_FindPathSync);
+
+#if !UE_BUILD_SHIPPING
+		const double StartTime = FPlatformTime::Seconds();
+#endif
+
+		NavPath = NavSys->FindPathToLocationSynchronously(this, GetActorLocation(), TargetLocation);
+
+#if !UE_BUILD_SHIPPING
+		GPathfindingMetrics.RecordRequest(FPlatformTime::Seconds() - StartTime);
+#endif
+	}
 
 	if (NavPath && NavPath->PathPoints.Num() > 1)
 	{
 		PathPoints = NavPath->PathPoints;
 		CurrentPathIndex = 1;
+		LastPathDestination = TargetLocation;  // 캐시 갱신
+		TimeSinceLastPathCalc = 0.0f;          // 타이머 리셋
 		SetActorTickEnabled(true);
 		
 		// UE_LOG(LogTemp, Warning, TEXT("길찾기 성공! 포인트 갯수: %d"), NavPath->PathPoints.Num());
@@ -1043,6 +1164,7 @@ void ABaseCharacter::StopMove()
 
 void ABaseCharacter::UpdatePathFollowing()
 {
+	SCOPE_CYCLE_COUNTER(STAT_UpdatePathFollowing);
 	if (CurrentPathIndex == INDEX_NONE || CurrentPathIndex >= PathPoints.Num())
 	{
 		StopPathFollowing();
@@ -1170,6 +1292,7 @@ void ABaseCharacter::SetTarget(AActor* NewTarget)
 
 void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 {
+	SCOPE_CYCLE_COUNTER(STAT_CheckCombatTarget);
 	if (!IsValid(TargetActor))
 	{
 		SetTarget(nullptr); // 타겟이 소멸 시 지정 해제

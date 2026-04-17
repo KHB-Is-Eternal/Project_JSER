@@ -37,33 +37,31 @@ public:
 	
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	UStateTreeComponent* GetStateTreeComponent();
+	//UStateTreeComponent* GetStateTreeComponent();
 	void SetTargetPlayer(AActor* Target);
-	AActor* GetTargetPlayer();
-	UFUNCTION(BlueprintCallable)
 	void SetbIsCombat(bool Target);
-	bool GetbIsCombat();
-	UFUNCTION(BlueprintCallable)
 	void SetbIsDead(bool Target);
-	bool GetbIsDead();
+	void SetIsFirstAttack(bool bIsFirst);
+	void SetAttackCount(uint8 Count);
 
-	FVector GetStartLocation();
-	UMonsterRangeComponent* GetMonsterRangeComp() { return MonsterRangeComp; };
-	FMonsterTags& GetMonsterTags() { return MonsterTags; };
-	FPrimaryAssetId GetMonsterId() const { return MonsterId; }
-	UBaseMonsterAttributeSet* GetAttributeSet() { return AttributeSet; }
+	AActor* GetTargetPlayer() const;
+	bool GetbIsCombat() const;
+	bool GetbIsDead() const;
+	bool GetIsFirstAttack() const;
+	uint8 GetAttackCount() const;
+	FVector GetStartLocation() const;
+	FRotator GetStartRotator() const;
+	UMonsterRangeComponent* GetMonsterRangeComp() const;
+	FMonsterTags GetMonsterTags() const;
+	FPrimaryAssetId GetMonsterId() const;
+	UBaseMonsterAttributeSet* GetAttributeSet() const;
+	
 
-	FVector GetStartLocation() const { return StartLocation; }
-	FRotator GetStartRotator() const { return StartRotator; }
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_SetCollisionProfileName(FName ProfileName);
 
-	UFUNCTION(BlueprintCallable)
-	bool GetIsFirstAttack() const { return bIsFirstAttack; }
-	UFUNCTION(BlueprintCallable)
-	uint8 GetAttackCount() const { return AttackCount; }
-	UFUNCTION(BlueprintCallable)
-	void SetIsFirstAttack(bool bIsFirst) { bIsFirstAttack = bIsFirst; }
-	UFUNCTION(BlueprintCallable)
-	void SetAttackCount(uint8 Count) { AttackCount = Count; }
+	void Death();
+
 	
 protected:
 
@@ -72,68 +70,87 @@ protected:
 	virtual void BeginPlay() override;
 	
 
-public:
-
-	UFUNCTION(BlueprintCallable)
-	void SendStateTreeEvent(FGameplayTag InputTag);
-
-	UFUNCTION(BlueprintCallable) // SendAttackRangeEvent();
-	void SendAttackRangeEvent(float AttackRange);
-
 private:
-
-	UFUNCTION()
-	void OnRep_IsCombat();
-
-	UFUNCTION()
-	void OnRep_IsDead();
-
-	UFUNCTION()
-	void OnRep_MonsterData();
-	
-	// 이벤트 태그
-	UFUNCTION()
-	void MonsterGroupHitCall(AActor* Target);
-
-	UFUNCTION() // SendHitEvent()
-	void OnMonterHitHandle(AActor* Target);
-
-	UFUNCTION() // SendDeathEvent()
-	void OnMonterDeathHandle(AActor* Target);
-
-	UFUNCTION() // SendBeginSearchEvent();
-	void OnPlayerCountOneHandle();
-
-	UFUNCTION() // SendEndSearchEvent()
-	void OnPlayerCountZeroHandle();
-
-	UFUNCTION() // SendTargetOffEvent()
-	void OnTargetLostHandle();
-
-	// HealthBar 변경용
-	UFUNCTION()
-	void OnHealthChangedHandle(float CurrentHP, float MaxHP);
 	// 이동 속도 변경값 적용
 	UFUNCTION()
 	void OnMoveSpeedChangedHandle(float OldSpeed, float NewSpeed);
-	// 몬스터 사망 후 충돌을 꺼주는 함수
-	
 
-public:
-	// 몬스터 스폰 후 데이터를 초기화해주는 함수
-	UFUNCTION(BlueprintCallable)
-	void InitMonsterData(FPrimaryAssetId MonsterAssetId, float Level);
-	
-	UFUNCTION(NetMulticast, BlueprintCallable, Reliable)
-	void Multicast_SetCollisionProfileName(FName ProfileName);
+	void RewardMonsterXP(AActor* Player, FGameplayTag Tag, float Amount);
 
-	// 쿨다운 태그 관련
-	UFUNCTION(BlueprintCallable)
-	void OnCooldown(FGameplayTag CooldownTag, float Cooldown);
 
+#pragma region ASC
 
 private:
-	// 초기화 
+
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UAbilitySystemComponent> ASC;
+
+	//UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UBaseMonsterAttributeSet> AttributeSet;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
+	FMonsterTags MonsterTags;
+
+#pragma endregion
+
+
+#pragma region StateTree
+
+private:
+
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStateTreeComponent> StateTreeComp;
+
+public:
+
+	void SendStateTreeEvent(FGameplayTag InputTag);
+
+	void SendAttackRangeEvent(float AttackRange);
+
+	UFUNCTION()
+	void MonsterGroupHitCall(AActor* Target);
+
+	UFUNCTION()
+	void SendHitEvent(AActor* Target);
+
+	UFUNCTION()
+	void SendDeathEvent(AActor* Target);
+
+	UFUNCTION()
+	void SendBeginSearchEvent();
+
+	UFUNCTION()
+	void SendEndSearchEvent();
+
+	UFUNCTION()
+	void SendTargetOffEvent();
+
+#pragma endregion
+
+
+#pragma region InitMonsterData
+
+public:
+	
+	UPROPERTY(BlueprintReadOnly, Category = "MonsterData")
+	TObjectPtr<UMonsterDataAsset> MonsterData;
+
+private:
+	UPROPERTY(ReplicatedUsing = OnRep_MonsterID)
+	FPrimaryAssetId MonsterID;
+
+	UPROPERTY(Replicated)
+	float MonsterLevel;
+
+public:
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Monster|Event")
+	void OnMonsterDataLoadedEvent(FPrimaryAssetId MonsterAssetId, float Level);
+
+	void InitMonsterData(FPrimaryAssetId MonsterAssetId, float Level);
+	
+private:
+
 	void InitMonsterDataLoading(FPrimaryAssetId MonsterAssetId, float Level);
 
 	void OnMonsterDataLoaded(FPrimaryAssetId LoadedId, float Level);
@@ -150,82 +167,140 @@ private:
 
 	void InitHPBar();
 
+#pragma endregion
+
+
+#pragma region CooldownTag
+
+private:
+
+	TMap<FGameplayTag, FTimerHandle> CooldownTimerMap;
+
+public:
+
+	void OnCooldown(FGameplayTag CooldownTag, float Cooldown);
+
+private:
+
 	void AddCooldownTag(FGameplayTag CooldownTag);
 
 	void RemoveCooldownTag(FGameplayTag CooldownTag);
-	//
 
-	UFUNCTION(BlueprintCallable)
-	bool HasASCTag(FGameplayTag Tag);
-
-	UFUNCTION(BlueprintCallable)
-	void RewardMonsterXP(AActor* Player, FGameplayTag Tag, float Amount);
-
-	UFUNCTION(BlueprintCallable)
-	void TryActivateByDynamicTag(FGameplayTag InputTag);
+#pragma endregion
 
 
-public:
-	// 블루프린트에서 사용중
-	UPROPERTY(BlueprintReadOnly, Category = "MonsterData")
-	TObjectPtr<UMonsterDataAsset> MonsterData;
+#pragma region HPWidget
 
-	UFUNCTION(BlueprintImplementableEvent, Category="Monster|Event")
-	void OnMonsterDataLoadedEvent(FPrimaryAssetId MonsterAssetId, float Level);
-	
 private:
-	UPROPERTY(ReplicatedUsing = OnRep_MonsterData)
-	FPrimaryAssetId MonsterId;
-
-	UPROPERTY(Replicated)
-	float MonsterLevel;
-
-
-public:
-	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<ULootableComponent> LootableComp;
-private:
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UMonsterRangeComponent> MonsterRangeComp;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UAbilitySystemComponent> ASC;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UBaseMonsterAttributeSet> AttributeSet;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI", meta = (AllowprivateAccess = "true"))
 	TObjectPtr<UWidgetComponent> HPBarWidgetComp;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Collision", meta = (AllowprivateAccess = "true"))
+	UFUNCTION()
+	void OnHealthChangedHandle(float CurrentHP, float MaxHP);
+
+#pragma endregion
+
+
+#pragma region Item
+
+public:
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<ULootableComponent> LootableComp;
+
+#pragma endregion
+
+
+#pragma region OnRep
+
+private:
+
+	UFUNCTION()
+	void OnRep_IsCombat();
+
+	UFUNCTION()
+	void OnRep_IsDead();
+
+	UFUNCTION()
+	void OnRep_MonsterID();
+
+	UFUNCTION()
+	void OnRep_TeamID();
+
+#pragma endregion
+
+
+#pragma region TargetableInterface
+
+private:
+
+	UPROPERTY(ReplicatedUsing = OnRep_TeamID, EditAnywhere, BlueprintReadWrite, Category = "Team", meta = (AllowprivateAccess = "true"))
+	ETeamType TeamID;
+
+public:
+
+	virtual ETeamType GetTeamType() const override;
+
+	virtual bool IsTargetable() const override;
+
+	virtual void HighlightActor(bool bIsHighlight, int32 StencilValue = 0) override;
+
+private:
+
+	UFUNCTION(BlueprintCallable, Server, Reliable)
+	void Server_SetTeamID(ETeamType NewTeamID);
+
+#pragma endregion
+
+
+#pragma region TargetableInterface
+
+private:
+
+	int32 SpawnPoint = 0;
+
+public:
+
+	void SetSpawnPoint(int32 point) { SpawnPoint = point; }
+
+	int32 GetSpawnPoint() { return SpawnPoint; }
+
+#pragma endregion
+
+
+#pragma region CC
+
+private:
+	// Test용
+	void OnCCChanged(FGameplayTag Tag, int32 NewCount);
+
+public:
+
+	void OffCCChanged();
+
+#pragma endregion
+
+
+
+
+private:
+
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UMonsterRangeComponent> MonsterRangeComp;
+
+	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Collision", meta = (AllowprivateAccess = "true"))
 	TObjectPtr<UBoxComponent> HitBoxComp;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound", meta = (AllowprivateAccess = "true"))
 	TObjectPtr<UAudioComponent> SoundComp;
 
-
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
-	FMonsterTags MonsterTags;
-
-	TMap<FGameplayTag, FTimerHandle> CooldownTimerMap;
-
-
-#pragma region StateTree
-
-private:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UStateTreeComponent> StateTreeComp;
-
-	// 서버에서 복제
-	UPROPERTY(BlueprintReadOnly, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
+	//UPROPERTY(BlueprintReadOnly, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
 	FVector StartLocation;
 
-	UPROPERTY(BlueprintReadOnly, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
+	//UPROPERTY(BlueprintReadOnly, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
 	FRotator StartRotator;
 
-	UPROPERTY(BlueprintReadWrite, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
+	//UPROPERTY(BlueprintReadWrite, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<AActor> TargetPlayer;
 
 	UPROPERTY(ReplicatedUsing = OnRep_IsCombat, VisibleAnywhere, BlueprintReadWrite, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
@@ -234,58 +309,14 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_IsDead, VisibleAnywhere, BlueprintReadWrite, Category = "StateTree", meta = (AllowPrivateAccess = "true"))
 	bool bIsDead;
 
+	bool bIsFirstAttack;
 
-	bool bIsFirstAttack = false;
-
-	uint8 AttackCount = 0;
-
-#pragma endregion
+	uint8 AttackCount;
 
 
-#pragma region TargetableInterface
-public:
-	// 팀 정보 반환
-	virtual ETeamType GetTeamType() const override;
-
-	// 타겟팅 가능 여부 반환
-	virtual bool IsTargetable() const override;
-    
-	// [인터페이스 구현] 하이라이트 (나중에 포스트 프로세스로 구현)
-	virtual void HighlightActor(bool bIsHighlight, int32 StencilValue = 0) override;
-	
-	UFUNCTION()
-	void OnRep_TeamID();
-
-	UFUNCTION(BlueprintCallable, Server, Reliable)
-	void Server_SetTeamID(ETeamType NewTeamID);
-
-protected:
-	// 팀 변수
-	UPROPERTY(ReplicatedUsing = OnRep_TeamID, EditAnywhere, BlueprintReadWrite, Category = "Team")
-	ETeamType TeamID;
-	
-#pragma endregion
-	
-	/// [전민성 추가분]
-
-private:
-	int32 SpawnPoint = 0;
-
-public:
-	// 임시로 사용할 사망 함수, 이후 맞는 위치로 이동 예정 
-	void Death();
-
-	void SetSpawnPoint(int32 point) { SpawnPoint = point; }
-	
-	int32 GetSpawnPoint() { return SpawnPoint; }
 
 
-	// Test용
-	UFUNCTION(BlueprintCallable)
-	void OnCCChanged(FGameplayTag Tag, int32 NewCount);
 
-	UFUNCTION(BlueprintCallable)
-	void OffCCChanged();
 };
 
 
