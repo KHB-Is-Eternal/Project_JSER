@@ -45,6 +45,9 @@
 #include "ItemSystem/Data/BaseItemData.h"
 #include "Components/UniformGridSlot.h"
 #include "ItemSystem/UI/W_InventorySlot.h"
+#include "Components/Image.h"
+#include "CharacterSystem/Player/BasePlayerController.h"
+#include "ItemSystem/Data/BaseItemData.h"
 void UUI_MainHUD::Update_LV(float CurrentLV)
 {
     if(IsValid(stat_LV))
@@ -1619,6 +1622,8 @@ void UUI_MainHUD::UpdateInventoryUI()
             InventorySlotWidgets[i]->SetStackCount(InventoryComp->GetStackCountAt(i));
         }
     }
+
+    RefreshCraftPreviewIcons();
 }
 
 // [김현수 추가분]
@@ -1810,4 +1815,77 @@ bool UUI_MainHUD::GetCooldownRemainingForTag(const FGameplayTagContainer& Cooldo
 	}
 
 	return false;
+}
+
+void UUI_MainHUD::SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemData) // [김현수 추가분] 이미지 한 칸 설정 함수
+{
+    if (!TargetImage)
+    {
+        return;
+    }
+
+    if (!ItemData || ItemData->ItemIcon.IsNull())
+    {
+        TargetImage->SetVisibility(ESlateVisibility::Hidden);
+        return;
+    }
+
+    UTexture2D* LoadedIcon = ItemData->ItemIcon.LoadSynchronous();
+    if (!LoadedIcon)
+    {
+        TargetImage->SetVisibility(ESlateVisibility::Hidden);
+        return;
+    }
+
+    FSlateBrush Brush;
+    Brush.SetResourceObject(LoadedIcon);
+    TargetImage->SetBrush(Brush);
+    TargetImage->SetVisibility(ESlateVisibility::Visible);
+}
+
+void UUI_MainHUD::RefreshCraftPreviewIcons() // [김현수 추가분] 전체 갱신 함수
+{
+    TArray<UImage*> PreviewImages =
+    {
+        IMG_CraftPreview_0,
+        IMG_CraftPreview_1,
+        IMG_CraftPreview_2,
+        IMG_CraftPreview_3,
+        IMG_CraftPreview_4
+    };
+
+    // 일단 전부 숨김
+    for (UImage* Image : PreviewImages)
+    {
+        if (Image)
+        {
+            Image->SetVisibility(ESlateVisibility::Hidden);
+        }
+    }
+
+    ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
+    if (!IsValid(PC))
+    {
+        return;
+    }
+
+    const TArray<FCraftableItemPreviewData> CraftableItems = PC->GetCraftableItemsForUI();
+    if (CraftableItems.Num() == 0)
+    {
+        return;
+    }
+
+    // 우선순위 높은 것이 오른쪽이므로,
+    // [Priority 높은 순] 결과를 오른쪽부터 채운다.
+    int32 TargetIndex = 4;
+    for (const FCraftableItemPreviewData& Data : CraftableItems)
+    {
+        if (TargetIndex < 0)
+        {
+            break;
+        }
+
+        SetCraftPreviewImage(PreviewImages[TargetIndex], Data.ResultItem);
+        --TargetIndex;
+    }
 }

@@ -24,6 +24,8 @@ class USkillDataAsset;
 class UUniformGridPanel;
 class UBaseInventoryComponent;
 class UW_InventorySlot;
+class UImage;
+class UBaseItemData;
 
 
 UENUM(BlueprintType)
@@ -494,5 +496,24 @@ private:
 
 public:
 	int32 getSkillLevel(FGameplayTag SkillTag, bool levelUp);
+
+protected: // [김현수 추가분] 제작가능 아이템 표시용 프리뷰 이미지
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_0;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_1;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_2;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_3;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_4;
+
+	void RefreshCraftPreviewIcons();
+	void SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemData);
 };
 
