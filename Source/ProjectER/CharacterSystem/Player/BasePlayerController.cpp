@@ -31,6 +31,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "ItemSystem/Data/ItemRecipeRow.h"
 #include "NavigationSystem.h"
+#include "ItemSystem/Data/BaseItemData.h"
+#include "Engine/DataTable.h"
 
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "GameModeBase/GameMode/ER_OutGameMode.h"
@@ -2631,3 +2633,127 @@ bool ABasePlayerController::CanInteractWithItemsInCurrentLifeState(APawn* InPawn
 	return !bIsDown && !bIsDead;
 }
 
+// [김현수 추가분] 재료가 있는지 찾는 보조 함수
+bool ABasePlayerController::FindMaterialIndicesForRecipe(const FItemRecipeRow& Recipe, int32& OutMat1Index, int32& OutMat2Index) const
+{
+	OutMat1Index = INDEX_NONE;
+	OutMat2Index = INDEX_NONE;
+
+	APawn* CurrentPawn = GetPawn();
+	if (!IsValid(CurrentPawn))
+	{
+		return false;
+	}
+
+	UBaseInventoryComponent* Inventory = CurrentPawn->FindComponentByClass<UBaseInventoryComponent>();
+	if (!IsValid(Inventory))
+	{
+		return false;
+	}
+
+	UBaseItemData* Material1Data = Recipe.Material1.LoadSynchronous();
+	UBaseItemData* Material2Data = Recipe.Material2.LoadSynchronous();
+
+	if (!Material1Data || !Material2Data)
+	{
+		return false;
+	}
+
+	for (int32 SlotIndex = 0; SlotIndex < Inventory->MaxSlots; ++SlotIndex)
+	{
+		UBaseItemData* SlotItem = Inventory->GetItemAt(SlotIndex);
+		if (!SlotItem)
+		{
+			continue;
+		}
+
+		if (OutMat1Index == INDEX_NONE && SlotItem == Material1Data)
+		{
+			OutMat1Index = SlotIndex;
+			continue;
+		}
+
+		if (OutMat2Index == INDEX_NONE && SlotItem == Material2Data)
+		{
+			if (SlotIndex != OutMat1Index)
+			{
+				OutMat2Index = SlotIndex;
+			}
+		}
+	}
+
+	return (OutMat1Index != INDEX_NONE && OutMat2Index != INDEX_NONE);
+}
+
+// [김현수 추가분] 제작 가능 아이템 목록 반환 함수
+TArray<FCraftableItemPreviewData> ABasePlayerController::GetCraftableItemsForUI() const
+{
+	TArray<FCraftableItemPreviewData> Results;
+
+	if (!IsValid(ItemRecipeTable))
+	{
+		return Results;
+	}
+
+	TArray<FItemRecipeRow*> AllRows;
+	ItemRecipeTable->GetAllRows<FItemRecipeRow>(TEXT("GetCraftableItemsForUI"), AllRows);
+
+	TMap<UBaseItemData*, int32> BestPriorityByResult;
+
+	for (FItemRecipeRow* RecipeRow : AllRows)
+	{
+		if (!RecipeRow)
+		{
+			continue;
+		}
+
+		UBaseItemData* ResultItemData = RecipeRow->ResultItem.LoadSynchronous();
+		UBaseItemData* Material1Data = RecipeRow->Material1.LoadSynchronous();
+		UBaseItemData* Material2Data = RecipeRow->Material2.LoadSynchronous();
+
+		if (!ResultItemData || !Material1Data || !Material2Data)
+		{
+			continue;
+		}
+
+		int32 Mat1Index = INDEX_NONE;
+		int32 Mat2Index = INDEX_NONE;
+
+		if (!FindMaterialIndicesForRecipe(*RecipeRow, Mat1Index, Mat2Index))
+		{
+			continue;
+		}
+
+		if (int32* ExistingPriority = BestPriorityByResult.Find(ResultItemData))
+		{
+			if (RecipeRow->Priority > *ExistingPriority)
+			{
+				*ExistingPriority = RecipeRow->Priority;
+			}
+		}
+		else
+		{
+			BestPriorityByResult.Add(ResultItemData, RecipeRow->Priority);
+		}
+	}
+
+	for (const TPair<UBaseItemData*, int32>& Pair : BestPriorityByResult)
+	{
+		FCraftableItemPreviewData PreviewData;
+		PreviewData.ResultItem = Pair.Key;
+		PreviewData.Priority = Pair.Value;
+		Results.Add(PreviewData);
+	}
+
+	Results.Sort([](const FCraftableItemPreviewData& A, const FCraftableItemPreviewData& B)
+		{
+			return A.Priority > B.Priority;
+		});
+
+	if (Results.Num() > 5)
+	{
+		Results.SetNum(5);
+	}
+
+	return Results;
+}
