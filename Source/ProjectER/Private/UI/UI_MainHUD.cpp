@@ -1817,7 +1817,8 @@ bool UUI_MainHUD::GetCooldownRemainingForTag(const FGameplayTagContainer& Cooldo
 	return false;
 }
 
-void UUI_MainHUD::SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemData) // [김현수 추가분] 이미지 한 칸 설정 함수
+// [김현수 추가분] 이미지 한 칸 설정 함수
+void UUI_MainHUD::SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemData)
 {
     if (!TargetImage)
     {
@@ -1826,24 +1827,23 @@ void UUI_MainHUD::SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemD
 
     if (!ItemData || ItemData->ItemIcon.IsNull())
     {
-        TargetImage->SetVisibility(ESlateVisibility::Hidden);
+        ClearCraftPreviewImage(TargetImage);
         return;
     }
 
     UTexture2D* LoadedIcon = ItemData->ItemIcon.LoadSynchronous();
     if (!LoadedIcon)
     {
-        TargetImage->SetVisibility(ESlateVisibility::Hidden);
+        ClearCraftPreviewImage(TargetImage);
         return;
     }
 
-    FSlateBrush Brush;
-    Brush.SetResourceObject(LoadedIcon);
-    TargetImage->SetBrush(Brush);
+    TargetImage->SetBrushFromTexture(LoadedIcon);
     TargetImage->SetVisibility(ESlateVisibility::Visible);
 }
 
-void UUI_MainHUD::RefreshCraftPreviewIcons() // [김현수 추가분] 전체 갱신 함수
+// [김현수 추가분] 전체 갱신 함수
+void UUI_MainHUD::RefreshCraftPreviewIcons()
 {
     TArray<UImage*> PreviewImages =
     {
@@ -1854,13 +1854,10 @@ void UUI_MainHUD::RefreshCraftPreviewIcons() // [김현수 추가분] 전체 갱
         IMG_CraftPreview_4
     };
 
-    // 일단 전부 숨김
+    // 먼저 전부 빈칸으로 초기화
     for (UImage* Image : PreviewImages)
     {
-        if (Image)
-        {
-            Image->SetVisibility(ESlateVisibility::Hidden);
-        }
+        ClearCraftPreviewImage(Image);
     }
 
     ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
@@ -1875,17 +1872,22 @@ void UUI_MainHUD::RefreshCraftPreviewIcons() // [김현수 추가분] 전체 갱
         return;
     }
 
-    // 우선순위 높은 것이 오른쪽이므로,
-    // [Priority 높은 순] 결과를 오른쪽부터 채운다.
-    int32 TargetIndex = 4;
-    for (const FCraftableItemPreviewData& Data : CraftableItems)
+    // 우선순위 높은 아이템을 오른쪽(4번)부터 채운다
+    for (int32 DataIndex = 0; DataIndex < CraftableItems.Num() && DataIndex < 5; ++DataIndex)
     {
-        if (TargetIndex < 0)
-        {
-            break;
-        }
-
-        SetCraftPreviewImage(PreviewImages[TargetIndex], Data.ResultItem);
-        --TargetIndex;
+        const int32 UIIndex = 4 - DataIndex;
+        SetCraftPreviewImage(PreviewImages[UIIndex], CraftableItems[DataIndex].ResultItem);
     }
+}
+
+// 빈 칸 초기화 함수
+void UUI_MainHUD::ClearCraftPreviewImage(UImage* TargetImage)
+{
+    if (!TargetImage)
+    {
+        return;
+    }
+
+    TargetImage->SetBrushFromTexture(nullptr);
+    TargetImage->SetVisibility(ESlateVisibility::Hidden);
 }

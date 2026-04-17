@@ -489,7 +489,7 @@ protected:
 
 private:
 	void RefreshInventoryGridLayout(); // [김현수 추가분]
-
+	void ClearCraftPreviewImage(UImage* TargetImage);
 
 	bool test = true;
 	bool GetCooldownRemainingForTag(const FGameplayTagContainer& CooldownTags, float& TimeRemaining, float& CooldownDuration);
