@@ -1,4 +1,4 @@
-﻿#include "GameModeBase/GameMode/ER_InGameMode.h"
+#include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Respawn/ER_RespawnSubsystem.h"
@@ -25,6 +25,49 @@
 
 #include "LevelManagement/LevelGraphManager/LevelAreaGameStateComp/LevelAreaGameModeComponent.h"
 #include "LevelManagement/LevelAreaTrackerComponent.h"
+
+namespace ERInGameModeAttributeCache
+{
+	const TArray<FGameplayAttribute>& GetCachedBaseAttributes()
+	{
+		static TArray<FGameplayAttribute> CachedAttributes;
+		if (CachedAttributes.Num() > 0)
+		{
+			return CachedAttributes;
+		}
+
+		for (TFieldIterator<FProperty> It(UBaseAttributeSet::StaticClass()); It; ++It)
+		{
+			if (const FStructProperty* StructProp = CastField<FStructProperty>(*It))
+			{
+				if (StructProp->Struct == FGameplayAttributeData::StaticStruct())
+				{
+					CachedAttributes.Emplace(*It);
+				}
+			}
+		}
+
+		return CachedAttributes;
+	}
+
+	const TMap<FName, FGameplayAttribute>& GetCachedBaseAttributeMap()
+	{
+		static TMap<FName, FGameplayAttribute> CachedAttributeMap;
+		if (CachedAttributeMap.Num() > 0)
+		{
+			return CachedAttributeMap;
+		}
+
+		const TArray<FGameplayAttribute>& CachedAttributes = GetCachedBaseAttributes();
+		CachedAttributeMap.Reserve(CachedAttributes.Num());
+		for (const FGameplayAttribute& Attribute : CachedAttributes)
+		{
+			CachedAttributeMap.Add(FName(*Attribute.GetName()), Attribute);
+		}
+
+		return CachedAttributeMap;
+	}
+}
 
 void AER_InGameMode::BeginPlay()
 {
@@ -145,18 +188,19 @@ void AER_InGameMode::Logout(AController* Exiting)
 					Data.AssistCount     = ERPS->AssistCount;
 
 					// ASC Attribute 데이터 추출
-					if (UAbilitySystemComponent* ASC = ERPS->GetAbilitySystemComponent())
+					if (ERPS->GetAbilitySystemComponent())
 					{
-						for (TFieldIterator<FProperty> It(UBaseAttributeSet::StaticClass()); It; ++It)
+						const UAttributeSet* AttributeSet = ERPS->GetAttributeSet();
+						const TArray<FGameplayAttribute>& CachedAttributes = ERInGameModeAttributeCache::GetCachedBaseAttributes();
+						Data.SavedAttributes.Reserve(CachedAttributes.Num());
+
+						for (const FGameplayAttribute& Attribute : CachedAttributes)
 						{
-							if (FStructProperty* StructProp = CastField<FStructProperty>(*It))
+							if (!Attribute.IsValid())
 							{
-								if (StructProp->Struct == FGameplayAttributeData::StaticStruct())
-								{
-									FGameplayAttribute Attribute(*It);
-									Data.SavedAttributes.Add(It->GetName(), Attribute.GetNumericValue(ERPS->GetAttributeSet()));
-								}
+								continue;
 							}
+							Data.SavedAttributes.Add(Attribute.GetName(), Attribute.GetNumericValue(AttributeSet));
 						}
 						
 						UE_LOG(LogTemp, Warning, TEXT("[GM] Logout >> Captured %d attributes for player: %s"), 
@@ -166,17 +210,13 @@ void AER_InGameMode::Logout(AController* Exiting)
 					// 인벤토리 데이터 추출
 					if (UBaseInventoryComponent* Inv = OwnedPawn->FindComponentByClass<UBaseInventoryComponent>())
 					{
-						for (TFieldIterator<FArrayProperty> It(UBaseInventoryComponent::StaticClass()); It; ++It)
+						if (FArrayProperty* ArrayProp = FindFProperty<FArrayProperty>(UBaseInventoryComponent::StaticClass(), TEXT("InventoryContents")))
 						{
-							if (It->GetName() == TEXT("InventoryContents"))
+							FScriptArrayHelper Helper(ArrayProp, ArrayProp->ContainerPtrToValuePtr<void>(Inv));
+							for (int32 i = 0; i < Helper.Num(); ++i)
 							{
-								FScriptArrayHelper Helper(*It, It->ContainerPtrToValuePtr<void>(Inv));
-								for (int32 i = 0; i < Helper.Num(); ++i)
-								{
-									UBaseItemData* Item = *reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i));
-									Data.SavedInventory.Add(Item);
-								}
-								break;
+								UBaseItemData* Item = *reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i));
+								Data.SavedInventory.Add(Item);
 							}
 						}
 						
@@ -377,24 +417,14 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 		// Attribute 데이터 복원
 		if (UAbilitySystemComponent* ASC = NewERPS->GetAbilitySystemComponent())
 		{
+			const TMap<FName, FGameplayAttribute>& CachedAttributeMap = ERInGameModeAttributeCache::GetCachedBaseAttributeMap();
 			// ASC ActorInfo가 먼저 설정되어 있어야 함 (Possess 이후 시점이므로 안전)
 			for (const auto& Pair : FoundData->SavedAttributes)
 			{
-				FGameplayAttribute Attribute;
-				for (TFieldIterator<FProperty> It(UBaseAttributeSet::StaticClass()); It; ++It)
+				const FGameplayAttribute* Attribute = CachedAttributeMap.Find(FName(*Pair.Key));
+				if (Attribute && Attribute->IsValid())
 				{
-					if (It->GetName() == Pair.Key)
-					{
-						Attribute = FGameplayAttribute(*It);
-						break;
-					}
-				}
-
-				if (Attribute.IsValid())
-				{
-					ASC->SetNumericAttributeBase(Attribute, Pair.Value);
-					// 현재 값도 동일하게 맞춤 (GE에 인한 보정 전 기본값)
-					ASC->SetNumericAttributeBase(Attribute, Pair.Value); 
+					ASC->SetNumericAttributeBase(*Attribute, Pair.Value);
 				}
 			}
 
@@ -407,17 +437,13 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 		{
 			if (UBaseInventoryComponent* Inv = PreservedPawn->FindComponentByClass<UBaseInventoryComponent>())
 			{
-				for (TFieldIterator<FArrayProperty> It(UBaseInventoryComponent::StaticClass()); It; ++It)
+				if (FArrayProperty* ArrayProp = FindFProperty<FArrayProperty>(UBaseInventoryComponent::StaticClass(), TEXT("InventoryContents")))
 				{
-					if (It->GetName() == TEXT("InventoryContents"))
+					FScriptArrayHelper Helper(ArrayProp, ArrayProp->ContainerPtrToValuePtr<void>(Inv));
+					Helper.EmptyAndAddValues(FoundData->SavedInventory.Num());
+					for (int32 i = 0; i < FoundData->SavedInventory.Num(); ++i)
 					{
-						FScriptArrayHelper Helper(*It, It->ContainerPtrToValuePtr<void>(Inv));
-						Helper.EmptyAndAddValues(FoundData->SavedInventory.Num());
-						for (int32 i = 0; i < FoundData->SavedInventory.Num(); ++i)
-						{
-							*reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i)) = FoundData->SavedInventory[i];
-						}
-						break;
+						*reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i)) = FoundData->SavedInventory[i];
 					}
 				}
 				
@@ -915,6 +941,13 @@ void AER_InGameMode::HandlePhaseTimeUp()
 		{
 			// 1페이즈에는 금지 구역을 지정하지 않도록 수정
 			AreaGSComp->SetPhase(ERGS->GetCurrentPhase());
+		}
+
+		// 다음 페이즈에서 위험해질 구역을 미리 노란색(경고)으로 표시
+		const TArray<int32> NextZoneIDs = AreaGSComp->GetNextPhaseZoneIDs(ERGS->GetCurrentPhase());
+		if (NextZoneIDs.Num() > 0)
+		{
+			ERGS->Multicast_SetHazardIntensity(NextZoneIDs, 0.5f);
 		}
 
 		/*//Updated -> Internally the ULevelAreaGameModeComponent does not make danger zone on first phase
