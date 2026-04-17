@@ -3,7 +3,6 @@
 #include "StateTreeExecutionContext.h"
 #include "Monster/BaseMonster.h"
 #include "Components/CapsuleComponent.h"
-#include "Engine/CollisionProfile.h"
 
 FSTT_SetCollisionProfile::FSTT_SetCollisionProfile()
 {
