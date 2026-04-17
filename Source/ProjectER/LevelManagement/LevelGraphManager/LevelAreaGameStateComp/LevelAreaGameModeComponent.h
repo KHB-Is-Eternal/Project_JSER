@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -106,6 +106,10 @@ public:
         int32 EffectivePhase = FMath::Max(0, CurrentPhase - 1);
         return (EffectivePhase * HazardsPerPhase) >= HazardOrder.Num();
     }
+
+    // 다음 페이즈에서 위험 구역이 될 노드 ID 목록을 미리 반환 (ReferencePhase = GameState의 현재 Phase)
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Hazard")
+    TArray<int32> GetNextPhaseZoneIDs(int32 ReferencePhase) const;
 
     // Wide — all bridges for a node area
     UFUNCTION(BlueprintCallable, Category = "LevelArea")

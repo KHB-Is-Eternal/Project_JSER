@@ -7,6 +7,7 @@
 #include "ER_PhaseSubsystem.generated.h"
 
 class AER_GameState;
+class UGameplayEffect;
 
 UCLASS()
 class PROJECTER_API UER_PhaseSubsystem : public UWorldSubsystem
@@ -24,12 +25,15 @@ public:
 
 private:
 	void OnPeriodicCheckTick();
+	UGameplayEffect* GetOrCreateHazardDamageEffect();
 
 private:
 	FTimerHandle PhaseTimer;
 	FTimerHandle NoticeTimer;
 	FTimerHandle PeriodicCheckTimer;
-
-	// 캐싱된 GameState. Subsystem이 소유권을 가지지 않으므로 TWeakObjectPtr 사용이 안전합니다.
+	
 	TWeakObjectPtr<class AER_GameState> CachedGameState;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UGameplayEffect> CachedHazardDamageEffect = nullptr;
 };

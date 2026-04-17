@@ -178,6 +178,11 @@ void AER_GameState::Multicast_OnHazardPhaseChanged_Implementation(const TArray<i
 	OnDangerZonesReceived(NewDangerZoneIDs);
 }
 
+void AER_GameState::Multicast_SetHazardIntensity_Implementation(const TArray<int32>& ZoneIDs, float Intensity)
+{
+	OnHazardIntensityReceived(ZoneIDs, Intensity);
+}
+
 void AER_GameState::Multicast_BroadcastChatMessage_Implementation(const FString& Message)
 {
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())

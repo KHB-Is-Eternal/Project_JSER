@@ -63,6 +63,13 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Hazard")
 	void OnDangerZonesReceived(const TArray<int32>& NewDangerZoneIDs);
 
+	// 위험 구역 강도 설정 (경고=0.5, 위험=1.0 등 자유롭게 지정)
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_SetHazardIntensity(const TArray<int32>& ZoneIDs, float Intensity);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Hazard")
+	void OnHazardIntensityReceived(const TArray<int32>& ZoneIDs, float Intensity);
+
 
 public:
 	UPROPERTY(BlueprintReadOnly)
