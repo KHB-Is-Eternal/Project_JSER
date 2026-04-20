@@ -256,75 +256,24 @@ void UMouseTargetSkill::RotateToTarget(AActor* Actor)
 
 void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets)
 {
-	UAbilitySystemComponent* const SourceASC = GetAbilitySystemComponentFromActorInfo();
-	AActor* const Avatar = GetAvatarActorFromActorInfo();
-	if (!IsValid(SourceASC) || !IsValid(Avatar) || !IsValid(TargetActor) || SkillEffectDataAssets.Num() <= 0) return;
-	if (!IsValidRelationship(TargetActor)) return;
+	// 1. 타겟 유효성 및 팀 관계 확인
+	if (!IsValid(TargetActor) || !IsValidRelationship(TargetActor))
+	{
+		return;
+	}
+
+	// 2. 공통 컨텍스트 생성 (타겟 위치 정보 포함)
+	UAbilitySystemComponent* const SourceASC = GetASC();
+	if (!ensure(SourceASC)) return;
 
 	FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
-	ContextHandle.AddInstigator(Avatar, Avatar);
-	ContextHandle.SetAbility(this);
 	ContextHandle.AddOrigin(TargetActor->GetActorLocation());
+	
 	FHitResult HitResult(TargetActor, nullptr, TargetActor->GetActorLocation(), FVector::UpVector);
-	ContextHandle.AddHitResult(HitResult);
+	ContextHandle.AddHitResult(HitResult, true);
 
-	// [Fix] 클라이언트 시전 시간을 컨텍스트에 주입 (VFX 핸드셰이크 및 렉 보상 필수)
-	if (FProjectERGameplayEffectContext* ERContext = static_cast<FProjectERGameplayEffectContext*>(ContextHandle.Get()))
-	{
-		float SyncTime = this->SyncedActivationTime;
-		if (SyncTime <= 0.0f)
-		{
-			if (const AGameStateBase* GameState = GetWorld()->GetGameState())
-			{
-				SyncTime = GameState->GetServerWorldTimeSeconds();
-			}
-			else
-			{
-				SyncTime = GetWorld()->GetTimeSeconds();
-			}
-		}
-		ERContext->ClientActivationTime = SyncTime;
-	}
-
-	UAbilitySystemComponent* const TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
-	if (!IsValid(TargetASC)) return;
-
-	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : SkillEffectDataAssets)
-	{
-		if (!IsValid(EffectClass)) continue;
-
-		// [V8.0] 다른 GE와의 컨텍스트 간섭 방지를 위해 Duplicate 사용
-		FGameplayEffectContextHandle EffectSpecificContext = ContextHandle.Duplicate();
-		FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), EffectSpecificContext);
-		
-		if (SpecHandle.IsValid())
-		{
-			// [V8.1] GEC 후크 명시적 호출 (렉 보상 및 로컬 예측 VFX 생성을 위함)
-			if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
-			{
-				for (const TObjectPtr<UGameplayEffectComponent>& Component : GEInstance->GetGEComponents())
-				{
-					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
-					{
-						// [Fix] Spec에 이미 복사된 Context를 수정해야만 서버 브로드캐스트 시 값이 유지됩니다.
-						FGameplayEffectContextHandle SpecContext = SpecHandle.Data.Get()->GetContext();
-
-						// Phase 1: 좌표 보정 및 데이터 준비
-						BaseGEC->PreApplyEffect(SourceASC, SpecContext, *SpecHandle.Data.Get());
-						
-						// Phase 2: 시전자 클라이언트에서 즉각적인 VFX 예측 생성
-						if (IsLocallyControlled())
-						{
-							BaseGEC->OnExecutePredictive(SourceASC, SpecContext, *SpecHandle.Data.Get());
-						}
-					}
-				}
-			}
-
-			// Phase 3: 실제 효과 적용
-			SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-		}
-	}
+	// 3. 부모 클래스의 통합 로직 호출
+	ApplyEffectToTargetInternal(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor), SkillEffectDataAssets, ContextHandle);
 }
 
 void UMouseTargetSkill::CleanUpSkill()

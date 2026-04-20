@@ -181,27 +181,36 @@ void USkillBase::ExecuteSkill()
 {
 	auto* ASC = GetASC();
 	auto* Avatar = GetAvatar();
-	if (!IsValid(CachedConfig) || !IsValid(ASC) || !IsValid(Avatar))
+	
+	if (!ensure(CachedConfig) || !IsValid(ASC) || !IsValid(Avatar))
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 		return;
 	}
 
-	// 메인 로직: 들여쓰기 없이 평탄하게 진행
+	// 1. 자신에게 효과 적용
 	ApplyExcutionEffectToSelf(CachedConfig->GetExecutionEffects());
 
+	// 2. 권한 서버에서 처리할 공통 로직 (예: 이동 정지)
 	if (HasAuthority(&CurrentActivationInfo))
 	{
-		if (auto* Character = Cast<ABaseCharacter>(Avatar)) Character->StopMove();
+		if (ABaseCharacter* Character = Cast<ABaseCharacter>(Avatar))
+		{
+			Character->StopMove();
+		}
 	}
 
+	// 3. 디버그 로그 및 클라이언트 전용 이벤트
 	if (ASC->IsNetMode(NM_Client))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[SkillBase] ExecuteSkill on Client. HasValidPredictionKey: %s"), 
 			ASC->ScopedPredictionKey.IsValidKey() ? TEXT("True") : TEXT("False"));
 	}
 
-	if (IsLocallyControlled()) OnExecuteSkill_InClient();
+	if (IsLocallyControlled())
+	{
+		OnExecuteSkill_InClient();
+	}
 }
 
 void USkillBase::OnActiveTagEventReceived(FGameplayEventData Payload)
@@ -301,31 +310,35 @@ void USkillBase::PrepareToActiveSkill()
 
 void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle)
 {
-	UAbilitySystemComponent* const ASC = GetASC();
-	AActor* const Avatar = GetAvatar();
-	if (!IsValid(ASC) || !IsValid(Avatar) || SkillEffectDataAssets.Num() <= 0) return;
+	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, ContextHandle);
+}
 
-	if (ASC->IsNetMode(NM_Client))
+void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle)
+{
+	UAbilitySystemComponent* const SourceASC = GetASC();
+	AActor* const Avatar = GetAvatar();
+
+	if (!ensure(SourceASC) || !ensure(Avatar) || !IsValid(TargetASC) || Effects.Num() <= 0)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[SkillBase] ApplyExcutionEffectToSelf on Client. PredictionKey: %s"), 
-			*ASC->ScopedPredictionKey.ToString());
+		return;
 	}
 
-	if(ContextHandle.IsValid() == false) ContextHandle = ASC->MakeEffectContext();
+	// 1. 컨텍스트 초기화 및 커스텀 데이터(시각 동기화) 주입
+	if (!ContextHandle.IsValid())
+	{
+		ContextHandle = SourceASC->MakeEffectContext();
+	}
 	ContextHandle.AddInstigator(Avatar, Avatar);
 	ContextHandle.SetAbility(this);
 
-	if (FProjectERGameplayEffectContext* ERContext = static_cast<FProjectERGameplayEffectContext*>(ContextHandle.Get()))
+	if (FProjectERGameplayEffectContext* ERContext = ProjectERContextUtils::GetMutableProjectERContext(ContextHandle))
 	{
-		// 클라이언트 시전 시간 기록 (렉 보상 및 VFX 동기화용)
 		if (this->SyncedActivationTime > 0.0f)
 		{
-			// 클라이언트가 전송한 정확한 시간을 사용 (서버와 클라이언트 값이 동일함을 보장)
 			ERContext->ClientActivationTime = this->SyncedActivationTime;
 		}
 		else if (UWorld* World = GetWorld())
 		{
-			// 백업 (예: AI 시전)
 			if (AGameStateBase* GameState = World->GetGameState())
 			{
 				ERContext->ClientActivationTime = GameState->GetServerWorldTimeSeconds();
@@ -333,54 +346,38 @@ void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGamepla
 		}
 	}
 
-	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : SkillEffectDataAssets)
+	// 2. 각 이팩트 순회하며 적용
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Effects)
 	{
 		if (!IsValid(EffectClass)) continue;
 
-		// [Fix] 다른 GE의 PreApplyEffect에 의해 공유 Context가 오염되는 것을 방지하기 위해 Duplicate 사용
+		// 개별 이펙트용 컨텍스트 독립화 (오염 방지)
 		FGameplayEffectContextHandle EffectSpecificContext = ContextHandle.Duplicate();
-		FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), EffectSpecificContext);
+		FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), EffectSpecificContext);
+		
 		if (SpecHandle.IsValid())
 		{
-			// [V7.2] Phase 1: 준비 (PreApplyEffect - 좌표 보정 등)
+			// [GEC Hook] Phase 1, 2: 좌표 보정 및 클라이언트 예측 비주얼 생성
 			if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
 			{
 				for (const TObjectPtr<UGameplayEffectComponent>& Component : GEInstance->GetGEComponents())
 				{
 					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
 					{
-						// [Fix] SpecHandle 내부에 이미 복사된 Context를 가져와서 수정해야 서버로 값이 전달됩니다.
 						FGameplayEffectContextHandle SpecContext = SpecHandle.Data.Get()->GetContext();
 
-						BaseGEC->PreApplyEffect(ASC, SpecContext, *SpecHandle.Data.Get());
+						BaseGEC->PreApplyEffect(SourceASC, SpecContext, *SpecHandle.Data.Get());
 						
-						// [V7.3] Phase 2: 비주얼 실행 (시전자 클라이언트 예측 전용)
 						if (IsLocallyControlled())
 						{
-							BaseGEC->OnExecutePredictive(ASC, SpecContext, *SpecHandle.Data.Get());
+							BaseGEC->OnExecutePredictive(SourceASC, SpecContext, *SpecHandle.Data.Get());
 						}
 					}
 				}
 			}
 
-			// // [Phase 2] 비주얼 실행 (OnExecutePredictive)
-			// // 로컬 예측 클라이언트와 서버(브로드캐스트) 양측에서 모두 실행됩니다.
-			// if (IsLocallyControlled() || ASC->IsOwnerActorAuthoritative())
-			// {
-			// 	if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
-			// 	{
-			// 		for (const TObjectPtr<UGameplayEffectComponent>& Component : GEInstance->GetGEComponents())
-			// 		{
-			// 			if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
-			// 			{
-			// 				BaseGEC->OnExecutePredictive(ASC, EffectSpecificContext, SpecHandle);
-			// 			}
-			// 		}
-			// 	}
-			// }
-
-			// [Phase 3] 실제 GE 적용 (서버 권한 로직 실행)
-			ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), ASC);
+			// Phase 3: 최종 적용
+			SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 		}
 	}
 }

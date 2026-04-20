@@ -109,23 +109,28 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 
 	UE_LOG(LogTemp, Log, TEXT("AGCN_SummonedActor::InitializeFromGEC - SourceObject: %s"), *SourceObject->GetName());
 
-	// 1. 공통 설정 (수명 등)
-	if (const USummonRangeBaseGEC* RangeGEC = Cast<USummonRangeBaseGEC>(SourceObject))
+	// [Refactor] 특정 GEC 클래스나 부모 GEC에 의존하지 않고 인터페이스(IProjectERSummonedActorInterface)를 사용합니다.
+	if (const IProjectERSummonedActorInterface* VisualSource = Cast<IProjectERSummonedActorInterface>(SourceObject))
 	{
-		// [Fix] 수동 LifeSpan은 제거하고 부모 액터의 소멸에만 100% 의존하도록 변경합니다.
-		// (주기적 장판 등이 LifeSpan에 의해 먼저 사라지는 현상 방지)
-		
-		// 2. 비주얼(VFX) 초기화
-		SetupVfxComponent(RangeGEC->RangeSpawnVfx.Get());
-	}
-	else if (const ULaunchHomingMissile* MissileGEC = Cast<ULaunchHomingMissile>(SourceObject))
-	{
-		// 2. 비주얼(VFX) 초기화
-		SetupVfxComponent(MissileGEC->MissileVfx.Get());
-	}
+		// 1. 비주얼(VFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
+		SetupVfxComponent(VisualSource->GetAGCN_NiagaraConfig());
 
-	// 3. 이동(Movement) 초기화
-	SetupMovementComponent(SourceObject);
+		// 2. 이동(Movement) 초기화 - GEC인 경우에만 추가 설정 수행
+		if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(VisualSource))
+		{
+			if (MovementComponent)
+			{
+				BaseGEC->SetupMovement(MovementComponent);
+				
+				// 발사체 성격인 경우 즉시 활성화
+				if (MovementComponent->InitialSpeed > 0.0f)
+				{
+					MovementComponent->Velocity = GetActorForwardVector() * MovementComponent->InitialSpeed;
+					MovementComponent->Activate(true);
+				}
+			}
+		}
+	}
 }
 
 void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig)
@@ -138,10 +143,6 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 		return;
 	}
 
-	// if (!NiagaraConfig || NiagaraConfig->NiagaraSystem.IsNull())
-	// {
-	// 	return;
-	// }
 
 	// 기존 컴포넌트가 없다면 생성 (미래의 풀링을 위해 별도 함수화 고려 가능)
 	if (!VfxComponent)
@@ -180,34 +181,6 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 	}
 }
 
-void AGCN_SummonedActor::SetupMovementComponent(const UObject* SourceObject)
-{
-	if (!MovementComponent || !SourceObject) return;
-
-	// 발사체 타입인 경우 속도 적용
-	if (const ULaunchProjectile* ProjectileGEC = Cast<ULaunchProjectile>(SourceObject))
-	{
-		MovementComponent->InitialSpeed = ProjectileGEC->InitialSpeed;
-		MovementComponent->MaxSpeed = ProjectileGEC->InitialSpeed;
-		MovementComponent->ProjectileGravityScale = ProjectileGEC->GravityScale;
-
-		// 즉시 활성화 및 초기 속도 설정
-		MovementComponent->Velocity = GetActorForwardVector() * ProjectileGEC->InitialSpeed;
-		MovementComponent->Activate(true);
-	}
-	else if (const ULaunchHomingMissile* MissileGEC = Cast<ULaunchHomingMissile>(SourceObject))
-	{
-		MovementComponent->InitialSpeed = MissileGEC->InitialSpeed;
-		MovementComponent->MaxSpeed = MissileGEC->MaxSpeed;
-		MovementComponent->ProjectileGravityScale = 0.0f; // 미사일 상수로 0 설정
-		
-		// 미사일 특화 설정이 필요하다면 추가 (예: 가속도 정보 등)
-		
-		// 즉시 활성화 및 초기 속도 설정
-		MovementComponent->Velocity = GetActorForwardVector() * MissileGEC->InitialSpeed;
-		MovementComponent->Activate(true);
-	}
-}
 
 AActor* AGCN_SummonedActor::GetActualInstigator(const FGameplayCueParameters& Parameters) const
 {

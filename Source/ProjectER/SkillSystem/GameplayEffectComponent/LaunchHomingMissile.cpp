@@ -17,6 +17,7 @@
 #include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/GameState.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 
 // ============================================================================
 // GEC
@@ -24,6 +25,14 @@
 
 ULaunchHomingMissile::ULaunchHomingMissile()
 {
+}
+
+void ULaunchHomingMissile::SetupMovement(UProjectileMovementComponent* Movement) const
+{
+	if (!Movement) return;
+	Movement->InitialSpeed = InitialSpeed;
+	Movement->MaxSpeed = MaxSpeed;
+	Movement->ProjectileGravityScale = 0.0f;
 }
 
 void ULaunchHomingMissile::PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
@@ -171,97 +180,60 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 {
 	Super::OnGameplayEffectApplied(ActiveGEContainer, GESpec, PredictionKey);
 
-	// --- Context 검증 ---
+	if (!ensure(MissileActorClass)) return;
+
 	const FGameplayEffectContextHandle& ContextHandle = GESpec.GetEffectContext();
-	const FGameplayEffectContext* EffectContext = ContextHandle.Get();
-	if (!EffectContext)
-	{
-		return;
-	}
+	AActor* const EffectInstigator = ContextHandle.GetInstigator() ? ContextHandle.GetInstigator() : ContextHandle.GetEffectCauser();
+	if (!IsValid(EffectInstigator)) return;
 
-	AActor* const Instigator = IsValid(ContextHandle.GetInstigator())
-		? ContextHandle.GetInstigator()
-		: ContextHandle.GetEffectCauser();
-	if (!IsValid(Instigator))
-	{
-		return;
-	}
-
-	UWorld* const World = Instigator->GetWorld();
-	if (!IsValid(World))
-	{
-		return;
-	}
-
-	// --- 클래스 세팅 검증 ---
-	if (!IsValid(this->MissileActorClass))
-	{
-		return;
-	}
-
-	// --- 타겟 및 스폰 위치 계산 ---
-	// 1순위: HitResult에서 타겟 추출
+	// 1. 타겟 식별
 	AActor* TargetActor = nullptr;
-	if (const FHitResult* HitResult = ContextHandle.GetHitResult())
-	{
-		TargetActor = HitResult->GetActor();
-	}
-	// 2순위: HitResult가 없거나 Actor가 없으면 GE가 적용된 대상(Owner)을 타겟으로 사용
-	if (!IsValid(TargetActor))
-	{
-		TargetActor = GetTargetActorFromContainer(ActiveGEContainer);
-	}
+	if (const FHitResult* HitResult = ContextHandle.GetHitResult()) TargetActor = HitResult->GetActor();
+	if (!IsValid(TargetActor)) TargetActor = GetTargetActorFromContainer(ActiveGEContainer);
+	if (!IsValid(TargetActor)) return;
 
-	if (!IsValid(TargetActor))
-	{
-		return;
-	}
+	// 2. 소환 트랜스폼 계산
+	FTransform SpawnTransform = GetInitialTransform(ContextHandle, ActiveGEContainer, EffectInstigator, TargetActor);
 
-	// PreApplyEffect에서 보정된 트랜스폼을 사용합니다.
-	FTransform SpawnTransform = CalculateSpawnTransform(Instigator, TargetActor);
-	
-	// [Fix] Context의 Origin 정보가 네트워크 전송 중 오염(0,0,0)되어 스폰 위치를 망가뜨리는 문제가 확인되었습니다.
-	// 서버가 CalculateSpawnTransform으로 직접 계산한 값을 우선적으로 사용하도록 동기화 로직을 제거합니다.
-	/*
-	if (ContextHandle.HasOrigin())
+	// 3. 권한 확인 및 실행 (서버 전용)
+	if (ActiveGEContainer.Owner && ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
 	{
-		SpawnTransform.SetLocation(ContextHandle.GetOrigin());
-		if (const FHitResult* Hit = ContextHandle.GetHitResult())
+		// 관전자용 VFX 브로드캐스트
+		OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec, PredictionKey);
+
+		if (UWorld* World = EffectInstigator->GetWorld())
 		{
-			SpawnTransform.SetRotation(Hit->Normal.Rotation().Quaternion());
+			if (ABaseMissileActor* MissileActor = SpawnDeferredActor(World, MissileActorClass, SpawnTransform, EffectInstigator))
+			{
+				InitializeActorData(MissileActor, ContextHandle, GESpec, SpawnTransform, TargetActor);
+				MissileActor->FinishSpawning(SpawnTransform);
+			}
 		}
 	}
-	*/
+}
 
-	UE_LOG(LogTemp, Warning, TEXT("[SERVER] LaunchHomingMissile::OnGEApplied - Final SpawnLocation: %s"), 
-		*SpawnTransform.GetLocation().ToString());
+FTransform ULaunchHomingMissile::GetInitialTransform(const FGameplayEffectContextHandle& ContextHandle, FActiveGameplayEffectsContainer& ActiveGEContainer, AActor* Instigator, AActor* TargetActor) const
+{
+	// [Fix] 서버는 항상 CalculateSpawnTransform을 통해 직접 계산한 최신 좌표를 신뢰합니다.
+	// (클라이언트에서 오염된 Context Origin이 넘어올 수 있기 때문)
+	return CalculateSpawnTransform(Instigator, TargetActor);
+}
 
-	// 2. 권한 확인: 실제 액터 스폰은 서버에서만 수행합니다.
-	if (!ActiveGEContainer.Owner || !ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
-	{
-		return;
-	}
-
-	// [V7.3] 서버에서 실제 GE가 적용되는 시점에 관전자들에게 VFX를 브로드캐스트합니다.
-	OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec, PredictionKey);
-
-	// --- 미사일 액터 지연 생성 ---
-	APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
-	ABaseMissileActor* const MissileActor = World->SpawnActorDeferred<ABaseMissileActor>(
-		this->MissileActorClass,
-		SpawnTransform,
+ABaseMissileActor* ULaunchHomingMissile::SpawnDeferredActor(UWorld* World, TSubclassOf<ABaseMissileActor> ActorClass, const FTransform& Transform, AActor* Instigator) const
+{
+	return World->SpawnActorDeferred<ABaseMissileActor>(
+		ActorClass,
+		Transform,
 		Instigator,
-		SpawnInstigator,
+		Cast<APawn>(Instigator),
 		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-	if (!IsValid(MissileActor))
-	{
-		return;
-	}
+}
 
-	// --- 효과 Spec 생성 --- 
-	UAbilitySystemComponent* const CauserASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Instigator);
+void ULaunchHomingMissile::InitializeActorData(ABaseMissileActor* Actor, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, const FTransform& Transform, AActor* TargetActor) const
+{
+	UAbilitySystemComponent* const CauserASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ContextHandle.GetInstigator());
 	UGameplayAbility* const Ability = const_cast<UGameplayAbility*>(ContextHandle.GetAbility());
-
+	
 	TArray<FGameplayEffectSpecHandle> EffectSpecs;
 	if (IsValid(CauserASC) && IsValid(Ability))
 	{
@@ -269,69 +241,29 @@ void ULaunchHomingMissile::OnGameplayEffectApplied(
 		{
 			if (IsValid(EffectClass))
 			{
-				FGameplayEffectSpecHandle SpecHandle = CauserASC->MakeOutgoingSpec(EffectClass, GESpec.GetLevel(), ContextHandle);
-				if (SpecHandle.IsValid())
-				{
-					EffectSpecs.Add(SpecHandle);
-				}
+				EffectSpecs.Add(CauserASC->MakeOutgoingSpec(EffectClass, GESpec.GetLevel(), ContextHandle));
 			}
 		}
-
-		// 강화 효과(SkillProc) 확인 및 적용
-		UBaseGEC::GetSkillProcEffects(CauserASC, Ability, MissileActor, ContextHandle, EffectSpecs);
+		UBaseGEC::GetSkillProcEffects(CauserASC, Ability, Actor, ContextHandle, EffectSpecs);
 	}
+
+	// 명중 효과 파라미터 구성
+	FGameplayCueParameters HitVfxParams(GESpec);
+	if (ImpactVfx) { HitVfxParams.OriginalTag = ImpactVfx->CueTag; HitVfxParams.EffectCauser = Actor; HitVfxParams.SourceObject = ImpactVfx; }
 	
-	// --- 명중 효과(VFX, Sound)용 파라미터 구성 ---
-	// 명중 효과는 로컬 예측이 필수적이지 않으므로 기존 방식(InitializeMissile 통해 전달)을 유지합니다. 
-	FGameplayCueParameters HitVfxCueParams(GESpec);
-	if (IsValid(this->ImpactVfx) && this->ImpactVfx->CueTag.IsValid())
+	FGameplayCueParameters HitSoundParams(GESpec);
+	if (ImpactSound) { HitSoundParams.OriginalTag = ImpactSound->CueTag; HitSoundParams.EffectCauser = Actor; HitSoundParams.SourceObject = ImpactSound; }
+
+	// 미사일 초기화
+	Actor->InitializeMissile(EffectSpecs, ContextHandle.GetInstigator(), TargetActor, HitVfxParams, HitSoundParams, 
+		InitialSpeed, MaxSpeed, HomingAccelerationMagnitude, ReachThreshold, bDestroyOnHit, Transform.GetRotation().GetForwardVector());
+	
+	Actor->SetLifeSpan(LifeSpan);
+
+	if (const FProjectERGameplayEffectContext* ErContext = ProjectERContextUtils::GetProjectERContext(ContextHandle))
 	{
-		HitVfxCueParams.OriginalTag = this->ImpactVfx->CueTag;
-		HitVfxCueParams.Instigator = ContextHandle.GetInstigator();
-		HitVfxCueParams.EffectCauser = MissileActor;
-		HitVfxCueParams.Location = SpawnTransform.GetLocation();
-		HitVfxCueParams.SourceObject = this->ImpactVfx;
-		HitVfxCueParams.GameplayEffectLevel = GESpec.GetLevel();
+		Actor->SetClientActivationTime(ErContext->ClientActivationTime);
 	}
-
-	FGameplayCueParameters HitSoundCueParams(GESpec);
-	if (IsValid(this->ImpactSound) && this->ImpactSound->CueTag.IsValid())
-	{
-		HitSoundCueParams.OriginalTag = this->ImpactSound->CueTag;
-		HitSoundCueParams.Instigator = ContextHandle.GetInstigator();
-		HitSoundCueParams.EffectCauser = MissileActor;
-		HitSoundCueParams.Location = SpawnTransform.GetLocation();
-		HitSoundCueParams.SourceObject = this->ImpactSound;
-		HitSoundCueParams.GameplayEffectLevel = GESpec.GetLevel();
-	}
-
-	// --- 미사일 초기화 ---
-	// SpawnTransform의 방향을 직접 추출 (FinishSpawning 이전이므로 GetActorForwardVector() 불확실)
-	const FVector InitialDirection = SpawnTransform.GetRotation().GetForwardVector();
-
-	MissileActor->InitializeMissile(
-		EffectSpecs,
-		Instigator,
-		TargetActor,
-		HitVfxCueParams,
-		HitSoundCueParams,
-		this->InitialSpeed,
-		this->MaxSpeed,
-		this->HomingAccelerationMagnitude,
-		this->ReachThreshold,
-		this->bDestroyOnHit,
-		InitialDirection
-	);
-	MissileActor->SetLifeSpan(this->LifeSpan);
-
-	// 컨텍스트로부터 시전 시간 추출 및 판정 액터에 주입 (VFX 핸드셰이크용)
-	if (const FProjectERGameplayEffectContext* ErContext = static_cast<const FProjectERGameplayEffectContext*>(ContextHandle.Get()))
-	{
-		MissileActor->SetClientActivationTime(ErContext->ClientActivationTime);
-	}
-
-	// --- 스폰 완료 ---
-	MissileActor->FinishSpawning(SpawnTransform);
 }
 
 FTransform ULaunchHomingMissile::CalculateSpawnTransform(
@@ -383,20 +315,3 @@ AActor* ULaunchHomingMissile::GetTargetActorFromContainer(FActiveGameplayEffects
 	return ActiveGEContainer.Owner ? ActiveGEContainer.Owner->GetOwner() : nullptr;
 }
 
-void ULaunchHomingMissile::ExecuteVfx(
-	const FGameplayEffectSpec& GESpec,
-	const FGameplayEffectContextHandle& ContextHandle,
-	AActor* Instigator,
-	ABaseMissileActor* MissileActor) const
-{
-	// 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 예측 발사 효과를 처리합니다. 
-}
-
-void ULaunchHomingMissile::ExecuteSound(
-	const FGameplayEffectSpec& GESpec,
-	const FGameplayEffectContextHandle& ContextHandle,
-	AActor* Instigator,
-	ABaseMissileActor* MissileActor) const
-{
-	// 수동으로 GameplayCue를 실행하던 로직을 제거하고, Phase 2(OnExecutePredictive)에서 예측 발송 사운드를 처리합니다. 
-}

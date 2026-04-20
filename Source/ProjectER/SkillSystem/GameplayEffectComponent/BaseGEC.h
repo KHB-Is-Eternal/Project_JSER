@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameplayEffectComponent.h"
 #include "GameplayPrediction.h"
+#include "SkillSystem/GameplayCueNotify/ProjectERSummonedActorInterface.h"
 #include "BaseGEC.generated.h"
 
 /**
@@ -19,7 +20,7 @@ struct FGameplayEffectSpecHandle;
 struct FGameplayEffectSpec;
 
 UCLASS()
-class PROJECTER_API UBaseGEC : public UGameplayEffectComponent
+class PROJECTER_API UBaseGEC : public UGameplayEffectComponent, public IProjectERSummonedActorInterface
 {
 	GENERATED_BODY()
 
@@ -54,10 +55,14 @@ public:
 
 	/**
 	 * [Phase 2.5 - VFX 브로드캐스트]
-	 * 서버에서 GameplayEffect가 적용된 후 호출되어 관전자들에게 VFX를 브로드캐스트합니다.
+	 * 서버에서 GameplayEffectが 적용된 후 호출되어 관전자들에게 VFX를 브로드캐스트합니다.
 	 * OnExecutePredictive와 달리, 이 함수는 서버 권한으로만 실행됩니다.
 	 */
 	virtual void OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey = FPredictionKey()) const {}
+
+	/** GCN 액터(AGCN_SummonedActor) 초기화를 위한 데이터 제공 함수들 */
+	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const override { return nullptr; }
+	virtual void SetupMovement(class UProjectileMovementComponent* Movement) const {}
 
 protected:
 

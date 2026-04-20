@@ -40,6 +40,9 @@ public:
 	/** Phase 2.5: VFX 브로드캐스트 - 서버에서 관전자들에게 VFX를 전송합니다. */
 	virtual void OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey = FPredictionKey()) const override;
 
+	/** GCN 액터 초기화 데이터 제공 */
+	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const override { return RangeSpawnVfx.Get(); }
+
 protected:
 	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
 	virtual FTransform CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const;
@@ -48,6 +51,12 @@ protected:
 
 
 	virtual AActor* GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const;
+
+	/** OnGameplayEffectApplied 세분화 함수들 */
+	virtual FTransform GetInitialTransform(const FGameplayEffectContextHandle& ContextHandle, FActiveGameplayEffectsContainer& ActiveGEContainer, const FGameplayEffectSpec& GESpec, AActor* Instigator) const;
+	virtual ABaseRangeOverlapEffectActor* SpawnDeferredActor(UWorld* World, TSubclassOf<ABaseRangeOverlapEffectActor> ActorClass, const FTransform& Transform, AActor* Instigator) const;
+	virtual void InitializeActorData(ABaseRangeOverlapEffectActor* Actor, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, const FTransform& Transform) const;
+	virtual void ApplyLagCompensation(ABaseRangeOverlapEffectActor* Actor, const FGameplayEffectContextHandle& ContextHandle) const;
 
 	FGameplayCueParameters BuildNiagaraCueParameters(const FGameplayEffectSpec& GESpec, const FGameplayTag& OriginalTag, const FGameplayEffectContextHandle& EffectContext, AActor* EffectCauser, const FVector& CueLocation, const UObject* SourceObject, const FVector& CueNormal = FVector::UpVector) const;
 	virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const;

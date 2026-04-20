@@ -35,11 +35,17 @@ protected:
 	virtual void OnCancelAbility();
 	virtual void OnExecuteSkill_InClient();
 	virtual void CompleteFinishSkill();
+
+	/** 스킬 효과 적용 핵심 로직 - 중복 코드 제거를 위해 통합됨 */
+	void ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
+
 	void SetSkillTagCount(FGameplayTag Tag, int32 Count);
 	void PlayAnimMontage();
 	void SetWaitEventActiveTag();
 	void SetWaitEventCastingTag();
 	void PrepareToActiveSkill();
+	
+	/** 자신에게 효과 적용 (ApplyEffectToTargetInternal 호출) */
 	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
 	bool TryExecuteSkill();
 	FGameplayTag GetInputTag();
@@ -61,7 +67,7 @@ protected:
 	UFUNCTION()
 	void OnMontageCompleted();
 
-private:
+protected:
 	FORCEINLINE UAbilitySystemComponent* GetASC() const { return GetAbilitySystemComponentFromActorInfo(); }
 	FORCEINLINE AActor* GetAvatar() const { return GetAvatarActorFromActorInfo(); }
 

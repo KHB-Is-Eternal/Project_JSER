@@ -113,38 +113,38 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 {
 	Super::OnGameplayEffectApplied(ActiveGEContainer, GESpec, PredictionKey);
 
+	if (!ensure(RangeActorClass)) return;
+
 	const FGameplayEffectContextHandle& ContextHandle = GESpec.GetEffectContext();
-	const FGameplayEffectContext* const EffectContext = ContextHandle.Get();
-	if (EffectContext == nullptr)
-	{
-		return;
-	}
+	AActor* const EffectInstigator = ContextHandle.GetInstigator() ? ContextHandle.GetInstigator() : ContextHandle.GetEffectCauser();
+	
+	if (!IsValid(EffectInstigator) || !ShouldProcessOnInstigator(EffectInstigator)) return;
 
-	AActor* const EffectInstigator = IsValid(ContextHandle.GetInstigator())
-		? ContextHandle.GetInstigator()
-		: ContextHandle.GetEffectCauser();
-	if (!IsValid(EffectInstigator))
-	{
-		return;
-	}
+	// 1. 소환 트랜스폼 계산
+	FTransform SpawnTransform = GetInitialTransform(ContextHandle, ActiveGEContainer, GESpec, EffectInstigator);
 
-	if (!ShouldProcessOnInstigator(EffectInstigator))
+	// 2. 권한 확인 및 실행 (서버 전용)
+	if (ActiveGEContainer.Owner && ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
 	{
-		return;
-	}
+		// 관전자용 VFX 브로드캐스트
+		OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec, PredictionKey);
 
-	UWorld* const World = EffectInstigator->GetWorld();
-	if (!IsValid(World))
-	{
-		return;
+		// 액터 소환 및 초기화
+		if (UWorld* World = EffectInstigator->GetWorld())
+		{
+			if (ABaseRangeOverlapEffectActor* RangeActor = SpawnDeferredActor(World, RangeActorClass, SpawnTransform, EffectInstigator))
+			{
+				InitializeActorData(RangeActor, ContextHandle, GESpec, SpawnTransform);
+				RangeActor->FinishSpawning(SpawnTransform);
+				
+				ApplyLagCompensation(RangeActor, ContextHandle);
+			}
+		}
 	}
+}
 
-	if (!IsValid(this->RangeActorClass))
-	{
-		return;
-	}
-
-	// 1. 타켓 식별 및 위치 계산 (PreApplyEffect에서 보정된 Origin 우선 사용)
+FTransform USummonRangeBaseGEC::GetInitialTransform(const FGameplayEffectContextHandle& ContextHandle, FActiveGameplayEffectsContainer& ActiveGEContainer, const FGameplayEffectSpec& GESpec, AActor* Instigator) const
+{
 	FTransform SpawnTransform = FTransform::Identity;
 	if (ContextHandle.HasOrigin())
 	{
@@ -157,81 +157,53 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 	else
 	{
 		AActor* const TargetActor = GetTargetActorFromContainer(ActiveGEContainer);
-		const FTransform OriginTransform = CalculateOriginTransform(GESpec, EffectInstigator, TargetActor);
-		SpawnTransform = ApplyCommonSpawnOptionsToTransform(OriginTransform, EffectInstigator);
+		SpawnTransform = CalculateSpawnTransform(GESpec, Instigator, TargetActor);
 	}
-	const FVector RangeSpawnLocation = SpawnTransform.GetLocation();
+	return SpawnTransform;
+}
 
-	// 2. 권한 확인: 실제 액터 소환은 서버에서만 수행합니다. (중복 소환 방지)
-	if (ActiveGEContainer.Owner && ActiveGEContainer.Owner->IsOwnerActorAuthoritative())
+ABaseRangeOverlapEffectActor* USummonRangeBaseGEC::SpawnDeferredActor(UWorld* World, TSubclassOf<ABaseRangeOverlapEffectActor> ActorClass, const FTransform& Transform, AActor* Instigator) const
+{
+	return World->SpawnActorDeferred<ABaseRangeOverlapEffectActor>(
+		ActorClass,
+		Transform,
+		Instigator,
+		Cast<APawn>(Instigator),
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+}
+
+void USummonRangeBaseGEC::InitializeActorData(ABaseRangeOverlapEffectActor* Actor, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, const FTransform& Transform) const
+{
+	const FVector Location = Transform.GetLocation();
+	
+	FGameplayCueParameters VfxParams = BuildNiagaraCueParameters(GESpec, HitTargetVfx ? HitTargetVfx->CueTag : FGameplayTag(), ContextHandle, Actor, Location, HitTargetVfx.Get());
+	FGameplayCueParameters SfxParams = BuildNiagaraCueParameters(GESpec, HitTargetSound ? HitTargetSound->CueTag : FGameplayTag(), ContextHandle, Actor, Location, HitTargetSound.Get());
+
+	if (const FProjectERGameplayEffectContext* ErContext = ProjectERContextUtils::GetProjectERContext(ContextHandle))
 	{
-		// [V7.3] 서버에서 실제 GE가 적용되는 시점에 관전자들에게 VFX를 브로드캐스트합니다.
-		OnExecuteVFXCue(ActiveGEContainer.Owner, ContextHandle, GESpec, PredictionKey);
+		Actor->SetClientActivationTime(ErContext->ClientActivationTime);
+	}
 
-		// 3. 액터 소환 (지연 생성)
-		APawn* const SpawnInstigator = Cast<APawn>(ContextHandle.GetInstigator());
-		ABaseRangeOverlapEffectActor* const DeferredSpawnedActor = World->SpawnActorDeferred<ABaseRangeOverlapEffectActor>(
-			this->RangeActorClass,
-			SpawnTransform,
-			EffectInstigator,
-			SpawnInstigator,
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	InitializeRangeActor(Actor, ContextHandle.GetInstigator(), ContextHandle, VfxParams, SfxParams);
+	Actor->SetLifeSpan(this->LifeSpan);
+}
 
-		UE_LOG(LogTemp, Log, TEXT("SummonRangeBaseGEC::OnGameplayEffectApplied - Server Spawn. Actor: %s, Instigator: %s, Time: %f"), 
-			DeferredSpawnedActor ? *DeferredSpawnedActor->GetName() : TEXT("nullptr"),
-			EffectInstigator ? *EffectInstigator->GetName() : TEXT("nullptr"),
-			ContextHandle.Get() ? static_cast<const FProjectERGameplayEffectContext*>(ContextHandle.Get())->ClientActivationTime : 0.0f);
-			
-		if (IsValid(DeferredSpawnedActor))
+void USummonRangeBaseGEC::ApplyLagCompensation(ABaseRangeOverlapEffectActor* Actor, const FGameplayEffectContextHandle& ContextHandle) const
+{
+	const FProjectERGameplayEffectContext* ERContext = ProjectERContextUtils::GetProjectERContext(ContextHandle);
+	UWorld* World = Actor->GetWorld();
+
+	if (ERContext && ERContext->ClientActivationTime > 0.0f && World)
+	{
+		if (AGameStateBase* GameState = World->GetGameState())
 		{
-			// 4. 초기화 및 마무리
-			const FGameplayCueParameters HitTargetVfxCueParameters = BuildNiagaraCueParameters(
-				GESpec,
-				IsValid(this->HitTargetVfx.Get()) ? this->HitTargetVfx->CueTag : FGameplayTag(),
-				ContextHandle,
-				DeferredSpawnedActor,
-				RangeSpawnLocation,
-				this->HitTargetVfx.Get());
-
-			const FGameplayCueParameters HitTargetSoundCueParameters = BuildNiagaraCueParameters(
-				GESpec,
-				IsValid(this->HitTargetSound.Get()) ? this->HitTargetSound->CueTag : FGameplayTag(),
-				ContextHandle,
-				DeferredSpawnedActor,
-				RangeSpawnLocation,
-				this->HitTargetSound.Get());
-
-			// 컨텍스트로부터 시전 시간 추출 및 장판 액터에 주입 (VFX 핸드셰이크용)
-			if (const FProjectERGameplayEffectContext* ErContext = static_cast<const FProjectERGameplayEffectContext*>(ContextHandle.Get()))
+			float Latency = GameState->GetServerWorldTimeSeconds() - ERContext->ClientActivationTime;
+			if (Latency > 0.0f)
 			{
-				DeferredSpawnedActor->SetClientActivationTime(ErContext->ClientActivationTime);
-			}
-
-			InitializeRangeActor(DeferredSpawnedActor, EffectInstigator, ContextHandle, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
-
-			DeferredSpawnedActor->FinishSpawning(SpawnTransform);
-
-			// 5. 렉 보상 (Lag Compensation / Fast-Forward)
-			// 클라이언트 측 발동 시간과 서버 현재 시간을 비교하여 소환 위치를 오프셋합니다.
-			if (const FProjectERGameplayEffectContext* ERContext = static_cast<const FProjectERGameplayEffectContext*>(EffectContext))
-			{
-				if (ERContext->ClientActivationTime > 0.0f)
+				FVector Velocity = Actor->GetVelocity();
+				if (!Velocity.IsNearlyZero())
 				{
-					if (AGameStateBase* GameState = World->GetGameState())
-					{
-						float ServerTime = GameState->GetServerWorldTimeSeconds();
-						float Latency = ServerTime - ERContext->ClientActivationTime;
-						if (Latency > 0.0f)
-						{
-							// 발사체의 경우 이동 속도가 존재하므로, 속도 * 지연시간 만큼 앞으로 밀어줍니다.
-							FVector Velocity = DeferredSpawnedActor->GetVelocity();
-							if (!Velocity.IsNearlyZero())
-							{
-								FVector Correction = Velocity * Latency;
-								DeferredSpawnedActor->AddActorWorldOffset(Correction);
-							}
-						}
-					}
+					Actor->AddActorWorldOffset(Velocity * Latency);
 				}
 			}
 		}

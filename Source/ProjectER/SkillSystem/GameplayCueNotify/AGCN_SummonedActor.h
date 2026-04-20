@@ -37,8 +37,6 @@ protected:
 	/** 나이아가라 컴포넌트 초기화 및 재생 */
 	void SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig);
 
-	/** 이동 컴포넌트 초기화 및 활성화 */
-	void SetupMovementComponent(const UObject* SourceObject);
 
 public:
 	/** 비주얼을 담당하는 나이아가라 컴포넌트 */

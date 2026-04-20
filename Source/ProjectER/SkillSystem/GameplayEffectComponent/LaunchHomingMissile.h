@@ -41,13 +41,21 @@ public:
 	/** Phase 2.5: VFX 브로드캐스트 - 서버에서 관전자들에게 VFX를 전송합니다. */
 	virtual void OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey = FPredictionKey()) const override;
 
+	/** GCN 액터 초기화 데이터 제공 */
+	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const override { return MissileVfx.Get(); }
+	virtual void SetupMovement(class UProjectileMovementComponent* Movement) const override;
+
 protected:
 	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
 
 	FTransform CalculateSpawnTransform(const AActor* Instigator, const AActor* TargetActor) const;
-	AActor* GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const;
-	void ExecuteVfx(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* Instigator, ABaseMissileActor* MissileActor) const;
-	void ExecuteSound(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* Instigator, ABaseMissileActor* MissileActor) const;
+	virtual AActor* GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const;
+
+	/** OnGameplayEffectApplied 세분화 함수들 */
+	virtual FTransform GetInitialTransform(const FGameplayEffectContextHandle& ContextHandle, FActiveGameplayEffectsContainer& ActiveGEContainer, AActor* Instigator, AActor* TargetActor) const;
+	virtual ABaseMissileActor* SpawnDeferredActor(UWorld* World, TSubclassOf<ABaseMissileActor> ActorClass, const FTransform& Transform, AActor* Instigator) const;
+	virtual void InitializeActorData(ABaseMissileActor* Actor, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, const FTransform& Transform, AActor* TargetActor) const;
+	
 
 public:
 	//--- 미사일 액터 클래스 ---

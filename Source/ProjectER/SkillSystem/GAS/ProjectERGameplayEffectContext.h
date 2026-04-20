@@ -79,6 +79,20 @@ protected:
 	FPredictionKey PredictionKey;
 };
 
+/** FProjectERGameplayEffectContext Handle을 보다 안전하고 편리하게 다루기 위한 헬퍼 함수들 */
+namespace ProjectERContextUtils
+{
+	static FORCEINLINE const FProjectERGameplayEffectContext* GetProjectERContext(const FGameplayEffectContextHandle& Handle)
+	{
+		return static_cast<const FProjectERGameplayEffectContext*>(Handle.Get());
+	}
+
+	static FORCEINLINE FProjectERGameplayEffectContext* GetMutableProjectERContext(const FGameplayEffectContextHandle& Handle)
+	{
+		return static_cast<FProjectERGameplayEffectContext*>(const_cast<FGameplayEffectContext*>(Handle.Get()));
+	}
+}
+
 /** FProjectERGameplayEffectContext에 대한 기능 허용 트레이츠 (상속 기반 직렬화 등 활성화) */
 template<>
 struct TStructOpsTypeTraits<FProjectERGameplayEffectContext> : public TStructOpsTypeTraitsBase2<FProjectERGameplayEffectContext>
