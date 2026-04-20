@@ -8,7 +8,9 @@
 
 class AER_GameState;
 class UGameplayEffect;
-
+class ULevelAreaGameModeComponent;
+class ULevelAreaTrackerComponent;
+class APawn;
 UCLASS()
 class PROJECTER_API UER_PhaseSubsystem : public UWorldSubsystem
 {
@@ -33,6 +35,11 @@ private:
 	FTimerHandle PeriodicCheckTimer;
 	
 	TWeakObjectPtr<class AER_GameState> CachedGameState;
+
+	TWeakObjectPtr<ULevelAreaGameModeComponent> CachedAreaGameModeComp;
+
+	// 캐싱할 타이머 기반 트래커들 (메모리 릭 방지를 위해 TWeakObjectPtr 사용)
+	TMap<TWeakObjectPtr<APawn>, TWeakObjectPtr<ULevelAreaTrackerComponent>> CachedTrackers;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UGameplayEffect> CachedHazardDamageEffect = nullptr;
