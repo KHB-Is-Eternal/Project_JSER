@@ -1,4 +1,5 @@
 #include "ER_GameState.h"
+#include "GameFramework/PlayerState.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "CharacterSystem/Data/CharacterData.h"
@@ -112,7 +113,7 @@ bool AER_GameState::GetTeamEliminate(int32 idx)
 		for (auto& UniqueIdStr : TeamCache[idx])
 		{
 			AER_PlayerState* PS = GetPlayerStateByUniqueId(UniqueIdStr);
-			if (PS && !PS->bIsDead)
+			if (PS && PS->IsCombatEffective())
 			{
 				++AliveCount;
 			}
@@ -177,6 +178,11 @@ void AER_GameState::Multicast_OnHazardPhaseChanged_Implementation(const TArray<i
 	OnDangerZonesReceived(NewDangerZoneIDs);
 }
 
+void AER_GameState::Multicast_SetHazardIntensity_Implementation(const TArray<int32>& ZoneIDs, float Intensity)
+{
+	OnHazardIntensityReceived(ZoneIDs, Intensity);
+}
+
 void AER_GameState::Multicast_BroadcastChatMessage_Implementation(const FString& Message)
 {
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
@@ -211,3 +217,30 @@ AER_PlayerState* AER_GameState::GetPlayerStateByUniqueId(const FString& InUnique
 	return nullptr;
 }
 
+void AER_GameState::AddPlayerState(APlayerState* PlayerState)
+{
+	Super::AddPlayerState(PlayerState);
+
+	check(PlayerState);
+
+	if (PlayerState == nullptr)
+	{
+		return;
+	}
+
+	OnPlayerStateAddedDelegate.Broadcast(PlayerState);
+}
+
+void AER_GameState::RemovePlayerState(APlayerState* PlayerState)
+{
+	Super::RemovePlayerState(PlayerState);
+
+	check(PlayerState);
+
+	if (PlayerState == nullptr)
+	{
+		return;
+	}
+
+	OnPlayerStateRemovedDelegate.Broadcast(PlayerState);
+}

@@ -9,6 +9,7 @@ class AER_PlayerState;
 class UCharacterData;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPhaseChangedBP, int32, NewPhase);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerStateChangedSignature, class APlayerState*, InPlayerState);
 
 // this is for the mpc update
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHazardZonesChanged, const TArray<int32>&, NewDangerZoneIDs);
@@ -22,6 +23,9 @@ public:
 	
 	AER_GameState();
 	
+	virtual void AddPlayerState(APlayerState* PlayerState) override;
+	virtual void RemovePlayerState(APlayerState* PlayerState) override;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void BuildTeamCache();
@@ -59,6 +63,13 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Hazard")
 	void OnDangerZonesReceived(const TArray<int32>& NewDangerZoneIDs);
 
+	// 위험 구역 강도 설정 (경고=0.5, 위험=1.0 등 자유롭게 지정)
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_SetHazardIntensity(const TArray<int32>& ZoneIDs, float Intensity);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Hazard")
+	void OnHazardIntensityReceived(const TArray<int32>& ZoneIDs, float Intensity);
+
 
 public:
 	UPROPERTY(BlueprintReadOnly)
@@ -75,6 +86,12 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Hazard")
 	FOnHazardZonesChanged OnHazardZonesChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "GameState|Events")
+	FOnPlayerStateChangedSignature OnPlayerStateAddedDelegate;
+
+	UPROPERTY(BlueprintAssignable, Category = "GameState|Events")
+	FOnPlayerStateChangedSignature OnPlayerStateRemovedDelegate;
 
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Selection")

@@ -1,0 +1,54 @@
+﻿#pragma once
+
+#include "CoreMinimal.h"
+#include "GameplayEffectComponent.h"
+#include "CCEffectGEC.generated.h"
+
+class UAbilitySystemComponent;
+
+UCLASS()
+class PROJECTER_API UCCEffectGEC : public UGameplayEffectComponent
+{
+	GENERATED_BODY()
+	
+public:
+	UCCEffectGEC();
+	
+protected:
+	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
+	
+private:
+	// Tenacity 보정된 Duration을 GESpec에 재설정
+	void AdjustDurationByTenacity(FGameplayEffectSpec& GESpec, const UAbilitySystemComponent* TargetASC) const;
+	
+	// CC 부가 동작 실행 (이동 중지, 어빌리티 캔슬, 에어본)
+	void ExecuteCCBehavior(AActor* TargetActor) const;
+	
+	// Slow 중첩 체크: 기존 Slow보다 약하면 true 반환 (적용 차단용)
+	bool ShouldBlockWeakerSlow(const UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec& IncomingSpec) const;
+	
+	// 기존의 약한 Slow GE를 제거
+	void RemoveWeakerSlowEffects(UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec& IncomingSpec) const;
+	
+public:
+	// 에어본 높이 (Airborne GE에서만 0 이상으로 설정)
+	UPROPERTY(EditDefaultsOnly, Category = "CC|Airborne")
+	float AirborneHeight = 0.0f;
+	
+	// Tenacity 적용 여부 (BlockRegen, ReduceHealing 등은 false)
+	UPROPERTY(EditDefaultsOnly, Category = "CC")
+	bool bAffectedByTenacity = true;
+	
+	// 현재 진행 중인 어빌리티를 캔슬할지 (Hard CC: true)
+	UPROPERTY(EditDefaultsOnly, Category = "CC")
+	bool bCancelCurrentAbilities = false;
+	
+	// 이동을 즉시 중지할지 (Root, Stun, Airborne: true)
+	UPROPERTY(EditDefaultsOnly, Category = "CC")
+	bool bStopMovement = false;
+	
+	// Slow 전용: 이 GE가 Slow CC인지 여부
+	// true이면 기존 Slow보다 약한 경우 적용을 차단
+	UPROPERTY(EditDefaultsOnly, Category = "CC|Slow")
+	bool bIsSlowEffect = false;
+};

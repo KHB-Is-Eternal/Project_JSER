@@ -12,6 +12,7 @@
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "ItemSystem/Actor/BaseItemActor.h"
+#include "CharacterSystem/Character/BaseCharacter.h"
 
 UBaseInventoryComponent::UBaseInventoryComponent()
 {
@@ -567,6 +568,8 @@ void UBaseInventoryComponent::HandleFoodHealTick()
 		return;
 	}
 
+	ShowRecoveryFloatingText(TickHealAmount, false);
+
 	CurrentFoodHealEffect.RemainingHealAmount -= TickHealAmount;
 	CurrentFoodHealEffect.RemainingTicks -= 1;
 
@@ -722,7 +725,7 @@ bool UBaseInventoryComponent::DropItemFromSlot(int32 SlotIndex, const FVector& S
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = OwnerActor;
 	SpawnParams.Instigator = DropperPawn;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	ABaseItemActor* SpawnedItem = World->SpawnActor<ABaseItemActor>(
 		SpawnClass,
@@ -966,6 +969,8 @@ void UBaseInventoryComponent::HandleDrinkManaTick()
 		return;
 	}
 
+	ShowRecoveryFloatingText(TickManaAmount, true);
+
 	CurrentDrinkManaEffect.RemainingManaAmount -= TickManaAmount;
 	CurrentDrinkManaEffect.RemainingTicks -= 1;
 
@@ -1062,4 +1067,25 @@ bool UBaseInventoryComponent::AddItemToSlot(int32 SlotIndex, UBaseItemData* Item
 
 	OnInventoryUpdated.Broadcast();
 	return true;
+}
+
+void UBaseInventoryComponent::ShowRecoveryFloatingText(float Amount, bool bIsMana)
+{
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+
+	ABaseCharacter* OwnerChar = Cast<ABaseCharacter>(GetOwner());
+	if (!IsValid(OwnerChar))
+	{
+		return;
+	}
+
+	if (!OwnerChar->HasAuthority())
+	{
+		return;
+	}
+
+	OwnerChar->Multicast_ShowRecoveryText(FMath::RoundToInt(Amount), bIsMana);
 }

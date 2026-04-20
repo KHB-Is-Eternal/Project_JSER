@@ -399,6 +399,12 @@ void UUI_MainHUD::NativeConstruct()
     }
     // skil
 
+    if (Btn_Craft)
+    {
+        Btn_Craft->OnHovered.AddDynamic(this, &UUI_MainHUD::OnCraftHovered);
+        Btn_Craft->OnUnhovered.AddDynamic(this, &UUI_MainHUD::HideTooltip);
+        Btn_Craft->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftClicked);
+    }
     // cool
     SkillCoolTexts[0] = skill_cool_01;
     SkillCoolTexts[1] = skill_cool_02;
@@ -436,6 +442,24 @@ void UUI_MainHUD::NativeConstruct()
     TeamLevel_01->SetVisibility(ESlateVisibility::Collapsed);
     TeamLevel_02->SetVisibility(ESlateVisibility::Collapsed);
 
+    if (WarningSkull)
+    {
+        WarningSkull->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+    if (WarningNumber_ten)
+    {
+        WarningNumber_ten->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+    if (WarningNumber_one)
+    {
+        WarningNumber_one->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+    showWarningAnim = GetWidgetAnimationByName(TEXT("AN_ShowWarning"));
+    hideWarningAnim = GetWidgetAnimationByName(TEXT("AN_HideWarning"));
+
+    // 금구 타이머 숨김
+    hideWarningSign();
+
     //// 디버그용
     //SetKillCount(0);
     //SetDeathCount(41);
@@ -460,6 +484,7 @@ void UUI_MainHUD::NativeDestruct()
             World->GetTimerManager().ClearTimer(SkillTimerHandles[i]);
         }
         World->GetTimerManager().ClearTimer(PhaseAndTimeTimer);
+		World->GetTimerManager().ClearTimer(UI_WarningTimerHandle);
     }
 
     Super::NativeDestruct();
@@ -569,6 +594,27 @@ void UUI_MainHUD::OnSkillLevelUp03Hovered()
 
 void UUI_MainHUD::OnSkillLevelUp04Hovered()
 {
+}
+
+void UUI_MainHUD::OnCraftHovered()
+{
+	FText Name = FText::FromString(TEXT("제작"));
+	FText ShortDesc = FText::FromString(TEXT("아이템을 제작합니다."));
+	FText DetailDesc = FText::FromString(TEXT("재료 아이템을 소모하여 새로운 아이템을 제작합니다."));
+	FText CostDesc = FText::FromString(TEXT("재료 아이템 소모"));
+
+    ShowTooltip(Btn_Craft, Name, ShortDesc, DetailDesc, CostDesc, true);
+
+}
+
+void UUI_MainHUD::OnCraftClicked()
+{
+    ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
+
+    if (IsValid(PC))
+    {
+        PC->TryStartCrafting();
+    }
 }
 
 void UUI_MainHUD::ShowTooltip(UWidget* AnchorWidget, FText Name, FText ShortDesc, FText DetailDesc, FText CostDesc, bool showUpper)
@@ -1371,6 +1417,15 @@ void UUI_MainHUD::WarningSign(int number)
 
     int32 SecTenDigit = Seconds / 10;
     int32 SecOneDigit = Seconds % 10;
+    if(!bIsWarningActive)
+        showWarningSign();
+
+    GetWorld()->GetTimerManager().SetTimer(
+        UI_WarningTimerHandle,
+        this,
+        &UUI_MainHUD::hideWarningSign,
+        3.0f,
+        false);
 
     if (RestrictedSign_01 && !IsAnimationPlaying(RestrictedSign_01))
     {
@@ -1386,6 +1441,54 @@ void UUI_MainHUD::WarningSign(int number)
         WarningNumber_one->SetBrushFromTexture(SegmentTextures[SecOneDigit]);
     }
 
+}
+
+void UUI_MainHUD::showWarningSign()
+{
+    bool bShow = true;
+    bIsWarningActive = true;
+
+    if (showWarningAnim && !IsAnimationPlaying(showWarningAnim))
+    {
+        PlayAnimation(showWarningAnim);
+    }
+
+  //  if (IsValid(WarningSkull))
+  //  {
+		//WarningSkull->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+  //  }
+  //  if (IsValid(WarningNumber_ten))
+  //  {
+  //      WarningNumber_ten->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+  //  }
+  //  if (IsValid(WarningNumber_one))
+  //  {
+  //      WarningNumber_one->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+  //  }
+}
+
+void UUI_MainHUD::hideWarningSign()
+{
+    bool bShow = false;
+    bIsWarningActive = false;
+
+    if (hideWarningAnim && !IsAnimationPlaying(hideWarningAnim))
+    {
+        PlayAnimation(hideWarningAnim);
+    }
+
+    //if (IsValid(WarningSkull))
+    //{
+    //    WarningSkull->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    //}
+    //if (IsValid(WarningNumber_ten))
+    //{
+    //    WarningNumber_ten->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    //}
+    //if (IsValid(WarningNumber_one))
+    //{
+    //    WarningNumber_one->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    //}
 }
 
 void UUI_MainHUD::UpdateTeamHP(int32 TeamIndex, float CurrentHP, float MaxHP)

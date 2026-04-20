@@ -1,4 +1,4 @@
-#include "CharacterSystem/Player/BasePlayerController.h"
+﻿#include "CharacterSystem/Player/BasePlayerController.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -37,7 +37,7 @@
 #include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Preload/ER_AssetPreloadSubsystem.h"
-#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h" // 스팀 세션 파괴를 위해 추가
+#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Blueprint/UserWidget.h"
 #include "CharacterSystem/Data/CharacterData.h"
@@ -78,7 +78,13 @@ ABasePlayerController::ABasePlayerController()
 	
 	//Camera comp as null in the constructor. the caching will be done in the runtime --> on possess
 	TopDownCameraComp = nullptr;
-	
+
+	// Click Sound Init
+	static ConstructorHelpers::FObjectFinder<USoundBase> SoundAsset(TEXT("/Engine/VREditor/Sounds/UI/Click_on_Button.Click_on_Button"));
+	if (SoundAsset.Succeeded())
+	{
+		ClickSound = SoundAsset.Object;
+	}	
 }
 
 void ABasePlayerController::BeginPlay()
@@ -314,7 +320,7 @@ void ABasePlayerController::SetupInputComponent()
 		if (InputConfig->ChatEnterKey)
 		{
 			EnhancedInputComponent->BindAction(InputConfig->ChatEnterKey, ETriggerEvent::Started, this, &ABasePlayerController::OnEnterPressed);
-		}		
+		}	
 	}
 }
 
@@ -843,7 +849,14 @@ void ABasePlayerController::CheckInteractionDistance()
 			{
 				const FGameplayTag ReviveTag =
 					FGameplayTag::RequestGameplayTag(FName("Ability.Action.Revive"));
-				ASC->TryActivateAbilitiesByTag(FGameplayTagContainer(ReviveTag));
+
+				// GameplayEvent를 통해 검증된 부활 대상을 GA에 직접 전달
+				FGameplayEventData Payload;
+				Payload.EventTag = ReviveTag;
+				Payload.Instigator = ControlledBaseChar;
+				Payload.Target = TargetChar; // 이미 팀/상태 검증 완료된 부활 대상
+
+				ASC->HandleGameplayEvent(ReviveTag, &Payload);
 			}
 
 			InteractionTarget = nullptr;
@@ -1149,6 +1162,13 @@ void ABasePlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn);
 	if (!ASC) return;
 
+	// ctrl 눌려 있을 경우 스킬 레벨업 처리 _ mpyi
+	if (IsInputKeyDown(EKeys::LeftControl))
+	{
+		OnSkillLevelUp(InputTag);
+		return; // 레벨업이 우선이므로 이후 공격 처리 로직은 실행하지 않음
+	}
+
 	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
 	{
 		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
@@ -1180,29 +1200,45 @@ void ABasePlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 
 // ------------------------------------------------------------
 // [전민성 추가분]
-void ABasePlayerController::ConnectToDedicatedServer(const FString& Ip, int32 Port, const FString& PlayerName)
+void ABasePlayerController::ReturnToMainMenu()
 {
 	if (!IsLocalController())
 		return;
 
-	const FString Address = FString::Printf(TEXT("%s:%d?PlayerName=%s"), *Ip, Port, *PlayerName);
+	UE_LOG(LogTemp, Log, TEXT("[PC] Return To MainMenu requested. Routing to Server Disconnect logic..."));
 
-	UE_LOG(LogTemp, Log, TEXT("[PC] Connecting to server: %s"), *Address);
-
-	ClientTravel(Address, TRAVEL_Absolute);
+	// 혼자 로컬에서 세션을 부수고 강제 이동하던 기존 방식을 버리고,
+	// 방금 구축한 완벽한 네트워크 퇴장/방 폭파 파이프라인으로 연결해줍니다.
+	Server_DisConnectServer();
 }
 
 void ABasePlayerController::Client_SetLose_Implementation()
 {
+	if (!IsLocalPlayerController() || GetLocalPlayer() == nullptr)
+	{
+		return;
+	}
+
 	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
-	PS->bIsLose = true;
+	if (PS)
+	{
+		PS->bIsLose = true;
+	}
 	ShowLoseUI();
 }
 
 void ABasePlayerController::Client_SetWin_Implementation()
 {
+	if (!IsLocalPlayerController() || GetLocalPlayer() == nullptr)
+	{
+		return;
+	}
+
 	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
-	PS->bIsWin = true;
+	if (PS)
+	{
+		PS->bIsWin = true;
+	}
 	ShowWinUI();
 }
 
@@ -1214,11 +1250,21 @@ void ABasePlayerController::Client_SetDead_Implementation()
 
 void ABasePlayerController::Client_StartRespawnTimer_Implementation()
 {
+	if (!IsLocalPlayerController() || GetLocalPlayer() == nullptr)
+	{
+		return;
+	}
+
 	ShowRespawnTimerUI();
 }
 
 void ABasePlayerController::Client_StopRespawnTimer_Implementation()
 {
+	if (!IsLocalPlayerController() || GetLocalPlayer() == nullptr)
+	{
+		return;
+	}
+
 	HideRespawnTimerUI();
 }
 
@@ -1294,17 +1340,29 @@ void ABasePlayerController::Server_StartGame_Implementation()
 
 void ABasePlayerController::Server_DisConnectServer_Implementation()
 {
-	if (AER_InGameMode* InGameMode = Cast<AER_InGameMode>(GetWorld()->GetAuthGameMode()))
+	if (AGameModeBase* AuthGameMode = GetWorld()->GetAuthGameMode())
 	{
-		// 이 코드가 서버(호스트) 본인의 컨트롤러에서 실행된 것이라면 안전한 서버 종료를 트리거합니다.
-		if (IsLocalController())
+		if (AER_InGameMode* InGameMode = Cast<AER_InGameMode>(AuthGameMode))
 		{
-			InGameMode->ShutdownServerForHost();
+			if (IsLocalController())
+			{
+				InGameMode->ShutdownServerForHost();
+			}
+			else
+			{
+				InGameMode->DisConnectClient(this);
+			}
 		}
-		else
+		else if (AER_OutGameMode* OutGameMode = Cast<AER_OutGameMode>(AuthGameMode))
 		{
-			// 클라이언트인 경우 기존의 단일 퇴장 로직을 수행합니다.
-			InGameMode->DisConnectClient(this);
+			if (IsLocalController())
+			{
+				OutGameMode->ShutdownServerForHost();
+			}
+			else
+			{
+				OutGameMode->DisConnectClient(this);
+			}
 		}
 	}
 }
@@ -1316,15 +1374,23 @@ void ABasePlayerController::Server_MoveTeam_Implementation(int32 TeamIdx)
 }
 
 void ABasePlayerController::Server_RequestPickup_Implementation(ABaseItemActor* Item)
-{ // 바닥에 있는 아이템 줍기
-	if (!Item) return;
-
+{
 	APawn* PlayerPawn = GetPawn();
-	if (!PlayerPawn) return;
+	if (!CanInteractWithItemsInCurrentLifeState(PlayerPawn))
+	{
+		return;
+	}
+
+	if (!Item || !PlayerPawn)
+	{
+		return;
+	}
 
 	constexpr float MaxDist = 200.f;
 	if (FVector::DistSquared(PlayerPawn->GetActorLocation(), Item->GetActorLocation()) > FMath::Square(MaxDist))
+	{
 		return;
+	}
 
 	Item->PickupItem(PlayerPawn);
 }
@@ -1332,6 +1398,12 @@ void ABasePlayerController::Server_RequestPickup_Implementation(ABaseItemActor* 
 // 박스 아이템 루팅 RPC 시작
 void ABasePlayerController::Server_BeginLoot_Implementation(AActor* Actor)
 {
+	APawn* PlayerPawn = GetPawn();
+	if (!CanInteractWithItemsInCurrentLifeState(PlayerPawn))
+	{
+		return;
+	}
+
 	if (!IsValid(Actor)) return;
 
 	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
@@ -1600,7 +1672,7 @@ void ABasePlayerController::Server_RequestTeleport_Implementation(int32 RegionIn
 	{
 		FGameplayEventData Payload;
 		Payload.Instigator = Char;
-		Payload.Target = Char;
+		Payload.Target = nullptr;
 		Payload.EventMagnitude = RegionIndex;
 
 		const FGameplayTag EventTag = ProjectER::Event::Interact::Teleport;
@@ -1611,6 +1683,12 @@ void ABasePlayerController::Server_RequestTeleport_Implementation(int32 RegionIn
 
 void ABasePlayerController::Server_BeginLootFromActor_Implementation(AActor* TargetActor)
 {
+	APawn* PlayerPawn = GetPawn();
+	if (!CanInteractWithItemsInCurrentLifeState(PlayerPawn))
+	{
+		return;
+	}
+
 	if (!IsValid(TargetActor))
 		return;
 
@@ -1659,6 +1737,13 @@ void ABasePlayerController::Server_BeginLootFromActor_Implementation(AActor* Tar
 
 void ABasePlayerController::Server_TakeItemFromActor_Implementation(const AActor* TargetActor, int32 SlotIndex)
 {
+	APawn* PlayerPawn = GetPawn();
+	if (!CanInteractWithItemsInCurrentLifeState(PlayerPawn))
+	{
+		return;
+	}
+
+
 	if (!TargetActor || !GetPawn())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Server_TakeItemFromActor: Invalid actor or pawn"));
@@ -1854,6 +1939,27 @@ void ABasePlayerController::UseInventorySlot(int32 SlotIndex)
 
 	// 슬롯 인덱스 사용 (0부터 시작)
 	InventoryComp->UseItem(SlotIndex);
+
+	// Client에서만 버튼 사운드 재생
+	if (IsLocalController())
+	{
+		if (ClickSound)
+		{
+			UGameplayStatics::PlaySound2D(this, ClickSound);
+		}
+	}
+}
+
+void ABasePlayerController::OnSkillLevelUp(FGameplayTag what_skill)
+{
+	if(what_skill == MainHUD->Q_SkillTag)
+		MainHUD->getSkillLevel(MainHUD->Q_SkillTag, true);
+	else if (what_skill == MainHUD->W_SkillTag)
+		MainHUD->getSkillLevel(MainHUD->W_SkillTag, true);
+	else if (what_skill == MainHUD->E_SkillTag)
+		MainHUD->getSkillLevel(MainHUD->E_SkillTag, true);
+	else if (what_skill == MainHUD->R_SkillTag)
+		MainHUD->getSkillLevel(MainHUD->R_SkillTag, true);
 }
 
 void ABasePlayerController::SetSoundMix(EAudioType AudioType, float Volume)
@@ -1958,6 +2064,15 @@ void ABasePlayerController::PawnLeavingGame()
         *GetNameSafe(GetPawn()));
 }
 
+void ABasePlayerController::Server_RequestHandleDeath_Implementation()
+{
+	APawn* OwnedPawn = GetPawn();
+	if (ABaseCharacter* Char = Cast<ABaseCharacter>(OwnedPawn))
+	{
+		Char->HandleDeath();
+	}
+}
+
 
 void ABasePlayerController::Server_RequestCharacterSelection_Implementation()
 {
@@ -2001,14 +2116,20 @@ void ABasePlayerController::RequestDropInventoryItemFromUI(int32 SlotIndex, cons
 		return;
 	}
 
-	FHitResult HitResult;
-	FVector DropLocation = PlayerPawn->GetActorLocation() + PlayerPawn->GetActorForwardVector() * 120.f;
-	DropLocation.Z = PlayerPawn->GetActorLocation().Z + 20.f;
+	const FVector PawnLocation = PlayerPawn->GetActorLocation();
+	constexpr float DropForwardDistance = 120.f;
+	constexpr float FixedDropZOffset = 30.f;
 
-	// UI 드래그 끝난 마우스 좌표를 월드 히트로 변환
+	FHitResult HitResult;
+	FVector DropLocation = PawnLocation + PlayerPawn->GetActorForwardVector() * DropForwardDistance;
+	DropLocation.Z = PawnLocation.Z + FixedDropZOffset;
+
+	// XY만 참고하고, Z는 고정
 	if (GetHitResultAtScreenPosition(ScreenSpacePosition, MouseTraceChannel, true, HitResult) && HitResult.bBlockingHit)
 	{
-		DropLocation = HitResult.Location + FVector(0.f, 0.f, 10.f);
+		DropLocation.X = HitResult.Location.X;
+		DropLocation.Y = HitResult.Location.Y;
+		DropLocation.Z = PawnLocation.Z + FixedDropZOffset;
 	}
 
 	Server_DropInventoryItem(SlotIndex, DropLocation);
@@ -2033,19 +2154,23 @@ void ABasePlayerController::Server_DropInventoryItem_Implementation(int32 SlotIn
 		return;
 	}
 
-	// 서버에서 한번 더 안전 위치 보정
-	FVector SafeDropLocation = FVector(DropLocation);
 	const FVector PawnLocation = PlayerPawn->GetActorLocation();
+	constexpr float MaxDropDistance = 250.f;
+	constexpr float FixedDropZOffset = 60.f;
 
+	FVector SafeDropLocation = FVector(DropLocation);
+
+	// XY 거리만 제한
 	FVector ToDrop = SafeDropLocation - PawnLocation;
 	ToDrop.Z = 0.f;
 
-	constexpr float MaxDropDistance = 250.f;
 	if (ToDrop.SizeSquared() > FMath::Square(MaxDropDistance))
 	{
 		SafeDropLocation = PawnLocation + ToDrop.GetSafeNormal() * 120.f;
-		SafeDropLocation.Z = PawnLocation.Z + 20.f;
 	}
+
+	// Z는 항상 고정
+	SafeDropLocation.Z = PawnLocation.Z + FixedDropZOffset;
 
 	InventoryComp->DropItemFromSlot(SlotIndex, SafeDropLocation, DroppedItemActorClass, PlayerPawn);
 }
@@ -2455,3 +2580,54 @@ void ABasePlayerController::Server_CompleteCrafting_Implementation(FItemRecipeRo
 		UE_LOG(LogTemp, Error, TEXT("[Crafting Server] Result item is null"));
 	}
 }
+
+
+void ABasePlayerController::Server_RequestTeleportToTeam_Implementation(APlayerState* TargetAllyPS)
+{
+	if (TargetAllyPS == nullptr)
+	{
+		return;
+	}
+
+	Client_CloseTeleportUI();
+	Client_CloseRespawnTeleportUI();
+
+	AER_PlayerState* PS = GetPlayerState<AER_PlayerState>();
+	ABaseCharacter* Char = Cast<ABaseCharacter>(GetPawn());
+
+	if (PS && Char)
+	{
+		// 2. 앞서 수정한 GA_Teleport가 받을 수 있도록 EventData 구성
+		FGameplayEventData Payload;
+		Payload.Instigator = ControlledBaseChar; // 시전자 (나)
+		Payload.Target = TargetAllyPS;           // 타겟 아군의 PlayerState
+
+		const FGameplayTag EventTag = ProjectER::Event::Interact::Teleport;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PS, EventTag, Payload);
+	}
+}
+
+bool ABasePlayerController::CanInteractWithItemsInCurrentLifeState(APawn* InPawn) const
+{
+	if (!IsValid(InPawn))
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* ASC =
+		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(InPawn);
+
+	if (!IsValid(ASC))
+	{
+		return false;
+	}
+
+	const bool bIsDown = ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+
+	const bool bIsDead = ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
+
+	return !bIsDown && !bIsDead;
+}
+

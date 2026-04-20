@@ -40,6 +40,12 @@ USkillBase::USkillBase()
 	ActivationBlockedTags.AddTag(ActiveTag);
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+	// Hard CC: 모든 스킬 차단
+	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Hard.Stun")));
+	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Hard.Airborne")));
+	// Soft CC: 침묵은 스킬 사용 차단 (이동은 가능)
+	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Soft.Silence")));
+	
 	CooldownGameplayEffectClass = UGE_SharedCooldown::StaticClass();
 }
 

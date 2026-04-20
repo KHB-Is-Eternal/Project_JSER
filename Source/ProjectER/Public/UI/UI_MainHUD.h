@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -130,6 +130,10 @@ protected:
 	UFUNCTION() void OnSkillLevelUp03Hovered();
 	UFUNCTION() void OnSkillLevelUp04Hovered();
 
+	UFUNCTION() void OnCraftHovered();
+	UFUNCTION() void OnCraftClicked();
+
+
 	// .............
 
 	// void ShowTooltip(UWidget* AnchorWidget, UTexture2D* Icon, FText Name, FText ShortDesc, FText DetailDesc, bool showUpper);
@@ -215,6 +219,10 @@ protected:
 
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* skill_cool_04;
+
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* Btn_Craft;
 
 	UPROPERTY(meta = (BindWidget))
 	UButton* skill_up_01;
@@ -435,6 +443,20 @@ private:
 public:
 	UFUNCTION()
 	void WarningSign(int number);
+private:
+	UPROPERTY()
+	bool bIsWarningActive = false;
+	UPROPERTY()
+	FTimerHandle UI_WarningTimerHandle;
+	UFUNCTION()
+	void showWarningSign();
+	void hideWarningSign();
+protected:
+	UPROPERTY(Transient, BlueprintReadOnly)
+	UWidgetAnimation* showWarningAnim;
+
+	UPROPERTY(Transient, BlueprintReadOnly)
+	UWidgetAnimation* hideWarningAnim;
 
 	// TEAM HUD Management
 public:
@@ -468,7 +490,9 @@ private:
 
 
 	bool test = true;
-	int32 getSkillLevel(FGameplayTag SkillTag, bool levelUp);
 	bool GetCooldownRemainingForTag(const FGameplayTagContainer& CooldownTags, float& TimeRemaining, float& CooldownDuration);
+
+public:
+	int32 getSkillLevel(FGameplayTag SkillTag, bool levelUp);
 };
 
