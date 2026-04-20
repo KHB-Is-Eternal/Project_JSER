@@ -1880,7 +1880,7 @@ void UUI_MainHUD::RefreshCraftPreviewIcons()
     }
 }
 
-// 빈 칸 초기화 함수
+// [김현수 추가분] 빈 칸 초기화 함수
 void UUI_MainHUD::ClearCraftPreviewImage(UImage* TargetImage)
 {
     if (!TargetImage)
