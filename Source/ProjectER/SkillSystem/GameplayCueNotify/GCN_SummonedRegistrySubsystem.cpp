@@ -67,18 +67,13 @@ AActor* UGCN_SummonedRegistrySubsystem::GetAndUnregisterVfxActor(AActor* Instiga
 
 		if (VfxActor)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Handshake Success! Found VFX: %s for Instigator: %s at Time: %f"), 
-				*VfxActor->GetName(), 
-				Instigator? *Instigator->GetName() : TEXT("nullptr"), 
-				ActivationTime);
+	
 				
 			return VfxActor;
 		}
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[GCNRegistry] Handshake Failed. No entry for Instigator: %s (%p) at Time: %f"), 
-		Instigator ? *Instigator->GetName() : TEXT("nullptr"), Instigator,
-		ActivationTime);
+
 
 	return nullptr;
 }
@@ -119,10 +114,7 @@ AActor* UGCN_SummonedRegistrySubsystem::FindAndUnregisterVfxActorFuzzy(AActor* I
 	if (BestActor)
 	{
 		VfxRegistry.Remove(BestKey);
-		UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Fuzzy Handshake Success! Found VFX: %s for Instigator: %s (TimeDelta: %f)"), 
-			*BestActor->GetName(), 
-			Instigator ? *Instigator->GetName() : TEXT("nullptr"),
-			BestDelta);
+
 		return BestActor;
 	}
 
@@ -136,8 +128,5 @@ void UGCN_SummonedRegistrySubsystem::RegisterPendingActorFuzzy(AActor* Instigato
 	FGCN_SummonedKey RegistryKey(Instigator, ActivationTime);
 	PendingActors.Add(RegistryKey, PendingActor);
 
-	UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Register Pending Actor: %s for Instigator: %s at Time: %f (Waiting for VFX)"), 
-		*PendingActor->GetName(), 
-		Instigator ? *Instigator->GetName() : TEXT("nullptr"), 
-		ActivationTime);
+
 }

@@ -8,7 +8,6 @@
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "GameFramework/ProjectileMovementComponent.h"
-#include "GameplayPrediction.h"
 
 AGCN_SummonedActor::AGCN_SummonedActor()
 {
@@ -94,8 +93,7 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 				// NetMode 체크 대신 레지스트리에 이미 등록된 키가 있는지 확인하는 데이터 기반 로직으로 처리
 				if (Registry->IsVfxActorRegistered(ActualInstigator, Context->ClientActivationTime))
 				{
-					UE_LOG(LogTemp, Log, TEXT("AGCN_SummonedActor::HandleSummonedVfx - Duplicate VFX suppressed for Instigator: %s at Time: %f"), 
-						*ActualInstigator->GetName(), Context->ClientActivationTime);
+
 					Destroy();
 					return;
 				}
@@ -113,7 +111,7 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 	
 	CachedSourceObject = const_cast<UObject*>(SourceObject);
 
-	UE_LOG(LogTemp, Log, TEXT("AGCN_SummonedActor::InitializeFromGEC - SourceObject: %s"), *SourceObject->GetName());
+
 
 	// [Refactor] 특정 GEC 클래스나 부모 GEC에 의존하지 않고 인터페이스(IProjectERSummonedActorInterface)를 사용합니다.
 	if (const IProjectERSummonedActorInterface* VisualSource = Cast<IProjectERSummonedActorInterface>(SourceObject))
@@ -153,14 +151,6 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 	// 기존 컴포넌트가 없다면 생성 (미래의 풀링을 위해 별도 함수화 고려 가능)
 	if (!VfxComponent)
 	{
-		if (USceneComponent* RootComp = GetRootComponent())
-		{
-			UE_LOG(LogTemp, Log, TEXT("AGCN_SummonedActor::SetupVfxComponent - Attaching VFX to RootComponent: %s"), *RootComp->GetName());
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("AGCN_SummonedActor::SetupVfxComponent - RootComponent is null!"));
-		}
 
 		VfxComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
 			NiagaraConfig->NiagaraSystem.LoadSynchronous(),
@@ -207,11 +197,6 @@ AActor* AGCN_SummonedActor::GetActualInstigator(const FGameplayCueParameters& Pa
 
 void AGCN_SummonedActor::OnTargetActorDestroyed(AActor* DestroyedActor)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[CLIENT] AGCN_SummonedActor::OnTargetActorDestroyed - Time: %f, Target: %s, VFX: %s"), 
-		GetWorld()->GetTimeSeconds(),
-		DestroyedActor ? *DestroyedActor->GetName() : TEXT("nullptr"),
-		*GetName());
-		
 	if (VfxComponent)
 	{
 		// 파티클 잔상이나 페이드 아웃 없이 즉시 월드에서 컴포넌트 자체를 강제 파괴/제거합니다.

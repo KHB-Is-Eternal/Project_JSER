@@ -9,6 +9,7 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Net/UnrealNetwork.h"
 #include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
+#include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
 #include "SkillSystem/GameplayEffectComponent/LaunchHomingMissile.h"
 
 ABaseMissileActor::ABaseMissileActor()
@@ -35,8 +36,6 @@ ABaseMissileActor::ABaseMissileActor()
 	//SetNetUpdateFrequency(100.0f);
 	//NetPriority = 3.0f;
 }
-
-#include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
 
 void ABaseMissileActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -76,8 +75,7 @@ void ABaseMissileActor::PostNetInit()
 	{
 		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
-			// [Debug] 클라이언트의 현재 시간을 함께 출력하여 서버와의 시계 오차(Clock Offset)를 측정합니다.
-			UE_LOG(LogTemp, Warning, TEXT("[CLIENT] ABaseMissileActor::PostNetInit - WorldTime: %f, KeyTime: %f"), GetWorld()->GetTimeSeconds(), ClientActivationTime);
+
 
 			// (시전자 + 시전 시간) 조합으로 퍼지 비주얼 검색 (서버-클라이언트 간의 작은 시간 오차 보정, 0.5초 허용)
 			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
@@ -107,7 +105,10 @@ void ABaseMissileActor::OnVfxHandshakeCompleted_Implementation(AActor* VfxActor)
 			NiagaraComp->AttachToComponent(this->GetRootComponent(), AttachRules);
 		}
 
-		this->OnDestroyed.AddDynamic(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed);
+		if (!this->OnDestroyed.IsAlreadyBound(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed))
+		{
+			this->OnDestroyed.AddDynamic(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed);
+		}
 
 		if (const ULaunchHomingMissile* MissileGEC = Cast<ULaunchHomingMissile>(SummonedGCN->GetSourceObject()))
 		{
@@ -117,8 +118,7 @@ void ABaseMissileActor::OnVfxHandshakeCompleted_Implementation(AActor* VfxActor)
 				ProjectileMovement->MaxSpeed = MissileGEC->MaxSpeed;
 				ProjectileMovement->HomingAccelerationMagnitude = MissileGEC->HomingAccelerationMagnitude;
 				ProjectileMovement->bIsHomingProjectile = (MissileGEC->HomingAccelerationMagnitude > 0.f);
-				
-				UE_LOG(LogTemp, Log, TEXT("ABaseMissileActor: Synced physics from GEC (Speed: %f, Homing: %f)"), MissileGEC->InitialSpeed, MissileGEC->HomingAccelerationMagnitude);
+
 			}
 		}
 	}
@@ -235,7 +235,6 @@ void ABaseMissileActor::OnReachedTarget()
 	// 3. 파괴 처리
 	if (bDestroyOnHit)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[SERVER] BaseMissileActor::OnReachedTarget - Time: %f, Destroying Actor: %s"), GetWorld()->GetTimeSeconds(), *GetName());
 		Destroy();
 	}
 }

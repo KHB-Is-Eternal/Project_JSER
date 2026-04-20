@@ -63,12 +63,7 @@ void ABaseRangeOverlapEffectActor::PostNetInit()
 	{
 		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
-			// [Debug] 클라이언트의 현재 시간을 함께 출력하여 서버와의 시계 오차(Clock Offset)를 측정합니다.
-			UE_LOG(LogTemp, Warning, TEXT("[CLIENT] ABaseRangeOverlapEffectActor::PostNetInit - WorldTime: %f, KeyTime: %f"), GetWorld()->GetTimeSeconds(), ClientActivationTime);
 
-			UE_LOG(LogTemp, Log, TEXT("ABaseRangeOverlapEffectActor::PostNetInit - Attempting Handshake. Instigator: %s, Time: %f"), 
-				InstigatorActor ? *InstigatorActor->GetName() : TEXT("nullptr"), 
-				ClientActivationTime);
 
 			// (시전자 + 시전 시간) 조합으로 퍼지 비주얼 검색 (서버-클라이언트 간의 작은 시간 오차 보정, 0.5초 허용)
 			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
@@ -88,8 +83,6 @@ void ABaseRangeOverlapEffectActor::OnVfxHandshakeCompleted_Implementation(AActor
 {
 	if (!VfxActor) return;
 
-	UE_LOG(LogTemp, Log, TEXT("ABaseRangeOverlapEffectActor: VfxActor Name : %s"), *VfxActor->GetName());
-	
 	// [Fix] 언리얼 생명주기 싱크 맞추기 위해 OnDestroyed 델리게이트에 VFX 액터를 바인딩
 	if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
 	{
@@ -112,12 +105,8 @@ void ABaseRangeOverlapEffectActor::OnVfxHandshakeCompleted_Implementation(AActor
 			// 장판 크기 적용 (CollisionRadius가 FVector 타입이므로 X나 적절한 성분 활용)
 			float Radius = (float)RangeGEC->CollisionRadius.X;
 			ApplyCollisionSize(FVector(Radius, Radius, 100.0f));
-			
-			UE_LOG(LogTemp, Log, TEXT("ABaseRangeOverlapEffectActor: Synced CollisionSize from GEC (Radius: %f)"), Radius);
 		}
 	}
-	
-	UE_LOG(LogTemp, Log, TEXT("ABaseRangeOverlapEffectActor: Successfully attached VFX Actor: %s"), *VfxActor->GetName());
 }
 
 void ABaseRangeOverlapEffectActor::InitializeEffectData(const TArray<FGameplayEffectSpecHandle>& InEffectSpecHandles, AActor* InInstigatorActor, const FVector& InCollisionSize, bool bInHitOncePerTarget, const UObject* InHitTargetCueSourceObject, const FGameplayCueParameters& InHitTargetVfxCueParameters, const FGameplayCueParameters& InHitTargetSoundCueParameters)
@@ -126,8 +115,7 @@ void ABaseRangeOverlapEffectActor::InitializeEffectData(const TArray<FGameplayEf
 	InstigatorActor = InInstigatorActor;
 	SetInstigator(Cast<APawn>(InInstigatorActor));
 
-	UE_LOG(LogTemp, Log, TEXT("ABaseRangeOverlapEffectActor::InitializeEffectData - Server-Side. Instigator: %s"), 
-		InstigatorActor ? *InstigatorActor->GetName() : TEXT("nullptr"));
+
 
 	bHitOncePerTarget = bInHitOncePerTarget;
 	HitTargetCueSourceObject = InHitTargetCueSourceObject;
@@ -234,7 +222,6 @@ void ABaseRangeOverlapEffectActor::OnShapeBeginOverlap(UPrimitiveComponent* Over
 
 	if (bDestroyOnOverlap)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[SERVER] BaseRangeOverlapEffectActor::OnShapeBeginOverlap - Time: %f, Destroying Actor: %s"), GetWorld()->GetTimeSeconds(), *GetName());
 		Destroy();
 	}
 }
