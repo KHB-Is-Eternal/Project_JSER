@@ -4,6 +4,7 @@
 #include "AbilitySystemComponent.h"
 #include "Components/AudioComponent.h"
 #include "Sound/SoundBase.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 namespace
 {
@@ -18,8 +19,7 @@ namespace
 		{
 			return true;
 		}
-		const ENetMode NetMode = MyTarget->GetNetMode();
-		return MyTarget->HasAuthority() && NetMode == NM_DedicatedServer;
+		return MyTarget->GetNetMode() == NM_DedicatedServer;
 	}
 }
 
@@ -51,9 +51,9 @@ bool UGCN_PlaySoundBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, con
 	const AActor* const EffectCauser = Cast<AActor>(Parameters.EffectCauser.Get());
 	const AActor* const Instigator = Cast<AActor>(Parameters.Instigator.Get());
 
-	static const FGameplayTag TagSummoner = FGameplayTag::RequestGameplayTag(TEXT("GameplayCue.Skill.Summoner"));
-	static const FGameplayTag TagHitTarget = FGameplayTag::RequestGameplayTag(TEXT("GameplayCue.Skill.HitTarget"));
-	static const FGameplayTag TagRange = FGameplayTag::RequestGameplayTag(TEXT("GameplayCue.Skill.Range"));
+	// 네이티브 태그 참조
+	const FGameplayTag& TagSummoner = ProjectER::GameplayCue::Sound::Summoner;
+	const FGameplayTag& TagHitTarget = ProjectER::GameplayCue::Sound::HitTarget;
 	
 	const AActor* SourceActor = nullptr;
 	if (Parameters.OriginalTag.MatchesTag(TagSummoner))
@@ -64,19 +64,13 @@ bool UGCN_PlaySoundBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, con
 	{
 	    SourceActor = MyTarget;
 	}
-	else // 기본값 (Range 포함)
+	else // 기본값 (기존 Range 로직 통합)
 	{
 	    SourceActor = EffectCauser;
 	}
 
-	// 3. Transform 설정 및 Location 예외 처리
+	// 3. Transform 설정: SourceActor가 유효하면 그 위치를, 아니면 전달받은 Parameters.Location을 사용
 	FTransform SourceTransform = IsValid(SourceActor) ? SourceActor->GetActorTransform() : FTransform(FRotator::ZeroRotator, Parameters.Location);
-	
-	// [핵심] Range일 때만 전달받은 위치(마우스 클릭 지점 등)로 강제 고정
-	if (Parameters.OriginalTag.MatchesTag(TagRange))
-	{
-	    SourceTransform.SetLocation(Parameters.Location);
-	}
 
 	SkillSoundSpawnHelper::PlaySoundBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
 	return true;

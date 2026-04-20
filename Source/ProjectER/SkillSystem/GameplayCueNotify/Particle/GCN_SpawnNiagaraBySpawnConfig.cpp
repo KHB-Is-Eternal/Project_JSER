@@ -4,6 +4,7 @@
 #include "SkillSystem/GameplayCueNotify/Particle/GCN_SpawnNiagaraBySpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 #include "Engine/Blueprint.h"
 #include "AbilitySystemStats.h"
@@ -39,8 +40,7 @@ namespace
 		{
 			return true;
 		}
-		const ENetMode NetMode = MyTarget->GetNetMode();
-		return MyTarget->HasAuthority() && NetMode == NM_DedicatedServer;
+		return MyTarget->GetNetMode() == NM_DedicatedServer;
 	}
 
 	/** 파티클 스폰 컬링 최대 거리 (cm 단위) */
@@ -162,9 +162,9 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 	const AActor* const EffectCauser = Cast<AActor>(Parameters.EffectCauser.Get());
 	const AActor* const Instigator = Cast<AActor>(Parameters.Instigator.Get());
 
-	static const FGameplayTag TagSummoner = FGameplayTag::RequestGameplayTag(TEXT("GameplayCue.Skill.Summoner"));
-	static const FGameplayTag TagHitTarget = FGameplayTag::RequestGameplayTag(TEXT("GameplayCue.Skill.HitTarget"));
-	static const FGameplayTag TagRange = FGameplayTag::RequestGameplayTag(TEXT("GameplayCue.Skill.Range"));
+	// 네이티브 태그 참조
+	const FGameplayTag& TagSummoner = ProjectER::GameplayCue::Skill::Summoner;
+	const FGameplayTag& TagHitTarget = ProjectER::GameplayCue::Skill::HitTarget;
 	
 	const AActor* SourceActor = nullptr;
 	if (Parameters.OriginalTag.MatchesTag(TagSummoner))
@@ -175,24 +175,18 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 	{
 	    SourceActor = MyTarget;
 	}
-	else // 기본값 (Range 포함)
+	else // 기본값 (기존 Range 로직 통합)
 	{
 	    SourceActor = EffectCauser;
-		// [최종 수정] 발사체 또는 범위 액터가 충돌 즉시 파괴된 경우(SourceActor 무효), 시전자에게 붙지 않고 재생을 취소함.
+		// 발사체 또는 범위 액터가 충돌 즉시 파괴된 경우(SourceActor 무효), 시전자에게 붙지 않고 재생을 취소함.
 		if (!IsValid(SourceActor))
 		{
 			return false;
 		}
 	}
 
-	// 3. Transform 설정 및 Location 예외 처리
+	// 3. Transform 설정: SourceActor가 유효하면 그 위치를, 아니면 전달받은 Parameters.Location을 사용
 	FTransform SourceTransform = IsValid(SourceActor) ? SourceActor->GetActorTransform() : FTransform(FRotator::ZeroRotator, Parameters.Location);
-	
-	// [핵심] Range일 때만 전달받은 위치(마우스 클릭 지점 등)로 강제 고정
-	if (Parameters.OriginalTag.MatchesTag(TagRange))
-	{
-	    SourceTransform.SetLocation(Parameters.Location);
-	}
 
 	SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
 	return true;

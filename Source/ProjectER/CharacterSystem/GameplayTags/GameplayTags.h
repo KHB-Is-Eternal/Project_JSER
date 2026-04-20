@@ -204,6 +204,8 @@ namespace ProjectER
 				UE_DECLARE_GAMEPLAY_TAG_EXTERN(E);
 				UE_DECLARE_GAMEPLAY_TAG_EXTERN(R);
 			}
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Summoner);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(HitTarget);
 		}
 		namespace Decal
 		{
@@ -241,8 +243,8 @@ namespace ProjectER
 
 		namespace Skill
 		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Actor);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Summoner);
-			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Range);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(HitTarget);
 		}
 	}

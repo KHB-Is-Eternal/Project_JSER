@@ -11,17 +11,21 @@ void UGCN_SummonedRegistrySubsystem::RegisterVfxActor(AActor* Instigator, float 
 	FGCN_SummonedKey BestKey;
 	AActor* BestPendingActor = nullptr;
 
-	for (auto& Pair : PendingActors)
+	for (auto It = PendingActors.CreateIterator(); It; ++It)
 	{
-		if (Pair.Key.Instigator == Instigator && Pair.Value.IsValid())
+		if (It.Key().Instigator == Instigator && It.Value().IsValid())
 		{
-			float Delta = FMath::Abs(Pair.Key.ActivationTime - ActivationTime);
+			float Delta = FMath::Abs(It.Key().ActivationTime - ActivationTime);
 			if (Delta < BestDelta)
 			{
 				BestDelta = Delta;
-				BestKey = Pair.Key;
-				BestPendingActor = Pair.Value.Get();
+				BestKey = It.Key();
+				BestPendingActor = It.Value().Get();
 			}
+		}
+		else if (!It.Value().IsValid())
+		{
+			It.RemoveCurrent(); // 가비지 컬렉션 체크
 		}
 	}
 
@@ -33,27 +37,23 @@ void UGCN_SummonedRegistrySubsystem::RegisterVfxActor(AActor* Instigator, float 
 		FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
 		VfxActor->AttachToActor(BestPendingActor, AttachRules);
 
-		// 판정 액터에게 핸드셰이크 완료 알림 (데이터 동기화 등 수행)
-		// 액터가 해당 인터페이스를 가지고 있다면 호출하거나, 직접 캐스팅 시도
+		// 판정 액터의 수명을 VFX도 따라가도록 설정
+		if (BestPendingActor->GetLifeSpan() > 0.0f)
+		{
+			VfxActor->SetLifeSpan(BestPendingActor->GetLifeSpan());
+		}
+
 		if (BestPendingActor->GetClass()->ImplementsInterface(UProjectERSummonedActorInterface::StaticClass()) || 
 			BestPendingActor->Implements<UProjectERSummonedActorInterface>())
 		{
 			IProjectERSummonedActorInterface::Execute_OnVfxHandshakeCompleted(BestPendingActor, VfxActor);
 		}
-
-		UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Late Handshake Success! Bound VFX: %s to Waiting Actor: %s"), 
-			*VfxActor->GetName(), *BestPendingActor->GetName());
 		return;
 	}
 
 	// 3. 기다리는 액터가 없다면 VFX 레지스트리에 등록
 	FGCN_SummonedKey RegistryKey(Instigator, ActivationTime);
 	VfxRegistry.Add(RegistryKey, VfxActor);
-
-	UE_LOG(LogTemp, Log, TEXT("[GCNRegistry] Register VFX: %s (%p) for Instigator: %s (%p) at Time: %f"), 
-		*VfxActor->GetName(), VfxActor,
-		Instigator ? *Instigator->GetName() : TEXT("nullptr"), Instigator,
-		ActivationTime);
 }
 
 AActor* UGCN_SummonedRegistrySubsystem::GetAndUnregisterVfxActor(AActor* Instigator, float ActivationTime)

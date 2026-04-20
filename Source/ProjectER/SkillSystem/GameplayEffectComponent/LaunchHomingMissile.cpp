@@ -254,16 +254,17 @@ void ULaunchHomingMissile::InitializeActorData(ABaseMissileActor* Actor, const F
 	FGameplayCueParameters HitSoundParams(GESpec);
 	if (ImpactSound) { HitSoundParams.OriginalTag = ImpactSound->CueTag; HitSoundParams.EffectCauser = Actor; HitSoundParams.SourceObject = ImpactSound; }
 
+	// [Fix] 핸드셰이크를 위해 시전 시간을 먼저 설정해야 합니다. (InitializeMissile 내부에서 핸드셰이크 시도함)
+	if (const FProjectERGameplayEffectContext* ErContext = ProjectERContextUtils::GetProjectERContext(ContextHandle))
+	{
+		Actor->SetClientActivationTime(ErContext->ClientActivationTime);
+	}
+
 	// 미사일 초기화
 	Actor->InitializeMissile(EffectSpecs, ContextHandle.GetInstigator(), TargetActor, HitVfxParams, HitSoundParams, 
 		InitialSpeed, MaxSpeed, HomingAccelerationMagnitude, ReachThreshold, bDestroyOnHit, Transform.GetRotation().GetForwardVector());
 	
 	Actor->SetLifeSpan(LifeSpan);
-
-	if (const FProjectERGameplayEffectContext* ErContext = ProjectERContextUtils::GetProjectERContext(ContextHandle))
-	{
-		Actor->SetClientActivationTime(ErContext->ClientActivationTime);
-	}
 }
 
 FTransform ULaunchHomingMissile::CalculateSpawnTransform(

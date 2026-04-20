@@ -55,6 +55,9 @@ private:
 	/** 비주얼/물리 설정값이 담긴 GEC 객체 */
 	TWeakObjectPtr<UObject> CachedSourceObject;
 
+	/** 같은 인스턴스에서 HandleSummonedVfx의 중복 호출(OnExecute + WhileActive)을 방지합니다. */
+	bool bIsAlreadyInitialized = false;
+
 public:
 	/** 타겟 액터가 파괴될 때 호출되어 자신도 파괴합니다. */
 	UFUNCTION()

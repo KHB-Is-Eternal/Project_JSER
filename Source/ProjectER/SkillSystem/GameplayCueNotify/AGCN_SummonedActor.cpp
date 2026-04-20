@@ -60,6 +60,25 @@ bool AGCN_SummonedActor::OnRemove_Implementation(AActor* MyTarget, const FGamepl
 
 void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Parameters)
 {
+	// [Fix] 같은 GCN 인스턴스에서 OnExecute + WhileActive 이중 호출 시 자기 파괴 방지
+	if (bIsAlreadyInitialized)
+	{
+		return;
+	}
+	bIsAlreadyInitialized = true;
+
+	// 1. 초기 위치 및 회전 설정 (World Origin 방지)
+	FVector SpawnLocation = Parameters.Location;
+	FRotator SpawnRotation = Parameters.Normal.IsNearlyZero() ? GetActorRotation() : Parameters.Normal.Rotation();
+	
+	SetActorLocationAndRotation(SpawnLocation, SpawnRotation);
+
+	// 2. 기본 수명 설정 (서버 트래벌 등 예외 상황에서 고아가 되는 것 방지)
+	if (GetLifeSpan() <= 0.0f)
+	{
+		SetLifeSpan(10.0f); // 10초 후 자동 소멸 (핸드셰이크 성공 시 갱신될 수 있음)
+	}
+
 	InitializeFromGEC(Parameters.SourceObject.Get());
 
 	AActor* ActualInstigator = GetActualInstigator(Parameters);
@@ -67,37 +86,24 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 
 	if (ActualInstigator && Context && Context->ClientActivationTime > 0.0f)
 	{
-		UE_LOG(LogTemp, Log, TEXT("AGCN_SummonedActor::HandleSummonedVfx - Registering VFX: %s for Instigator: %s, Time: %f"), 
-			*GetName(), *ActualInstigator->GetName(), Context->ClientActivationTime);
-
 		if (UWorld* World = GetWorld())
 		{
 			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 			{
-				// [Fix] 시전자 클라이언트에서 이미 예측 실행된 VFX가 있다면 서버에서 온 중복 실행은 무시합니다.
-				bool bIsLocallyControlled = false;
-				if (APawn* InstigatorPawn = Cast<APawn>(ActualInstigator))
+				// [중요] Standalone/ListenServer 호스트 등에서의 중복 실행 방지
+				// NetMode 체크 대신 레지스트리에 이미 등록된 키가 있는지 확인하는 데이터 기반 로직으로 처리
+				if (Registry->IsVfxActorRegistered(ActualInstigator, Context->ClientActivationTime))
 				{
-					bIsLocallyControlled = InstigatorPawn->IsLocallyControlled();
-				}
-
-				if (bIsLocallyControlled && Registry->IsVfxActorRegistered(ActualInstigator, Context->ClientActivationTime))
-				{
-					UE_LOG(LogTemp, Log, TEXT("AGCN_SummonedActor::HandleSummonedVfx - Duplicate VFX suppressed for local instigator. Time: %f"), Context->ClientActivationTime);
+					UE_LOG(LogTemp, Log, TEXT("AGCN_SummonedActor::HandleSummonedVfx - Duplicate VFX suppressed for Instigator: %s at Time: %f"), 
+						*ActualInstigator->GetName(), Context->ClientActivationTime);
 					Destroy();
 					return;
 				}
 
-				// 시전자 + 시전 시간을 키로 사용하여 비주얼 액터 등록
+				// 비주얼 액터 등록
 				Registry->RegisterVfxActor(ActualInstigator, Context->ClientActivationTime, this);
 			}
 		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AGCN_SummonedActor::HandleSummonedVfx - Skip Registration. Instigator: %s, Time: %f"), 
-			ActualInstigator ? *ActualInstigator->GetName() : TEXT("nullptr"),
-			Context ? Context->ClientActivationTime : 0.0f);
 	}
 }
 

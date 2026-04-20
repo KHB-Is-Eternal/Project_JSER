@@ -100,7 +100,11 @@ void ABaseRangeOverlapEffectActor::OnVfxHandshakeCompleted_Implementation(AActor
 			NiagaraComp->AttachToComponent(this->GetRootComponent(), AttachRules);
 		}
 
-		this->OnDestroyed.AddDynamic(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed);
+		// [Fix] 중복 바인딩 방지 (ensure 방지)
+		if (!this->OnDestroyed.IsAlreadyBound(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed))
+		{
+			this->OnDestroyed.AddDynamic(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed);
+		}
 
 		// [고급 동기화] 비주얼 액터가 들고 있는 SourceObject(GEC)로부터 콜리전 설정값 동기화
 		if (const USummonRangeBaseGEC* RangeGEC = Cast<USummonRangeBaseGEC>(SummonedGCN->GetSourceObject()))
@@ -133,6 +137,21 @@ void ABaseRangeOverlapEffectActor::InitializeEffectData(const TArray<FGameplayEf
 	PendingCollisionSize = InCollisionSize;
 	bHasPendingCollisionSize = true;
 	ApplyCollisionSize(PendingCollisionSize);
+
+	// [Standalone/ListenServer Fix] 서버에서 데이터 초기화 즉시 핸드셰이크 시도 (PostNetInit이 안 도는 환경 대응)
+	if (InstigatorActor && ClientActivationTime > 0.0f)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+			{
+				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
+				{
+					OnVfxHandshakeCompleted_Implementation(VfxActor);
+				}
+			}
+		}
+	}
 }
 
 // Called when the game starts or when spawned

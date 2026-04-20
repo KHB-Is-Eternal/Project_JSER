@@ -161,6 +161,21 @@ void ABaseMissileActor::InitializeMissile(
 		InitialTargetRotation = InInitialDirection.Rotation();
 		ProjectileMovement->Velocity = InInitialDirection.GetSafeNormal() * InInitialSpeed;
 	}
+
+	// [Standalone/ListenServer Fix] 서버에서 데이터 초기화 즉시 핸드셰이크 시도 (PostNetInit이 안 도는 환경 대응)
+	if (InstigatorActor && ClientActivationTime > 0.0f)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+			{
+				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
+				{
+					OnVfxHandshakeCompleted_Implementation(VfxActor);
+				}
+			}
+		}
+	}
 }
 
 void ABaseMissileActor::BeginPlay()
