@@ -11,6 +11,7 @@ enum class EPointActorType : uint8
 	SpawnPoint,
 	RespawnPoint,
 	ObjectPoint,
+	SafePoint,
 };
 
 //16개
