@@ -21,6 +21,7 @@
 #include "Engine/OverlapResult.h"
 #include "NavigationSystem.h"
 #include "NavigationPath.h"
+#include "NavMesh/NavMeshPath.h"
 #include "GameplayEffect.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -48,6 +49,63 @@
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "LineOfSight/MainVisionRTManager.h"
 #include "LineOfSight/Management/VisionPlayerStateComp.h"
+
+// 길찾기 성능 프로파일링 — 콘솔: stat ProjectER_Pathfinding
+DECLARE_STATS_GROUP(TEXT("ProjectER_Pathfinding"), STATGROUP_ERPathfinding, STATCAT_Advanced);
+
+DECLARE_CYCLE_STAT(TEXT("MoveToLocation (Total)"),       STAT_MoveToLocation,        STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("FindPath Sync"),                 STAT_FindPathSync,           STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("Server_MoveToLocation (Total)"), STAT_ServerMoveToLocation,   STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("Server_FindPath Sync"),          STAT_ServerFindPathSync,     STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("CheckCombatTarget (Total)"),     STAT_CheckCombatTarget,      STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("UpdatePathFollowing"),           STAT_UpdatePathFollowing,    STATGROUP_ERPathfinding);
+
+// 길찾기 메트릭 수집 (개발/테스트 빌드 전용)
+#if !UE_BUILD_SHIPPING
+
+struct FPathfindingMetrics
+{
+	int32 RequestCount = 0;
+	double TotalTimeSeconds = 0.0;
+	double WorstTimeSeconds = 0.0;
+	float AccumulatedDelta = 0.0f;
+
+	void RecordRequest(const double ElapsedSeconds)
+	{
+		RequestCount++;
+		TotalTimeSeconds += ElapsedSeconds;
+		WorstTimeSeconds = FMath::Max(WorstTimeSeconds, ElapsedSeconds);
+	}
+
+	void TickAndLog(const float DeltaTime)
+	{
+		AccumulatedDelta += DeltaTime;
+		if (AccumulatedDelta < 1.0f)
+		{
+			return;
+		}
+
+		if (RequestCount > 0)
+		{
+			const double AvgMs = (TotalTimeSeconds / RequestCount) * 1000.0;
+			const double TotalMs = TotalTimeSeconds * 1000.0;
+			const double WorstMs = WorstTimeSeconds * 1000.0;
+
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Pathfinding Metrics] Requests/s: %d | Total: %.3fms | Avg: %.3fms | Worst: %.3fms"),
+				RequestCount, TotalMs, AvgMs, WorstMs);
+		}
+
+		RequestCount = 0;
+		TotalTimeSeconds = 0.0;
+		WorstTimeSeconds = 0.0;
+		AccumulatedDelta = 0.0f;
+	}
+};
+
+static FPathfindingMetrics GPathfindingMetrics;
+
+#endif // !UE_BUILD_SHIPPING
 
 
 ABaseCharacter::ABaseCharacter()
@@ -80,6 +138,8 @@ ABaseCharacter::ABaseCharacter()
 
 	/* === 경로 설정 인덱스 초기화  === */
 	CurrentPathIndex = INDEX_NONE;
+	bIsStraightLineMoving = false;
+	bAsyncPathInProgress = false;
 
 	/* === 팀 변수 초기화  === */
 	TeamID = ETeamType::None;
@@ -207,6 +267,13 @@ void ABaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+#if !UE_BUILD_SHIPPING
+	if (HasAuthority() && IsLocallyControlled())
+	{
+		GPathfindingMetrics.TickAndLog(DeltaTime);
+	}
+#endif
+
 	/// UI TEST를 위함 지우진 말아주세요!! {차후 제거할 예정}
 	/// mpyi
 	//{
@@ -232,21 +299,49 @@ void ABaseCharacter::Tick(float DeltaTime)
 		return; // 죽었으면 아무것도 안 함
 	}
 	
-	if (IsLocallyControlled() || HasAuthority())
+	// 경로 캐싱 타이머 갱신 (Phase 1)
+	TimeSinceLastPathCalc += DeltaTime;
+
+	// ─── Phase 2: 임시 직선 이동 (비동기 경로 대기 중) ───
+	if (bIsStraightLineMoving)
 	{
-		// Tick 활성화 시 경로 탐색 (서버)
+		const FVector CurrentLocation = GetActorLocation();
+		FVector Direction = PendingMoveDestination - CurrentLocation;
+		Direction.Z = 0.f;
+
+		if (Direction.SizeSquared() < ArrivalDistanceSq)
+		{
+			// 목적지 근처 도달 — 직선 이동 종료
+			bIsStraightLineMoving = false;
+		}
+		else if (!Direction.IsNearlyZero())
+		{
+			const FVector NormalDirection = Direction.GetSafeNormal();
+			AddMovementInput(NormalDirection, 1.0f);
+
+			const FRotator TargetRot = NormalDirection.Rotation();
+			const FRotator NewRotation = FMath::RInterpTo(GetActorRotation(), TargetRot, DeltaTime, 20.0f);
+			SetActorRotation(NewRotation);
+		}
+	}
+	else if (IsLocallyControlled() || HasAuthority())
+	{
+		// 경로 추종 — 직선 이동이 아닐 때만 실행
 		UpdatePathFollowing();
-	
-		// 타겟이 유효할 때 추적/공격 수행
+	}
+
+	// 전투 로직은 서버에서만
+	if (HasAuthority())
+	{
 		if (TargetActor)
 		{
 			CheckCombatTarget(DeltaTime);
 		}
-	}	
-	
-	if (HasAuthority() && bIsAttackMoving && !TargetActor)
-	{
-		ScanForEnemiesWhileMoving();
+
+		if (bIsAttackMoving && !TargetActor)
+		{
+			ScanForEnemiesWhileMoving();
+		}
 	}
 }
 
@@ -895,42 +990,20 @@ void ABaseCharacter::InitVisuals()
 
 void ABaseCharacter::Server_MoveToLocation_Implementation(FVector TargetLocation)
 {
-	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
-	if (NavSys == nullptr) return;
+	SCOPE_CYCLE_COUNTER(STAT_ServerMoveToLocation);
 
-	UNavigationPath* NavPath = NavSys->FindPathToLocationSynchronously(this, GetActorLocation(), TargetLocation);
+	// ─── 경로 캐싱 체크 (Phase 1) ───
+	const float DistToPrevDest = FVector::Dist(TargetLocation, LastPathDestination);
+	if (DistToPrevDest < PathReuseThreshold
+		&& TimeSinceLastPathCalc < MaxPathCacheAge
+		&& PathPoints.Num() > 0
+		&& CurrentPathIndex != INDEX_NONE)
+	{
+		return; // 기존 경로 재사용
+	}
 
-	if (NavPath != nullptr && NavPath->PathPoints.Num() > 1)
-	{
-		PathPoints = NavPath->PathPoints;
-		CurrentPathIndex = 1;
-		SetActorTickEnabled(true);
-		
-		if (AbilitySystemComponent.IsValid() && MovingStateEffectClass)
-		{
-			FGameplayTag MoveTag = FGameplayTag::RequestGameplayTag(FName("State.Action.Move"));
-			if (!AbilitySystemComponent->HasMatchingGameplayTag(MoveTag))
-			{
-				FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
-				Context.AddSourceObject(this);
-                
-				FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(MovingStateEffectClass, 1.0f, Context);
-				if (SpecHandle.IsValid())
-				{
-					MovingEffectHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-				}
-			}
-		}
-	}
-	else
-	{
-		// 경로 탐색 실패 시 중지
-		// but, 타겟이 있을 경우 정지 X
-		if (TargetActor == nullptr) 
-		{
-			StopPathFollowing();
-		}
-	}
+	// Phase 2: 비동기 경로 탐색
+	RequestAsyncPath(TargetLocation);
 }
 
 bool ABaseCharacter::Server_MoveToLocation_Validate(FVector TargetLocation)
@@ -945,6 +1018,8 @@ void ABaseCharacter::Server_StopMove_Implementation()
 
 void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 {
+	SCOPE_CYCLE_COUNTER(STAT_MoveToLocation);
+
 	if (AbilitySystemComponent.IsValid())
 	{
 		static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
@@ -962,52 +1037,32 @@ void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 	{	
 		return;
 	}
-	
-	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
-	if (!NavSys) return;
 
-	UNavigationPath* NavPath = NavSys->FindPathToLocationSynchronously(this, GetActorLocation(), TargetLocation);
-
-	if (NavPath && NavPath->PathPoints.Num() > 1)
-	{
-		PathPoints = NavPath->PathPoints;
-		CurrentPathIndex = 1;
-		SetActorTickEnabled(true);
-		
-		// UE_LOG(LogTemp, Warning, TEXT("길찾기 성공! 포인트 갯수: %d"), NavPath->PathPoints.Num());
-		
-		if (AbilitySystemComponent.IsValid() && MovingStateEffectClass)
-		{
-			FGameplayTag MoveTag = FGameplayTag::RequestGameplayTag(FName("State.Action.Move"));
-			if (!AbilitySystemComponent->HasMatchingGameplayTag(MoveTag))
-			{
-				FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
-				Context.AddSourceObject(this);
-                
-				FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(MovingStateEffectClass, 1.0f, Context);
-				if (SpecHandle.IsValid())
-				{
-					// Handle 저장
-					MovingEffectHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-				}
-			}	
-		}
-	}
-	else
-	{
-		// UE_LOG(LogTemp, Error, TEXT("길찾기 실패! 시작점과 도착점이 끊어져있거나 NavMesh 범위 밖입니다."));
-		// 경로 탐색 실패 시 중지
-		// but, 타겟이 있을 경우 정지 X
-		if (TargetActor == nullptr) 
-		{
-			StopPathFollowing();
-		}
-	}
-
+	// Phase 2: 클라이언트는 FindPath를 하지 않음
+	// 서버에 목적지만 전달하고, 임시 직선 이동 시작
 	if (!HasAuthority())
 	{
+		// 임시 직선 이동 시작 (서버 경로 도착 전까지)
+		PendingMoveDestination = TargetLocation;
+		bIsStraightLineMoving = true;
+		SetActorTickEnabled(true);
+
 		Server_MoveToLocation(TargetLocation);
+		return;
 	}
+
+	// 서버(리슨 서버 호스트)인 경우 직접 비동기 경로 요청
+	// 캐싱 체크 (Phase 1)
+	const float DistToPrevDest = FVector::Dist(TargetLocation, LastPathDestination);
+	if (DistToPrevDest < PathReuseThreshold
+		&& TimeSinceLastPathCalc < MaxPathCacheAge
+		&& PathPoints.Num() > 0
+		&& CurrentPathIndex != INDEX_NONE)
+	{
+		return; // 기존 경로 재사용
+	}
+
+	RequestAsyncPath(TargetLocation);
 }
 
 void ABaseCharacter::StopMove()
@@ -1039,10 +1094,13 @@ void ABaseCharacter::StopMove()
 	}
 	
 	bIsAttackMoving = false;
+	bIsStraightLineMoving = false;
+	bAsyncPathInProgress = false;
 }
 
 void ABaseCharacter::UpdatePathFollowing()
 {
+	SCOPE_CYCLE_COUNTER(STAT_UpdatePathFollowing);
 	if (CurrentPathIndex == INDEX_NONE || CurrentPathIndex >= PathPoints.Num())
 	{
 		StopPathFollowing();
@@ -1090,6 +1148,7 @@ void ABaseCharacter::StopPathFollowing()
 {
 	PathPoints.Empty();
 	CurrentPathIndex = INDEX_NONE;
+	bIsStraightLineMoving = false;
 	
 	// 타겟이 있을 시 이동 및 공격을 위해 Tick 유지
 	// CheckCombatTarget() 유지 용도
@@ -1106,6 +1165,110 @@ void ABaseCharacter::StopPathFollowing()
 			AbilitySystemComponent->RemoveActiveGameplayEffect(MovingEffectHandle);
 			MovingEffectHandle.Invalidate();
 		}
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Phase 2: 비동기 길찾기
+// ═══════════════════════════════════════════════════════════════
+
+void ABaseCharacter::RequestAsyncPath(const FVector& Destination)
+{
+	check(HasAuthority()); // 서버에서만 호출
+
+	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+	if (NavSys == nullptr) return;
+
+	const ANavigationData* NavData = NavSys->GetDefaultNavDataInstance();
+	if (NavData == nullptr) return;
+
+	// 이미 비동기 요청이 진행 중이면 중복 요청 방지
+	if (bAsyncPathInProgress) return;
+
+	// 임시 직선 이동 활성화 (서버도 비동기 결과 도착 전까지)
+	PendingMoveDestination = Destination;
+	bIsStraightLineMoving = true;
+	bAsyncPathInProgress = true;
+	SetActorTickEnabled(true);
+
+	FPathFindingQuery Query(this, *NavData, GetActorLocation(), Destination);
+
+	{
+		SCOPE_CYCLE_COUNTER(STAT_ServerFindPathSync); // 요청 시점만 측정 (실제 계산은 비동기)
+
+#if !UE_BUILD_SHIPPING
+		const double StartTime = FPlatformTime::Seconds();
+#endif
+
+		NavSys->FindPathAsync(
+			FNavAgentProperties::DefaultProperties,
+			Query,
+			FNavPathQueryDelegate::CreateUObject(this, &ABaseCharacter::OnAsyncPathFound),
+			EPathFindingMode::Regular
+		);
+
+#if !UE_BUILD_SHIPPING
+		GPathfindingMetrics.RecordRequest(FPlatformTime::Seconds() - StartTime);
+#endif
+	}
+
+	// 캐시 갱신 (요청 시점에 미리 기록)
+	LastPathDestination = Destination;
+	TimeSinceLastPathCalc = 0.0f;
+}
+
+void ABaseCharacter::OnAsyncPathFound(uint32 QueryID, ENavigationQueryResult::Type Result, FNavPathSharedPtr NavPath)
+{
+	bAsyncPathInProgress = false;
+
+	if (Result != ENavigationQueryResult::Success || !NavPath.IsValid() || NavPath->GetPathPoints().Num() <= 1)
+	{
+		// 경로 탐색 실패 — 타겟이 없으면 정지
+		if (TargetActor == nullptr)
+		{
+			StopPathFollowing();
+		}
+		return;
+	}
+
+	// 경로 성공 — PathPoints 추출
+	TArray<FVector> NewPathPoints;
+	const TArray<FNavPathPoint>& NavPoints = NavPath->GetPathPoints();
+	NewPathPoints.Reserve(NavPoints.Num());
+
+	for (const FNavPathPoint& Point : NavPoints)
+	{
+		NewPathPoints.Add(Point.Location);
+	}
+
+	ApplyPathResult(NewPathPoints, LastPathDestination);
+}
+
+void ABaseCharacter::ApplyPathResult(const TArray<FVector>& InPathPoints, const FVector& Destination)
+{
+	PathPoints = InPathPoints;
+	CurrentPathIndex = 1;
+	bIsStraightLineMoving = false; // 직선 이동 종료 → 경로 추종 전환
+	SetActorTickEnabled(true);
+
+	ApplyMovingStateEffect();
+}
+
+void ABaseCharacter::ApplyMovingStateEffect()
+{
+	if (!HasAuthority()) return;
+	if (!AbilitySystemComponent.IsValid() || !MovingStateEffectClass) return;
+
+	static const FGameplayTag MoveTag = FGameplayTag::RequestGameplayTag(FName("State.Action.Move"));
+	if (AbilitySystemComponent->HasMatchingGameplayTag(MoveTag)) return;
+
+	FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+	Context.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(MovingStateEffectClass, 1.0f, Context);
+	if (SpecHandle.IsValid())
+	{
+		MovingEffectHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 	}
 }
 
@@ -1170,6 +1333,7 @@ void ABaseCharacter::SetTarget(AActor* NewTarget)
 
 void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 {
+	SCOPE_CYCLE_COUNTER(STAT_CheckCombatTarget);
 	if (!IsValid(TargetActor))
 	{
 		SetTarget(nullptr); // 타겟이 소멸 시 지정 해제

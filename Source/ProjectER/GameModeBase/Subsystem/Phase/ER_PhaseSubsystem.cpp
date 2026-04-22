@@ -1,4 +1,4 @@
-﻿#include "GameModeBase/Subsystem/Phase/ER_PhaseSubsystem.h"
+#include "GameModeBase/Subsystem/Phase/ER_PhaseSubsystem.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_PlayerState.h"
@@ -10,6 +10,31 @@
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
 #include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
+
+UGameplayEffect* UER_PhaseSubsystem::GetOrCreateHazardDamageEffect()
+{
+    if (CachedHazardDamageEffect)
+    {
+        return CachedHazardDamageEffect;
+    }
+
+    CachedHazardDamageEffect = NewObject<UGameplayEffect>(this, FName(TEXT("HazardDamage")));
+    if (!CachedHazardDamageEffect)
+    {
+        return nullptr;
+    }
+
+    CachedHazardDamageEffect->DurationPolicy = EGameplayEffectDurationType::Instant;
+
+    FGameplayModifierInfo ModInfo;
+    ModInfo.ModifierMagnitude = FScalableFloat(999999.0f);
+    ModInfo.ModifierOp = EGameplayModOp::Additive;
+    ModInfo.Attribute = UBaseAttributeSet::GetIncomingDamageAttribute();
+    CachedHazardDamageEffect->Modifiers.Add(ModInfo);
+
+    return CachedHazardDamageEffect;
+}
+
 
 void UER_PhaseSubsystem::StartPhaseTimer(AER_GameState& GS, float Duration)
 {
@@ -117,7 +142,11 @@ void UER_PhaseSubsystem::OnPeriodicCheckTick()
 
     if (AER_InGameMode* GM = Cast<AER_InGameMode>(World->GetAuthGameMode()))
     {
-        ULevelAreaGameModeComponent* AreaGSComp = GM->GetComponentByClass<ULevelAreaGameModeComponent>();
+        if (!CachedAreaGameModeComp.IsValid())
+        {
+            CachedAreaGameModeComp = GM->GetComponentByClass<ULevelAreaGameModeComponent>();
+        }
+        ULevelAreaGameModeComponent* AreaGSComp = CachedAreaGameModeComp.Get();
         
         AER_GameState* ERGS = CachedGameState.Get();
 
@@ -135,7 +164,25 @@ void UER_PhaseSubsystem::OnPeriodicCheckTick()
                 if (APawn* Pawn = ERPS->GetPawn())
                 {
                     //UE_LOG(LogTemp, Log, TEXT("[PSS] Pawn = %s"), Pawn ? TEXT("True") : TEXT("False"));
-                    if (ULevelAreaTrackerComponent* Tracker = Pawn->FindComponentByClass<ULevelAreaTrackerComponent>())
+                    
+                    ULevelAreaTrackerComponent* Tracker = nullptr;
+                    TWeakObjectPtr<APawn> PawnKey(Pawn);
+                    if (TWeakObjectPtr<ULevelAreaTrackerComponent>* FoundTracker = CachedTrackers.Find(PawnKey))
+                    {
+                        Tracker = FoundTracker->Get();
+                    }
+
+                    // 캐시에 없거나 무효화된 포인터라면 탐색 후 다시 캐싱
+                    if (Tracker == nullptr)
+                    {
+                        Tracker = Pawn->FindComponentByClass<ULevelAreaTrackerComponent>();
+                        if (Tracker)
+                        {
+                            CachedTrackers.Add(PawnKey, Tracker);
+                        }
+                    }
+
+                    if (Tracker)
                     {
                         //UE_LOG(LogTemp, Log, TEXT("[PSS] Tracker = %s"), Tracker ? TEXT("True") : TEXT("False"));
                         // 활성화되는 금지구역 수량 제한 (Phase * HazardsPerPhase)
@@ -146,14 +193,11 @@ void UER_PhaseSubsystem::OnPeriodicCheckTick()
                             {
                                 if (UAbilitySystemComponent* ASC = ERPS->GetAbilitySystemComponent())
                                 {
-                                    UGameplayEffect* DamageEffect = NewObject<UGameplayEffect>(GetTransientPackage(), FName(TEXT("HazardDamage")));
-                                    DamageEffect->DurationPolicy = EGameplayEffectDurationType::Instant;
-
-                                    FGameplayModifierInfo ModInfo;
-                                    ModInfo.ModifierMagnitude = FScalableFloat(999999.0f);
-                                    ModInfo.ModifierOp = EGameplayModOp::Additive;
-                                    ModInfo.Attribute = UBaseAttributeSet::GetIncomingDamageAttribute();
-                                    DamageEffect->Modifiers.Add(ModInfo);
+                                    UGameplayEffect* DamageEffect = GetOrCreateHazardDamageEffect();
+                                    if (!DamageEffect)
+                                    {
+                                        continue;
+                                    }
 
                                     FGameplayEffectContextHandle EffectContext = ASC->MakeEffectContext();
                                     // 데미지가 자신의 데미지로 판정되어 자살로 인해 킬이 오르는 것을 막기 위해 Instigator를 변경

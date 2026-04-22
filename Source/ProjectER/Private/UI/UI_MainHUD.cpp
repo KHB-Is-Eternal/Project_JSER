@@ -45,6 +45,9 @@
 #include "ItemSystem/Data/BaseItemData.h"
 #include "Components/UniformGridSlot.h"
 #include "ItemSystem/UI/W_InventorySlot.h"
+#include "Components/Image.h"
+#include "CharacterSystem/Player/BasePlayerController.h"
+#include "ItemSystem/Data/BaseItemData.h"
 void UUI_MainHUD::Update_LV(float CurrentLV)
 {
     if(IsValid(stat_LV))
@@ -1619,6 +1622,8 @@ void UUI_MainHUD::UpdateInventoryUI()
             InventorySlotWidgets[i]->SetStackCount(InventoryComp->GetStackCountAt(i));
         }
     }
+
+    RefreshCraftPreviewIcons();
 }
 
 // [김현수 추가분]
@@ -1810,4 +1815,79 @@ bool UUI_MainHUD::GetCooldownRemainingForTag(const FGameplayTagContainer& Cooldo
 	}
 
 	return false;
+}
+
+// [김현수 추가분] 이미지 한 칸 설정 함수
+void UUI_MainHUD::SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemData)
+{
+    if (!TargetImage)
+    {
+        return;
+    }
+
+    if (!ItemData || ItemData->ItemIcon.IsNull())
+    {
+        ClearCraftPreviewImage(TargetImage);
+        return;
+    }
+
+    UTexture2D* LoadedIcon = ItemData->ItemIcon.LoadSynchronous();
+    if (!LoadedIcon)
+    {
+        ClearCraftPreviewImage(TargetImage);
+        return;
+    }
+
+    TargetImage->SetBrushFromTexture(LoadedIcon);
+    TargetImage->SetVisibility(ESlateVisibility::Visible);
+}
+
+// [김현수 추가분] 전체 갱신 함수
+void UUI_MainHUD::RefreshCraftPreviewIcons()
+{
+    TArray<UImage*> PreviewImages =
+    {
+        IMG_CraftPreview_0,
+        IMG_CraftPreview_1,
+        IMG_CraftPreview_2,
+        IMG_CraftPreview_3,
+        IMG_CraftPreview_4
+    };
+
+    // 먼저 전부 빈칸으로 초기화
+    for (UImage* Image : PreviewImages)
+    {
+        ClearCraftPreviewImage(Image);
+    }
+
+    ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
+    if (!IsValid(PC))
+    {
+        return;
+    }
+
+    const TArray<FCraftableItemPreviewData> CraftableItems = PC->GetCraftableItemsForUI();
+    if (CraftableItems.Num() == 0)
+    {
+        return;
+    }
+
+    // 우선순위 높은 아이템을 오른쪽(4번)부터 채운다
+    for (int32 DataIndex = 0; DataIndex < CraftableItems.Num() && DataIndex < 5; ++DataIndex)
+    {
+        const int32 UIIndex = 4 - DataIndex;
+        SetCraftPreviewImage(PreviewImages[UIIndex], CraftableItems[DataIndex].ResultItem);
+    }
+}
+
+// [김현수 추가분] 빈 칸 초기화 함수
+void UUI_MainHUD::ClearCraftPreviewImage(UImage* TargetImage)
+{
+    if (!TargetImage)
+    {
+        return;
+    }
+
+    TargetImage->SetBrushFromTexture(nullptr);
+    TargetImage->SetVisibility(ESlateVisibility::Hidden);
 }

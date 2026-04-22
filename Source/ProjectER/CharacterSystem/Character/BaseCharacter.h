@@ -210,12 +210,14 @@ protected:
 
 #pragma region MoveToLocation
 public:
+	/** 클라이언트 → 서버: 목적지만 전달 (서버가 비동기 경로 계산) */
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_MoveToLocation(FVector TargetLocation); 
 	
 	UFUNCTION(Server, Reliable)
 	void Server_StopMove();
 	
+	/** 클라이언트 진입점 — 서버에 요청 + 임시 직선 이동 시작 */
 	void MoveToLocation(FVector TargetLocation);
 	void StopMove();
 	
@@ -223,20 +225,54 @@ protected:
 	void UpdatePathFollowing();
 	void StopPathFollowing();
 
+	// ─── Phase 2: 비동기 길찾기 ───
+
+	/** 서버 전용 — 비동기 경로 탐색 요청 */
+	void RequestAsyncPath(const FVector& Destination);
+
+	/** 비동기 경로 탐색 완료 콜백 (서버에서만 호출됨) */
+	void OnAsyncPathFound(uint32 QueryID, ENavigationQueryResult::Type Result, FNavPathSharedPtr NavPath);
+
+	/** 경로 성공 시 공통 적용 로직 (서버) */
+	void ApplyPathResult(const TArray<FVector>& InPathPoints, const FVector& Destination);
+
+	/** Moving GE 적용 헬퍼 */
+	void ApplyMovingStateEffect();
+
 private:
 	// 현재 추적 중인 경로 포인트들
 	UPROPERTY()
 	TArray<FVector> PathPoints;
 
 	// 현재 목표 웨이포인트 인덱스
-	int32 CurrentPathIndex;
+	int32 CurrentPathIndex = INDEX_NONE;
 
 	// 도착 판정 임계값 (제곱)
-	const float ArrivalDistanceSq = 2500.f; 
+	static constexpr float ArrivalDistanceSq = 2500.f; 
 	
 	// 갱신 타이머
 	float PathfindingTimer = 0.0f;
 	
+	// ─── 경로 캐싱 (Phase 1) ───
+	/** 마지막으로 경로를 계산한 목적지 */
+	FVector LastPathDestination = FVector::ZeroVector;
+	/** 경로 재계산을 건너뛸 거리 임계값 (cm) */
+	static constexpr float PathReuseThreshold = 100.0f;
+	/** 캐싱된 경로가 생성된 이후 경과 시간 (초) */
+	float TimeSinceLastPathCalc = 0.0f;
+	/** 최대 캐싱 유효기간 (초) — 초과 시 강제 재계산 */
+	static constexpr float MaxPathCacheAge = 1.0f;
+
+	// ─── Phase 2: 클라 임시 직선 이동 ───
+	/** 클라이언트가 서버 응답 전 임시로 향하는 목적지 */
+	FVector PendingMoveDestination = FVector::ZeroVector;
+	
+	/** 임시 직선 이동 중 여부 (서버 경로 도착 전) */
+	uint8 bIsStraightLineMoving : 1;
+
+	/** 비동기 경로 요청 진행 중 여부 */
+	uint8 bAsyncPathInProgress : 1;
+
 #pragma endregion
 	
 #pragma region Combat

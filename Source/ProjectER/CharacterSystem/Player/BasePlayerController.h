@@ -36,8 +36,23 @@ class UUI_Scoreboard;
 
 class ABaseItemActor; // [김현수 추가분]
 class UAudioComponent; // [김현수 추가분]
+class UBaseItemData; // [김현수 추가분]
+class UDataTable; // [김현수 추가분]
+class UBaseInventoryComponent; // [김현수 추가분]
 
 struct FInputActionValue;
+
+USTRUCT(BlueprintType)
+struct FCraftableItemPreviewData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<UBaseItemData> ResultItem = nullptr;
+
+	UPROPERTY(BlueprintReadOnly)
+	int32 Priority = 0;
+};
 
 //Log
 DECLARE_LOG_CATEGORY_EXTERN(Controller_Camera, Log, All);
@@ -234,13 +249,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Interaction|Crafting")
 	void TryStartCrafting();
 
-public:
 	// 조합 취소
 	void CancelCrafting();
 
 	// 조합 중 여부
 	UFUNCTION(BlueprintPure, Category = "Crafting")
 	bool IsCrafting() const { return bIsCrafting; }
+
+	UFUNCTION(BlueprintCallable, Category = "Craft")
+	TArray<FCraftableItemPreviewData> GetCraftableItemsForUI() const;
+
+protected:
+	bool FindMaterialIndicesForRecipe(const FItemRecipeRow& Recipe, int32& OutMat1Index, int32& OutMat2Index) const;
 /// [김현수 추가분] - 끝
 
 //-----------------------------------------------------------

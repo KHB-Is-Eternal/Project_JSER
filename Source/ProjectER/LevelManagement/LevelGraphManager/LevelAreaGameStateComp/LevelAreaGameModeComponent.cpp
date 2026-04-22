@@ -1,4 +1,4 @@
-﻿#include "LevelAreaGameModeComponent.h"
+#include "LevelAreaGameModeComponent.h"
 
 #include "Net/UnrealNetwork.h"
 #include "Engine/World.h"
@@ -153,7 +153,7 @@ void ULevelAreaGameModeComponent::AdvancePhase()
         return;
     }
 
-    if (CurrentPhase * HazardsPerPhase >= HazardOrder.Num())
+    if (IsAllPhasesExhausted())
     {
         UE_LOG(LevelAreaGraphManagement, Log,
             TEXT("AdvancePhase >> All phases exhausted at phase %d"), CurrentPhase);
@@ -327,8 +327,8 @@ void ULevelAreaGameModeComponent::ApplyHazards(int32 Phase, EAreaHazardState Sta
     int32 EffectivePhase = Phase - 1;
 
     // Full cumulative range from the beginning up to this phase
-    int32 PrevCount = FMath::Min((EffectivePhase - 1) * HazardsPerPhase, HazardOrder.Num());
-    int32 ActiveCount = FMath::Min(EffectivePhase * HazardsPerPhase, HazardOrder.Num());
+    int32 PrevCount = FMath::Min(GetCumulativeHazards(EffectivePhase - 1), HazardOrder.Num());
+    int32 ActiveCount = FMath::Min(GetCumulativeHazards(EffectivePhase), HazardOrder.Num());
 
     // All nodes that should be active hazards at this phase
     TArray<int32> ActiveHazards;
@@ -406,6 +406,35 @@ void ULevelAreaGameModeComponent::ApplyInstantDeathToNode(int32 NodeID)
 
     UE_LOG(LevelAreaGraphManagement, Log,
         TEXT("ApplyInstantDeathToNode >> NodeID %d escalated to InstantDeath"), NodeID);
+}
+
+TArray<int32> ULevelAreaGameModeComponent::GetNextPhaseZoneIDs(int32 ReferencePhase) const
+{
+    TArray<int32> Result;
+
+    if (HazardOrder.IsEmpty())
+    {
+        return Result;
+    }
+
+    // ReferencePhase 기준으로 다음 페이즈 계산 (Phase 0,1은 안전 구간이므로 EffectivePhase = Phase - 1)
+    const int32 NextPhase = ReferencePhase + 1;
+    const int32 NextEffective = NextPhase - 1;
+
+    if (NextEffective <= 0)
+    {
+        return Result;
+    }
+
+    const int32 PrevCount = FMath::Min(GetCumulativeHazards(NextEffective - 1), HazardOrder.Num());
+    const int32 NextCount = FMath::Min(GetCumulativeHazards(NextEffective), HazardOrder.Num());
+
+    for (int32 i = PrevCount; i < NextCount; i++)
+    {
+        Result.Add(HazardOrder[i]);
+    }
+
+    return Result;
 }
 
 
