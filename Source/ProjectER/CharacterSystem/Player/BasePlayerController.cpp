@@ -2265,7 +2265,7 @@ FItemRecipeRow* ABasePlayerController::FindBestAvailableRecipe()
 	return BestRecipe;
 }
 
-bool ABasePlayerController::HasMaterialsInInventory(const FItemRecipeRow* Recipe, int32& OutMat1Index, int32& OutMat2Index)
+bool ABasePlayerController::HasMaterialsInInventory(const FItemRecipeRow* Recipe, int32& OutMat1Index, int32& OutMat2Index) const
 {
 	if (Recipe == nullptr) return false;
 
@@ -2583,6 +2583,93 @@ void ABasePlayerController::Server_CompleteCrafting_Implementation(FItemRecipeRo
 	}
 }
 
+bool ABasePlayerController::FindBestAvailableRecipeByResult(UBaseItemData* DesiredResultItem, FItemRecipeRow*& OutRecipe, int32& OutMat1Index, int32& OutMat2Index) const
+{
+	OutRecipe = nullptr;
+	OutMat1Index = INDEX_NONE;
+	OutMat2Index = INDEX_NONE;
+
+	if (!ItemRecipeTable || !IsValid(DesiredResultItem))
+	{
+		return false;
+	}
+
+	TArray<FItemRecipeRow*> AllRows;
+	ItemRecipeTable->GetAllRows<FItemRecipeRow>(TEXT("FindBestAvailableRecipeByResult"), AllRows);
+
+	int32 BestPriority = TNumericLimits<int32>::Lowest();
+
+	for (FItemRecipeRow* RecipeRow : AllRows)
+	{
+		if (!RecipeRow)
+		{
+			continue;
+		}
+
+		UBaseItemData* ResultItemData = RecipeRow->ResultItem.LoadSynchronous();
+		if (ResultItemData != DesiredResultItem)
+		{
+			continue;
+		}
+
+		int32 Mat1Index = INDEX_NONE;
+		int32 Mat2Index = INDEX_NONE;
+
+		// 핵심: 기존 제작 판정 함수 재사용
+		if (!HasMaterialsInInventory(RecipeRow, Mat1Index, Mat2Index))
+		{
+			continue;
+		}
+
+		if (RecipeRow->Priority > BestPriority)
+		{
+			BestPriority = RecipeRow->Priority;
+			OutRecipe = RecipeRow;
+			OutMat1Index = Mat1Index;
+			OutMat2Index = Mat2Index;
+		}
+	}
+
+	return (OutRecipe != nullptr);
+}
+
+void ABasePlayerController::TryStartCraftingByResult(UBaseItemData* DesiredResultItem)
+{
+	if (bIsCrafting || !IsValid(DesiredResultItem))
+	{
+		return;
+	}
+
+	APawn* CurrentPawn = GetPawn();
+	if (!IsValid(CurrentPawn))
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(CurrentPawn);
+	if (!IsValid(ASC))
+	{
+		return;
+	}
+
+	if (ASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Down"))) ||
+		ASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Death"))))
+	{
+		return;
+	}
+
+	FItemRecipeRow* SelectedRecipe = nullptr;
+	int32 Mat1Index = INDEX_NONE;
+	int32 Mat2Index = INDEX_NONE;
+
+	if (!FindBestAvailableRecipeByResult(DesiredResultItem, SelectedRecipe, Mat1Index, Mat2Index))
+	{
+		return;
+	}
+
+	StartCrafting(SelectedRecipe);
+}
+
 
 void ABasePlayerController::Server_RequestTeleportToTeam_Implementation(APlayerState* TargetAllyPS)
 {
@@ -2690,7 +2777,7 @@ TArray<FCraftableItemPreviewData> ABasePlayerController::GetCraftableItemsForUI(
 {
 	TArray<FCraftableItemPreviewData> Results;
 
-	if (!IsValid(ItemRecipeTable))
+	if (!ItemRecipeTable)
 	{
 		return Results;
 	}
@@ -2708,10 +2795,7 @@ TArray<FCraftableItemPreviewData> ABasePlayerController::GetCraftableItemsForUI(
 		}
 
 		UBaseItemData* ResultItemData = RecipeRow->ResultItem.LoadSynchronous();
-		UBaseItemData* Material1Data = RecipeRow->Material1.LoadSynchronous();
-		UBaseItemData* Material2Data = RecipeRow->Material2.LoadSynchronous();
-
-		if (!ResultItemData || !Material1Data || !Material2Data)
+		if (!ResultItemData)
 		{
 			continue;
 		}
@@ -2719,7 +2803,8 @@ TArray<FCraftableItemPreviewData> ABasePlayerController::GetCraftableItemsForUI(
 		int32 Mat1Index = INDEX_NONE;
 		int32 Mat2Index = INDEX_NONE;
 
-		if (!FindMaterialIndicesForRecipe(*RecipeRow, Mat1Index, Mat2Index))
+		// 핵심: 기존 제작 판정 함수 재사용
+		if (!HasMaterialsInInventory(RecipeRow, Mat1Index, Mat2Index))
 		{
 			continue;
 		}
