@@ -219,7 +219,7 @@ private:
 
 
 	// 재료가 인벤토리에 있는지 확인
-	bool HasMaterialsInInventory(const FItemRecipeRow* Recipe, int32& OutMat1Index, int32& OutMat2Index);
+	bool HasMaterialsInInventory(const FItemRecipeRow* Recipe, int32& OutMat1Index, int32& OutMat2Index) const;
 
 	// 결과 아이템을 넣을 빈 슬롯 찾기
 	int32 FindFirstEmptySlot();
@@ -258,6 +258,11 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Craft")
 	TArray<FCraftableItemPreviewData> GetCraftableItemsForUI() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Craft")
+	void TryStartCraftingByResult(UBaseItemData* DesiredResultItem);
+
+	bool FindBestAvailableRecipeByResult(UBaseItemData* DesiredResultItem, FItemRecipeRow*& OutRecipe, int32& OutMat1Index, int32& OutMat2Index) const;
 
 protected:
 	bool FindMaterialIndicesForRecipe(const FItemRecipeRow& Recipe, int32& OutMat1Index, int32& OutMat2Index) const;
