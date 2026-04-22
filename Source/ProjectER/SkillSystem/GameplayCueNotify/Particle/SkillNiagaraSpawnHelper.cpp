@@ -111,13 +111,39 @@ void SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World, const FSkill
 		ResultNC = UNiagaraFunctionLibrary::SpawnSystemAttached(LoadedNiagaraSystem, FinalAttachComponent, Settings.SocketOrBoneName, Settings.LocationOffset, RelativeAttachRotation, EAttachLocation::KeepRelativeOffset, true, false);
 	}
 	else {
-		const FVector SourceLocation = SourceTransform.GetLocation();
-		const FQuat SourceRotation = SourceTransform.GetRotation();
+		FTransform BaseTransform = SourceTransform;
+		FQuat OffsetRotation = SourceTransform.GetRotation(); // 오프셋 계산에 사용할 회전 (시전자 기준)
+
+		// [Fix] 부착하지 않더라도 본 이름이 있으면 해당 위치와 회전을 기준점으로 사용합니다.
+		if (Settings.SocketOrBoneName != NAME_None)
+		{
+			// 1. 명시적으로 전달된 AttachTarget(컴포넌트)이 있다면 최우선적으로 그 본 트랜스폼을 사용
+			if (IsValid(AttachTarget))
+			{
+				BaseTransform = AttachTarget->GetSocketTransform(Settings.SocketOrBoneName);
+				OffsetRotation = BaseTransform.GetRotation();
+			}
+			// 2. 아니면 SourceActor에서 컴포넌트를 찾아 해결
+			else if (IsValid(SourceActor))
+			{
+				if (USceneComponent* BoneComponent = ResolveNiagaraAttachComponent(SourceActor, Settings))
+				{
+					BaseTransform = BoneComponent->GetSocketTransform(Settings.SocketOrBoneName);
+					OffsetRotation = BaseTransform.GetRotation();
+				}
+			}
+		}
+
+		const FVector SourceLocation = BaseTransform.GetLocation();
 		const FVector WorldLocationOffset = Settings.bUseSourceRotationForLocationOffset
-			? SourceRotation.RotateVector(Settings.LocationOffset)
+			? OffsetRotation.RotateVector(Settings.LocationOffset)
 			: Settings.LocationOffset;
+		
 		const FVector SpawnLocation = SourceLocation + WorldLocationOffset;
-		const FRotator SpawnRotation = CalculateNiagaraWorldRotation(Settings, SourceTransform, OptionalLookAtTarget);
+		
+		// 회전값 결정 (본을 찾았다면 본의 회전 기준, 아니면 시전자 기준)
+		const FRotator SpawnRotation = CalculateNiagaraWorldRotation(Settings, BaseTransform, OptionalLookAtTarget);
+		
 		ResultNC = UNiagaraFunctionLibrary::SpawnSystemAtLocation(World, LoadedNiagaraSystem, SpawnLocation, SpawnRotation, FVector(1.f), true, false);
 	}
 	

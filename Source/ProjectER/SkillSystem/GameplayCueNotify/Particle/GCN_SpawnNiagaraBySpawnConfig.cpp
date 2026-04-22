@@ -185,8 +185,24 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 		}
 	}
 
-	// 3. Transform 설정: SourceActor가 유효하면 그 위치를, 아니면 전달받은 Parameters.Location을 사용
-	FTransform SourceTransform = IsValid(SourceActor) ? SourceActor->GetActorTransform() : FTransform(FRotator::ZeroRotator, Parameters.Location);
+	// 3. Transform 설정: SourceActor가 유효하면 그 트랜스폼을 기본으로 하되, Parameters.Location이 있으면 위치를 덮어씀
+	FTransform SourceTransform;
+	if (IsValid(SourceActor))
+	{
+		SourceTransform = SourceActor->GetActorTransform();
+		
+		// 소켓 설정이 없는 기본 상태이면서 외부에서 전달된 Location이 있다면 해당 위치를 우선함 (예: 장판 생성 위치)
+		if (SpawnConfig->SocketOrBoneName == NAME_None && !Parameters.Location.IsNearlyZero())
+		{
+			SourceTransform.SetLocation(Parameters.Location);
+		}
+	}
+	else
+	{
+		// [Fix] SourceActor가 없는 경우 MyTarget(적용 대상)의 회전이라도 사용하도록 변경 (Identity 방지)
+		FRotator FallbackRotation = IsValid(MyTarget) ? MyTarget->GetActorRotation() : FRotator::ZeroRotator;
+		SourceTransform = FTransform(FallbackRotation, Parameters.Location);
+	}
 
 	SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
 	return true;

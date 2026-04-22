@@ -32,7 +32,7 @@ struct FSkillNiagaraSpawnSettings
 	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Attach")
 	bool bAttachToSource = false;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Attach", meta = (EditCondition = "bAttachToSource"))
+	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Attach")
 	FName SocketOrBoneName = NAME_None;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Transform")

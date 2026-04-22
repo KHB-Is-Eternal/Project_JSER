@@ -70,7 +70,18 @@ bool UGCN_PlaySoundBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, con
 	}
 
 	// 3. Transform 설정: SourceActor가 유효하면 그 위치를, 아니면 전달받은 Parameters.Location을 사용
-	FTransform SourceTransform = IsValid(SourceActor) ? SourceActor->GetActorTransform() : FTransform(FRotator::ZeroRotator, Parameters.Location);
+	FTransform SourceTransform;
+	if (IsValid(SourceActor))
+	{
+		SourceTransform = SourceActor->GetActorTransform();
+	}
+	else
+	{
+		// [Fix] SourceActor가 없는 경우 MyTarget(적용 대상)의 회전이라도 사용하도록 변경
+		FRotator FallbackRotation = IsValid(MyTarget) ? MyTarget->GetActorRotation() : FRotator::ZeroRotator;
+		SourceTransform = FTransform(FallbackRotation, Parameters.Location);
+	}
+
 
 	SkillSoundSpawnHelper::PlaySoundBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
 	return true;

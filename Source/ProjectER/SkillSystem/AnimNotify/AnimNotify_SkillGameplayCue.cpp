@@ -55,7 +55,6 @@ void UAnimNotify_SkillGameplayCue::Notify(USkeletalMeshComponent* MeshComp, UAni
 			}
 		}
 
-		Parameters.Instigator = ASC->GetOwner();
 		ASC->ExecuteGameplayCue(GameplayCueTag, Parameters);
 	}
 	else
