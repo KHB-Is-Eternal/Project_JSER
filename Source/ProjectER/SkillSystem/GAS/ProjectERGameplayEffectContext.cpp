@@ -13,8 +13,5 @@ bool FProjectERGameplayEffectContext::NetSerialize(FArchive& Ar, class UPackageM
 	// 2. ClientActivationTime 직렬화 (클라이언트 -> 서버 전송)
 	Ar << ClientActivationTime;
 
-	// 3. PredictionKey 직렬화 (GCN 핸드셰이크용)
-	PredictionKey.NetSerialize(Ar, Map, bOutSuccess);
-
 	return bOutSuccess;
 }
