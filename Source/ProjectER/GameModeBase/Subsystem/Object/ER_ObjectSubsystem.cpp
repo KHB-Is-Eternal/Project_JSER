@@ -1,4 +1,4 @@
-#include "GameModeBase/Subsystem/Object/ER_ObjectSubsystem.h"
+﻿#include "GameModeBase/Subsystem/Object/ER_ObjectSubsystem.h"
 #include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/PointActor/ER_PointActor.h"
@@ -26,9 +26,12 @@ void UER_ObjectSubsystem::InitializeObjectPoints(TMap<FName, FObjectClassConfig>
     const FName ObjectTag(TEXT("Object"));
     const FName BossTag(TEXT("Monster"));
     const FName SupplyTag(TEXT("Supply"));
+    const FName SafeTag(TEXT("Safe"));
 
     SupplyPointsByRegion.Reset();
     BossPoints.Reset();
+    SafePoints.Reset();
+    SpawnedSafeZoneActor = nullptr;
 
     for (auto& Point : Points)
     {
@@ -117,9 +120,43 @@ void UER_ObjectSubsystem::InitializeObjectPoints(TMap<FName, FObjectClassConfig>
             SupplyPointsByRegion.FindOrAdd(Info.RegionType).Add(Info);
         }
         
+        // 안전 구역 이니셜라이즈
+        else if (PointActor->ActorHasTag(SafeTag))
+        {
+            for (const FName& Tag : PointActor->Tags)
+            {
+                if (Tag == SafeTag)
+                    continue;
+
+                if (const FObjectClassConfig* Found = ObjectClass.Find(Tag))
+                {
+                    TagName = SafeTag;
+                    Picked = Found;
+                    break;
+                }
+            }
+
+            if (!Picked || !Picked->Class)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[OSS] No SafeZone Class mapping for %s"), *PointActor->GetName());
+                continue;
+            }
+            AER_PointActor* PA = Cast<AER_PointActor>(PointActor);
+            if (!PA)
+                continue;
+
+            FObjectInfo Info;
+            Info.SpawnPoint = PointActor;
+            Info.ObjectClass = Picked->Class;
+            Info.bIsSpawned = false;
+            Info.RegionType = PA->RegionType;
+
+            SafePoints.Add(Info);
+        }
+        
     }
     bIsInitialized = true;
-    UE_LOG(LogTemp, Log, TEXT("[OSS] InitializeObjectPoints End. SupplyPoint Count : %d , BossPoint Count : %d"), SupplyPointsByRegion.Num(), BossPoints.Num());
+    UE_LOG(LogTemp, Log, TEXT("[OSS] InitializeObjectPoints End. SupplyPoint Count : %d , BossPoint Count : %d, SafePoint Count : %d"), SupplyPointsByRegion.Num(), BossPoints.Num(), SafePoints.Num());
 }
 
 void UER_ObjectSubsystem::PickSupplySpawnIndex()
@@ -410,4 +447,79 @@ void UER_ObjectSubsystem::RegisterPoint(AActor* Point)
 void UER_ObjectSubsystem::UnregisterPoint(AActor* Point)
 {
 	Points.Remove(Point);
+}
+
+void UER_ObjectSubsystem::SpawnSafeZone(int32 NextHazardRegionID)
+{
+    UWorld* World = GetWorld();
+    if (!World || World->GetNetMode() == NM_Client)
+    {
+        return;
+    }
+
+    if (!bIsInitialized)
+    {
+        return;
+    }
+
+    // 기존에 활성화된 구역이 있다면 안전하게 제거
+    DespawnSafeZone();
+
+    // 입력받은 지역 번호와 매칭되는 스폰 위치 탐색
+    FObjectInfo* TargetInfo = nullptr;
+    for (FObjectInfo& Info : SafePoints)
+    {
+        if (static_cast<int32>(Info.RegionType) == NextHazardRegionID && IsValid(Info.SpawnPoint.Get()))
+        {
+            TargetInfo = &Info;
+            break;
+        }
+    }
+
+    if (TargetInfo && TargetInfo->ObjectClass)
+    {
+        const FTransform SpawnTM = TargetInfo->SpawnPoint->GetActorTransform();
+        
+        SpawnedSafeZoneActor = World->SpawnActorDeferred<AActor>(
+            TargetInfo->ObjectClass,
+            SpawnTM,
+            nullptr,
+            nullptr,
+            ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn
+        );
+
+        if (SpawnedSafeZoneActor)
+        {
+            UGameplayStatics::FinishSpawningActor(SpawnedSafeZoneActor, SpawnTM);
+            TargetInfo->bIsSpawned = true;
+            
+            // 시각적 피드백 선택 해제 (기존 포인트 스폰 로직들과 동일하게 처리)
+            if (AER_PointActor* PA = Cast<AER_PointActor>(TargetInfo->SpawnPoint.Get()))
+            {
+                PA->SetSelectedVisual(false);
+            }
+            
+            UE_LOG(LogTemp, Log, TEXT("[OSS] Successfully Spawned Safe Zone at Region: %d"), NextHazardRegionID);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[OSS] Failed to find spawn point or object class for Safe Zone at Region: %d"), NextHazardRegionID);
+    }
+}
+
+void UER_ObjectSubsystem::DespawnSafeZone()
+{
+    if (IsValid(SpawnedSafeZoneActor))
+    {
+        SpawnedSafeZoneActor->Destroy();
+        SpawnedSafeZoneActor = nullptr;
+        UE_LOG(LogTemp, Log, TEXT("[OSS] Safe Zone Despawned."));
+    }
+
+    // 모든 안전 구역 포인트의 스폰 상태 초기화
+    for (FObjectInfo& Info : SafePoints)
+    {
+        Info.bIsSpawned = false;
+    }
 }
