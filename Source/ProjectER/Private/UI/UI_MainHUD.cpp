@@ -475,6 +475,29 @@ void UUI_MainHUD::NativeConstruct()
     //    1.0f,
     //    true);
     
+    // [김현수 추가분]
+    CurrentCraftPreviewItems.SetNum(5);
+
+    if (BTN_CraftPreview_0)
+    {
+        BTN_CraftPreview_0->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview0Clicked);
+    }
+    if (BTN_CraftPreview_1)
+    {
+        BTN_CraftPreview_1->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview1Clicked);
+    }
+    if (BTN_CraftPreview_2)
+    {
+        BTN_CraftPreview_2->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview2Clicked);
+    }
+    if (BTN_CraftPreview_3)
+    {
+        BTN_CraftPreview_3->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview3Clicked);
+    }
+    if (BTN_CraftPreview_4)
+    {
+        BTN_CraftPreview_4->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview4Clicked);
+    }
 }
 
 void UUI_MainHUD::NativeDestruct()
@@ -1845,6 +1868,11 @@ void UUI_MainHUD::SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemD
 // [김현수 추가분] 전체 갱신 함수
 void UUI_MainHUD::RefreshCraftPreviewIcons()
 {
+    if (CurrentCraftPreviewItems.Num() < 5)
+    {
+        CurrentCraftPreviewItems.SetNum(5);
+    }
+
     TArray<UImage*> PreviewImages =
     {
         IMG_CraftPreview_0,
@@ -1854,10 +1882,29 @@ void UUI_MainHUD::RefreshCraftPreviewIcons()
         IMG_CraftPreview_4
     };
 
-    // 먼저 전부 빈칸으로 초기화
-    for (UImage* Image : PreviewImages)
+    TArray<UButton*> PreviewButtons =
     {
-        ClearCraftPreviewImage(Image);
+        BTN_CraftPreview_0,
+        BTN_CraftPreview_1,
+        BTN_CraftPreview_2,
+        BTN_CraftPreview_3,
+        BTN_CraftPreview_4
+    };
+
+    for (int32 Index = 0; Index < 5; ++Index)
+    {
+        CurrentCraftPreviewItems[Index] = nullptr;
+
+        if (PreviewImages[Index])
+        {
+            PreviewImages[Index]->SetBrushFromTexture(nullptr);
+            PreviewImages[Index]->SetVisibility(ESlateVisibility::Hidden);
+        }
+
+        if (PreviewButtons[Index])
+        {
+            PreviewButtons[Index]->SetVisibility(ESlateVisibility::Hidden);
+        }
     }
 
     ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
@@ -1867,16 +1914,24 @@ void UUI_MainHUD::RefreshCraftPreviewIcons()
     }
 
     const TArray<FCraftableItemPreviewData> CraftableItems = PC->GetCraftableItemsForUI();
-    if (CraftableItems.Num() == 0)
-    {
-        return;
-    }
 
-    // 우선순위 높은 아이템을 오른쪽(4번)부터 채운다
     for (int32 DataIndex = 0; DataIndex < CraftableItems.Num() && DataIndex < 5; ++DataIndex)
     {
         const int32 UIIndex = 4 - DataIndex;
-        SetCraftPreviewImage(PreviewImages[UIIndex], CraftableItems[DataIndex].ResultItem);
+
+        UBaseItemData* ResultItem = CraftableItems[DataIndex].ResultItem;
+        if (!IsValid(ResultItem))
+        {
+            continue;
+        }
+
+        CurrentCraftPreviewItems[UIIndex] = ResultItem;
+        SetCraftPreviewImage(PreviewImages[UIIndex], ResultItem);
+
+        if (PreviewButtons[UIIndex])
+        {
+            PreviewButtons[UIIndex]->SetVisibility(ESlateVisibility::Visible);
+        }
     }
 }
 
@@ -1891,3 +1946,32 @@ void UUI_MainHUD::ClearCraftPreviewImage(UImage* TargetImage)
     TargetImage->SetBrushFromTexture(nullptr);
     TargetImage->SetVisibility(ESlateVisibility::Hidden);
 }
+
+// [김현수 추가분] 공통 클릭 처리 함수
+void UUI_MainHUD::TryCraftPreviewAtIndex(int32 Index) 
+{
+    if (!CurrentCraftPreviewItems.IsValidIndex(Index))
+    {
+        return;
+    }
+
+    UBaseItemData* DesiredResultItem = CurrentCraftPreviewItems[Index];
+    if (!IsValid(DesiredResultItem))
+    {
+        return;
+    }
+
+    ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
+    if (!IsValid(PC))
+    {
+        return;
+    }
+
+    PC->TryStartCraftingByResult(DesiredResultItem);
+}
+
+void UUI_MainHUD::OnCraftPreview0Clicked() { TryCraftPreviewAtIndex(0); }
+void UUI_MainHUD::OnCraftPreview1Clicked() { TryCraftPreviewAtIndex(1); }
+void UUI_MainHUD::OnCraftPreview2Clicked() { TryCraftPreviewAtIndex(2); }
+void UUI_MainHUD::OnCraftPreview3Clicked() { TryCraftPreviewAtIndex(3); }
+void UUI_MainHUD::OnCraftPreview4Clicked() { TryCraftPreviewAtIndex(4); }

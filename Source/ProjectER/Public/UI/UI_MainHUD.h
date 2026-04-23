@@ -26,6 +26,9 @@ class UBaseInventoryComponent;
 class UW_InventorySlot;
 class UImage;
 class UBaseItemData;
+class UButton;
+class UImage;
+class UBaseItemData;
 
 
 UENUM(BlueprintType)
@@ -513,7 +516,42 @@ protected: // [김현수 추가분] 제작가능 아이템 표시용 프리뷰 �
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UImage> IMG_CraftPreview_4;
 
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_0;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_1;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_2;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_3;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_4;
+
 	void RefreshCraftPreviewIcons();
 	void SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemData);
+
+	UPROPERTY()
+	TArray<TObjectPtr<UBaseItemData>> CurrentCraftPreviewItems;
+
+	UFUNCTION()
+	void OnCraftPreview0Clicked();
+
+	UFUNCTION()
+	void OnCraftPreview1Clicked();
+
+	UFUNCTION()
+	void OnCraftPreview2Clicked();
+
+	UFUNCTION()
+	void OnCraftPreview3Clicked();
+
+	UFUNCTION()
+	void OnCraftPreview4Clicked();
+
+	void TryCraftPreviewAtIndex(int32 Index);
 };
 
