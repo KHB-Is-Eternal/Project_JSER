@@ -273,6 +273,9 @@ private:
 	/** 비동기 경로 요청 진행 중 여부 */
 	uint8 bAsyncPathInProgress : 1;
 
+	/** 경로 요청 ID — StopMove 후 도착하는 오래된 콜백 무효화용 */
+	uint32 CurrentPathRequestID = 0;
+
 #pragma endregion
 	
 #pragma region Combat
