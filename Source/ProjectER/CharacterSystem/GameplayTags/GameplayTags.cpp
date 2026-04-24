@@ -1,4 +1,4 @@
-#include "CharacterSystem/GameplayTags/GameplayTags.h"
+﻿#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 namespace ProjectER
 {
@@ -302,6 +302,11 @@ namespace ProjectER
 		{
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Unselectable, "State.Status.Unselectable", "Unselectable State"); // 적 타겟팅은 되지만 일부 스킬 불가(Down 시 부여)
 		}*/
+
+		namespace Zone
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Safe, "State.Zone.Safe", "Place SafeZone"); // 임시 안전 지대에 위치
+		}
 	}
 
 	namespace Status
