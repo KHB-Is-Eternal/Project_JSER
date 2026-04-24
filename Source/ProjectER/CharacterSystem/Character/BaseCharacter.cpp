@@ -1149,6 +1149,7 @@ void ABaseCharacter::StopPathFollowing()
 	PathPoints.Empty();
 	CurrentPathIndex = INDEX_NONE;
 	bIsStraightLineMoving = false;
+	++CurrentPathRequestID; // 오래된 비동기 콜백 무효화
 	
 	// 타겟이 있을 시 이동 및 공격을 위해 Tick 유지
 	// CheckCombatTarget() 유지 용도
@@ -1200,10 +1201,19 @@ void ABaseCharacter::RequestAsyncPath(const FVector& Destination)
 		const double StartTime = FPlatformTime::Seconds();
 #endif
 
-		NavSys->FindPathAsync(
+	// 현재 요청 ID를 캐프처하여 오래된 콜백 무효화
+	++CurrentPathRequestID;
+	const uint32 CapturedRequestID = CurrentPathRequestID;
+
+	NavSys->FindPathAsync(
 			FNavAgentProperties::DefaultProperties,
 			Query,
-			FNavPathQueryDelegate::CreateUObject(this, &ABaseCharacter::OnAsyncPathFound),
+			FNavPathQueryDelegate::CreateLambda([this, CapturedRequestID](uint32 InQueryID, ENavigationQueryResult::Type InResult, FNavPathSharedPtr InNavPath)
+			{
+				// StopMove 후 도착한 오래된 콜백은 무시
+				if (CapturedRequestID != CurrentPathRequestID) return;
+				OnAsyncPathFound(InQueryID, InResult, InNavPath);
+			}),
 			EPathFindingMode::Regular
 		);
 

@@ -1,4 +1,4 @@
-﻿#include "CharacterSystem/Player/BasePlayerController.h"
+#include "CharacterSystem/Player/BasePlayerController.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -339,8 +339,13 @@ void ABasePlayerController::PlayerTick(float DeltaTime)
 	// 마우스를 꾹 누르고 있으면 계속 이동 위치 갱신 
 	if (bIsMousePressed)
 	{
+		// 루팅/텔레포트 UI가 열려있으면 이동 차단
+		if (IsValid(LootWidgetInstance) || IsValid(TeleportUIInstance))
+		{
+			bIsMousePressed = false;
+		}
 		// 0.1초 쿨타임 체크
-		if (GetWorld()->GetTimeSeconds() - LastRPCUpdateTime > RPCUpdateInterval)
+		else if (GetWorld()->GetTimeSeconds() - LastRPCUpdateTime > RPCUpdateInterval)
 		{
 			//MoveToMouseCursor(); 태웅님 기존 코드
 			// [김현수 추가분] 아이템 판별 기능이 포함된 함수로 변경 호출
