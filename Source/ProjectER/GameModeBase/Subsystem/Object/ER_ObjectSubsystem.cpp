@@ -1,4 +1,4 @@
-﻿#include "GameModeBase/Subsystem/Object/ER_ObjectSubsystem.h"
+#include "GameModeBase/Subsystem/Object/ER_ObjectSubsystem.h"
 #include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/PointActor/ER_PointActor.h"
@@ -6,7 +6,8 @@
 #include "Monster/BaseMonster.h"
 
 #include "Kismet/GameplayStatics.h"
-
+#include "LevelManagement/LevelGraphManager/LevelAreaGameStateComp/LevelAreaGameModeComponent.h"
+#include "LevelManagement/LevelGraphManager/LevelAreaSubsystem/LevelAreaGraphSubsystem.h"
 
 void UER_ObjectSubsystem::InitializeObjectPoints(TMap<FName, FObjectClassConfig>& ObjectClass)
 {
@@ -68,6 +69,15 @@ void UER_ObjectSubsystem::InitializeObjectPoints(TMap<FName, FObjectClassConfig>
             Info.ObjectClass = Picked->Class;
             Info.DAName = DAName;
             Info.bIsSpawned = false;
+            
+            if (AER_PointActor* PA = Cast<AER_PointActor>(PointActor))
+            {
+                Info.RegionType = PA->RegionType;
+            }
+            else
+            {
+                Info.RegionType = ERegionType::None;
+            }
 
             BossPoints.Add(Info);
         }
@@ -127,6 +137,19 @@ void UER_ObjectSubsystem::PickSupplySpawnIndex()
 
     PendingSupplyPicks.Reset();
 
+    AER_GameState* ERGS = World->GetGameState<AER_GameState>();
+    int32 CurrentPhase = ERGS ? ERGS->GetCurrentPhase() : 1;
+
+    AER_InGameMode* GM = Cast<AER_InGameMode>(World->GetAuthGameMode());
+    ULevelAreaGameModeComponent* AreaGSComp = GM ? GM->GetComponentByClass<ULevelAreaGameModeComponent>() : nullptr;
+    ULevelAreaGraphSubsystem* GraphSub = World->GetSubsystem<ULevelAreaGraphSubsystem>();
+
+    TArray<int32> NextHazards;
+    if (AreaGSComp)
+    {
+        NextHazards = AreaGSComp->GetNextPhaseZoneIDs(CurrentPhase);
+    }
+
     for (auto& Pair : SupplyPointsByRegion)
     {
         ERegionType Region = Pair.Key;
@@ -140,7 +163,16 @@ void UER_ObjectSubsystem::PickSupplySpawnIndex()
             // 이미 스폰 됐거나, 예약 상태라면 제외
             if (!Infos[i].bIsSpawned && !Infos[i].bIsReserved && Infos[i].ObjectClass && IsValid(Infos[i].SpawnPoint.Get()))
             {
-                Candidates.Add(i);
+                int32 NodeID = static_cast<int32>(Infos[i].RegionType);
+
+                // 현재 금지구역이거나, 다음 페이즈에 금지구역이 될 구역은 제외
+                bool bIsCurrentHazard = GraphSub ? GraphSub->IsNodeHazard(NodeID) : false;
+                bool bIsNextHazard = NextHazards.Contains(NodeID);
+
+                if (!bIsCurrentHazard && !bIsNextHazard)
+                {
+                    Candidates.Add(i);
+                }
             }
         }
 
@@ -222,16 +254,40 @@ void UER_ObjectSubsystem::PickBossSpawnIndex()
 
     PendingBossPicks.Reset();
 
-    int32 PickIdx = -1;
+    AER_GameState* ERGS = World->GetGameState<AER_GameState>();
+    int32 CurrentPhase = ERGS ? ERGS->GetCurrentPhase() : 1;
 
-    for (int i = 0; i < 50; ++i)
+    AER_InGameMode* GM = Cast<AER_InGameMode>(World->GetAuthGameMode());
+    ULevelAreaGameModeComponent* AreaGSComp = GM ? GM->GetComponentByClass<ULevelAreaGameModeComponent>() : nullptr;
+    ULevelAreaGraphSubsystem* GraphSub = World->GetSubsystem<ULevelAreaGraphSubsystem>();
+
+    TArray<int32> NextHazards;
+    if (AreaGSComp)
     {
-        int32 TempIdx = FMath::RandRange(0, BossPoints.Num() - 1);
-        if (!BossPoints[TempIdx].bIsReserved && !BossPoints[TempIdx].bIsSpawned && BossPoints[TempIdx].ObjectClass && IsValid(BossPoints[TempIdx].SpawnPoint.Get()))
+        NextHazards = AreaGSComp->GetNextPhaseZoneIDs(CurrentPhase);
+    }
+
+    TArray<int32> Candidates;
+    for (int32 i = 0; i < BossPoints.Num(); ++i)
+    {
+        if (!BossPoints[i].bIsReserved && !BossPoints[i].bIsSpawned && BossPoints[i].ObjectClass && IsValid(BossPoints[i].SpawnPoint.Get()))
         {
-            PickIdx = TempIdx;
-            break;
+            int32 NodeID = static_cast<int32>(BossPoints[i].RegionType);
+
+            bool bIsCurrentHazard = GraphSub ? GraphSub->IsNodeHazard(NodeID) : false;
+            bool bIsNextHazard = NextHazards.Contains(NodeID);
+
+            if (!bIsCurrentHazard && !bIsNextHazard)
+            {
+                Candidates.Add(i);
+            }
         }
+    }
+
+    int32 PickIdx = -1;
+    if (Candidates.Num() > 0)
+    {
+        PickIdx = Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
     }
 
     if (PickIdx != -1)

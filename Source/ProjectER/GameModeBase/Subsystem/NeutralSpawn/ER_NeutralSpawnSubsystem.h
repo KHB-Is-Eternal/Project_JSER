@@ -49,6 +49,8 @@ public:
 	void FirstSpawnNeutral();
 	void SetFalsebIsSpawned(const int32 SpawnPointIdx);
 
+    void KillMonstersInHazards();
+
 	void RegisterPoint(AActor* Point);
 	void UnregisterPoint(AActor* Point);
 

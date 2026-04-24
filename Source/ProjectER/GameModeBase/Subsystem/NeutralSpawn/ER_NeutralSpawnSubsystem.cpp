@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "GameModeBase/Subsystem/NeutralSpawn/ER_NeutralSpawnSubsystem.h"
@@ -9,6 +9,8 @@
 #include "EngineUtils.h"
 #include "Engine/AssetManager.h"
 #include "Monster/MonsterRangeComponent.h"
+#include "LevelManagement/LevelGraphManager/LevelAreaSubsystem/LevelAreaGraphSubsystem.h"
+#include "GameModeBase/PointActor/ER_PointActor.h"
 
 void UER_NeutralSpawnSubsystem::InitializeSpawnPoints(TMap<FName, FNeutralClassConfig>& NeutralClass)
 {
@@ -94,9 +96,27 @@ void UER_NeutralSpawnSubsystem::StartRespawnNeutral(const int32 SpawnPointIdx)
     if (!bIsInitialized)
         return;
 
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    ULevelAreaGraphSubsystem* GraphSub = World->GetSubsystem<ULevelAreaGraphSubsystem>();
+    if (GraphSub && Info->SpawnPoint.IsValid())
+    {
+        if (AER_PointActor* PA = Cast<AER_PointActor>(Info->SpawnPoint.Get()))
+        {
+            int32 NodeID = static_cast<int32>(PA->RegionType);
+            if (GraphSub->IsNodeHazard(NodeID))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[NSS] Zone is Hazard, Blocking Respawn Timer. Key : %d"), SpawnPointIdx);
+                World->GetTimerManager().ClearTimer(Info->RespawnTimer);
+                return;
+            }
+        }
+    }
+
     // 타이머 시작 전 타이머 초기화
-    GetWorld()->GetTimerManager().ClearTimer(Info->RespawnTimer);
-    GetWorld()->GetTimerManager().SetTimer(
+    World->GetTimerManager().ClearTimer(Info->RespawnTimer);
+    World->GetTimerManager().SetTimer(
         Info->RespawnTimer,
         FTimerDelegate::CreateWeakLambda(this, [this, SpawnPointIdx]()
             {
@@ -170,6 +190,39 @@ void UER_NeutralSpawnSubsystem::SetFalsebIsSpawned(const int32 SpawnPointIdx)
         return;
 
     Info->bIsSpawned = false;
+}
+
+void UER_NeutralSpawnSubsystem::KillMonstersInHazards()
+{
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    ULevelAreaGraphSubsystem* GraphSub = World->GetSubsystem<ULevelAreaGraphSubsystem>();
+    if (!GraphSub) return;
+
+    for (auto& Pair : NeutralSpawnMap)
+    {
+        FNeutralInfo& Info = Pair.Value;
+
+        if (Info.bIsSpawned && Info.SpawnedActor.IsValid())
+        {
+            if (AActor* PointActor = Info.SpawnPoint.Get())
+            {
+                if (AER_PointActor* PA = Cast<AER_PointActor>(PointActor))
+                {
+                    int32 NodeID = static_cast<int32>(PA->RegionType);
+                    if (GraphSub->IsNodeHazard(NodeID))
+                    {
+                        if (ABaseMonster* Monster = Info.SpawnedActor.Get())
+                        {
+                            // Trigger normal death sequence
+                            Monster->Death();
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void UER_NeutralSpawnSubsystem::RegisterPoint(AActor* Point)
