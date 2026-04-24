@@ -1,4 +1,4 @@
-#include "GameModeBase/GameMode/ER_InGameMode.h"
+﻿#include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Respawn/ER_RespawnSubsystem.h"
@@ -932,7 +932,7 @@ void AER_InGameMode::HandlePhaseTimeUp()
 	{
 		return;
 	}
-	if (ERGS->GetCurrentPhase() < 5)
+	if (ERGS->GetCurrentPhase() < 7)
 	{
 		ERGS->SetCurrentPhase(ERGS->GetCurrentPhase() + 1);
 		// 페이즈에 따라 작동할 코드 넣기
@@ -950,27 +950,32 @@ void AER_InGameMode::HandlePhaseTimeUp()
 			ERGS->Multicast_SetHazardIntensity(NextZoneIDs, 0.5f);
 		}
 
-		/*//Updated -> Internally the ULevelAreaGameModeComponent does not make danger zone on first phase
-		AreaGSComp->SetPhase(ERGS->GetCurrentPhase());*/
-
-		//FString Text = "";
-		//for (auto& aa : AreaGSComp->HazardOrder)
-		//{
-		//	Text.Append(" -> ");
-		//	Text.AppendInt(aa);
-
-		//}
-		//UE_LOG(LogTemp, Log, TEXT("[GM] AreaGSComp->HazardOrder : %s"), *Text);
-
 		UER_ObjectSubsystem* ObjectSS = GetWorld()->GetSubsystem<UER_ObjectSubsystem>();
 		if (ObjectSS)
 		{
+			// 6페이즈 돌입 시: HazardOrder의 마지막 노드 = 7페이즈에 마지막으로 위험해지는 구역
+			// NextZoneIDs는 Phase 7 이후 정의된 항목이 없어 비어있으므로 HazardOrder.Last()를 직접 사용
+			if (ERGS->GetCurrentPhase() == 5 && !AreaGSComp->HazardOrder.IsEmpty())
+			{
+				ObjectSS->SpawnSafeZone(AreaGSComp->HazardOrder.Last());
+			}
+			// 7페이즈 돌입 시: 안전 지대 완전 디스폰
+			else if (ERGS->GetCurrentPhase() == 7)
+			{
+				ObjectSS->DespawnSafeZone();
+			}
+
 			// (항공 보급 생성)
 			ObjectSS->SpawnSupplyObject();
 			// (오브젝트 스폰)
 			ObjectSS->SpawnBossObject();
 		}
-		
+
+		UER_NeutralSpawnSubsystem* NeutralSS = GetWorld()->GetSubsystem<UER_NeutralSpawnSubsystem>();
+		if (NeutralSS)
+		{
+			NeutralSS->KillMonstersInHazards();
+		}
 	}
 
 	// 이후에 10초에서 180초로 수정

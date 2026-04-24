@@ -44,7 +44,7 @@ void AER_PointActor::BeginPlay()
 			NSS->RegisterPoint(this);
 		}
 	}
-	else if (PointType == EPointActorType::ObjectPoint)
+	else if (PointType == EPointActorType::ObjectPoint || PointType == EPointActorType::SafePoint)
 	{
 		if (UER_ObjectSubsystem* OSS = GetWorld()->GetSubsystem<UER_ObjectSubsystem>())
 		{

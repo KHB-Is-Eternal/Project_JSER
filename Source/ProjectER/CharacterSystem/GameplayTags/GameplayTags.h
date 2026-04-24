@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "NativeGameplayTags.h"
@@ -304,6 +304,11 @@ namespace ProjectER
 		{
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Unselectable); // 적 타겟팅은 되지만 일부 스킬 불가(Down 시 부여)
 		}*/
+
+		namespace Zone
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Safe);    // 임시 안전 지대에 위치
+		}
 	}
 	
 	namespace Status // 스탯
