@@ -1,4 +1,4 @@
-﻿#include "Monster/MonsterRangeComponent.h"
+#include "Monster/MonsterRangeComponent.h"
 
 #include "Net/UnrealNetwork.h"
 #include "Components/SphereComponent.h"
@@ -124,7 +124,7 @@ void UMonsterRangeComponent::InitMonsterGroup()
 
 	TArray<AActor*> GroupActors;
 	RangeSphere->GetOverlappingActors(GroupActors, AActor::StaticClass());
-
+	
 	for (AActor* Actor : GroupActors)
 	{
 		ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
@@ -136,7 +136,7 @@ void UMonsterRangeComponent::InitMonsterGroup()
 		{
 			continue;
 		}
-		if (Monster->GetbIsDead() == false)
+		if (Monster->GetbIsDead() == true)
 		{
 			continue;
 		}
@@ -226,7 +226,7 @@ void UMonsterRangeComponent::OnPlayerOutEndOverlap(UPrimitiveComponent* Overlapp
 		AActor* Target = OwnerMonster->GetTargetPlayer();
 		if (IsValid(Target) == false)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerOutEndOverlap : Not Target"));
+			//UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerOutEndOverlap : Not Target"));
 			return;
 		}
 

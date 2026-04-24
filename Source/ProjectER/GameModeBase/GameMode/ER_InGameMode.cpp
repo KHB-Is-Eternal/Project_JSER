@@ -953,6 +953,18 @@ void AER_InGameMode::HandlePhaseTimeUp()
 		UER_ObjectSubsystem* ObjectSS = GetWorld()->GetSubsystem<UER_ObjectSubsystem>();
 		if (ObjectSS)
 		{
+			// 6페이즈 돌입 시: HazardOrder의 마지막 노드 = 7페이즈에 마지막으로 위험해지는 구역
+			// NextZoneIDs는 Phase 7 이후 정의된 항목이 없어 비어있으므로 HazardOrder.Last()를 직접 사용
+			if (ERGS->GetCurrentPhase() == 5 && !AreaGSComp->HazardOrder.IsEmpty())
+			{
+				ObjectSS->SpawnSafeZone(AreaGSComp->HazardOrder.Last());
+			}
+			// 7페이즈 돌입 시: 안전 지대 완전 디스폰
+			else if (ERGS->GetCurrentPhase() == 7)
+			{
+				ObjectSS->DespawnSafeZone();
+			}
+
 			// (항공 보급 생성)
 			ObjectSS->SpawnSupplyObject();
 			// (오브젝트 스폰)

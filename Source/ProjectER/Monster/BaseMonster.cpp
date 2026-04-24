@@ -1,4 +1,4 @@
-﻿#include "Monster/BaseMonster.h"
+#include "Monster/BaseMonster.h"
 
 #include "Monster/GAS/AttributeSet/BaseMonsterAttributeSet.h"
 #include "Monster/Data/MonsterDataAsset.h"
@@ -423,6 +423,8 @@ void ABaseMonster::MonsterGroupHitCall(AActor* Target)
 // 서버에서만
 void ABaseMonster::SendHitEvent(AActor* Target)
 {
+	if (bIsDead) return;
+
 	if (!IsValid(Target))
 	{
 		return;
@@ -603,6 +605,8 @@ void ABaseMonster::RemoveCooldownTag(FGameplayTag CooldownTag)
 
 void ABaseMonster::SendTargetOffEvent()
 {
+	if (bIsDead) return;
+
 	if (MonsterTags.TargetOffEventTag.IsValid() == false)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("ABaseMonster::OnMonterHitHandle : Not TargetOffEventTag"));
@@ -624,6 +628,8 @@ void ABaseMonster::SendTargetOffEvent()
 
 void ABaseMonster::SendBeginSearchEvent()
 { 
+	if (bIsDead) return;
+
 	if (IsValid(ASC) == false)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("ABaseMonster::OnPlayerCountOneHandle : Not ASC"));
@@ -652,6 +658,8 @@ void ABaseMonster::SendBeginSearchEvent()
 
 void ABaseMonster::SendEndSearchEvent()
 {
+	if (bIsDead) return;
+
 	if (IsValid(ASC) == false)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("ABaseMonster::OnPlayerCountZeroHandle : Not ASC"));
@@ -683,6 +691,8 @@ void ABaseMonster::SendEndSearchEvent()
 
 void ABaseMonster::SendAttackRangeEvent(float AttackRange)
 {
+	if (bIsDead) return;
+
 	if (IsValid(TargetPlayer) == false)
 	{
 		SendStateTreeEvent(MonsterTags.TargetOffEventTag);
@@ -724,7 +734,7 @@ void ABaseMonster::SendStateTreeEvent(FGameplayTag InputTag)
 	}
 	if (StateTreeComp->IsRunning() == false)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("ABaseMonster::SendStateTreeEvent : Not StateTreeComp Running"));
+		//UE_LOG(LogTemp, Warning, TEXT("ABaseMonster::SendStateTreeEvent : Not StateTreeComp Running"));
 		return;
 	}
 	StateTreeComp->SendStateTreeEvent(InputTag);
@@ -899,6 +909,11 @@ void ABaseMonster::Death()
 	auto InGameMode = Cast<AER_InGameMode>(GetWorld()->GetAuthGameMode());
 	InGameMode->NotifyNeutralDied(this);
 
+	if (ASC)
+	{
+		ASC->CancelAllAbilities();
+	}
+
 	SetLifeSpan(20.f);
 
 	if (MonsterTags.DeathEventTag.IsValid() == false)
@@ -911,6 +926,8 @@ void ABaseMonster::Death()
 
 void ABaseMonster::OnCCChanged(FGameplayTag Tag, int32 NewCount)
 {
+	if (bIsDead) return;
+
 	if (NewCount > 0)
 	{
 		bIsCombat = true;

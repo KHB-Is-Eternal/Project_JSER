@@ -5,6 +5,7 @@
 #include "AbilitySystemComponent.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
+#include "Monster/GAS/GE/GE_AddTag.h"
 
 UGA_MonsterState_Attack::UGA_MonsterState_Attack()
 {
@@ -111,12 +112,12 @@ void UGA_MonsterState_Attack::OnAttackHitEventReceived(FGameplayEventData Payloa
 		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Attack::OnAttackHitEventReceived : Not ASC"));
 		return;
 	}
+	
 	if (IsValid(DamageEffectClass) == false)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Attack::OnAttackHitEventReceived : Not DamageEffectClass"));
 		return;
 	}
-
 	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
 	if (ContextHandle.IsValid() == false)
 	{
@@ -131,8 +132,32 @@ void UGA_MonsterState_Attack::OnAttackHitEventReceived(FGameplayEventData Payloa
 	}
 
 	ContextHandle.AddInstigator(Monster, Monster);
-	ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target));
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
+	if (IsValid(TargetASC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Attack::OnAttackHitEventReceived : Not TargetASC"));
+		return;
+	}
+	ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 	
+
+	// MonsterData에서 DebuffTag 관리 필요
+	//if (DebuffTag.IsValid() == false)
+	//{
+	//	return;
+	//}
+	//FGameplayEffectSpecHandle StunSpecHandle = ASC->MakeOutgoingSpec(UGE_AddTag::StaticClass(), 1, ContextHandle);
+	//if (StunSpecHandle.IsValid() == false)
+	//{
+	//	UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Attack::OnAttackHitEventReceived : Not StunSpecHandle"));
+	//	return;
+	//}
+	//StunSpecHandle.Data.Get()->SetDuration(3.0f, true);
+	//FGameplayTagContainer TagContainer;
+	//TagContainer.AddTag(DebuffTag);
+	//StunSpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(TagContainer);
+	//ASC->ApplyGameplayEffectSpecToTarget(*StunSpecHandle.Data.Get(), TargetASC);
+
 }
 
 void UGA_MonsterState_Attack::OnMontageCompleted()
