@@ -84,7 +84,7 @@ public:
 	float GroundTraceDistance = 500.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Move|Safety")
-	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_Visibility;
+	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_GameTraceChannel9;
 
 	// --- Wall Hit (벽꿍) ---
 	UPROPERTY(EditDefaultsOnly, Category = "Move|WallHit")

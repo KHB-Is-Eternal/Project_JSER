@@ -90,7 +90,7 @@ public:
 	bool bUseBoxExtentOffset = true;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Snap", meta = (EditCondition = "bSnapToGround"))
-	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_Visibility;
+	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_GameTraceChannel9;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Effect")
 	bool bHitOncePerTarget = true;
