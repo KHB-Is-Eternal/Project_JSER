@@ -37,12 +37,11 @@ void USummonRangeBaseGEC::PreApplyEffect(UAbilitySystemComponent* ASC, const FGa
 	FProjectERGameplayEffectContext* const MutableContext = static_cast<FProjectERGameplayEffectContext*>(const_cast<FGameplayEffectContext*>(ContextHandle.Get()));
 	if (MutableContext)
 	{
-		MutableContext->AddOrigin(SpawnTransform.GetLocation());
-		
 		FHitResult SimulationHit;
 		SimulationHit.Location = SpawnTransform.GetLocation();
 		SimulationHit.Normal = SpawnTransform.Rotator().Vector();
 		MutableContext->AddHitResult(SimulationHit, true);
+		MutableContext->AddOrigin(SpawnTransform.GetLocation());
 	}
 }
 

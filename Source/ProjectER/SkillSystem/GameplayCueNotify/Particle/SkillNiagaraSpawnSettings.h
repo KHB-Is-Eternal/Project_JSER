@@ -56,6 +56,18 @@ struct FSkillNiagaraSpawnSettings
 	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Parameters")
 	TMap<FName, FVector> VectorParameters;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Parameters")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
 	TMap<FName, FLinearColor> ColorParameters;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
+	TMap<FName, bool> BoolParameters;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
+	TMap<FName, int32> IntParameters;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
+	TMap<FName, TObjectPtr<UObject>> ObjectParameters;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
+	TMap<FName, TObjectPtr<class UNiagaraDataInterface>> DataInterfaceParameters;
 };

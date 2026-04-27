@@ -267,10 +267,10 @@ void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TSu
 	if (!ensure(SourceASC)) return;
 
 	FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
-	ContextHandle.AddOrigin(TargetActor->GetActorLocation());
 	
 	FHitResult HitResult(TargetActor, nullptr, TargetActor->GetActorLocation(), FVector::UpVector);
 	ContextHandle.AddHitResult(HitResult, true);
+	ContextHandle.AddOrigin(TargetActor->GetActorLocation());
 
 	// 3. 부모 클래스의 통합 로직 호출
 	ApplyEffectToTargetInternal(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor), SkillEffectDataAssets, ContextHandle);

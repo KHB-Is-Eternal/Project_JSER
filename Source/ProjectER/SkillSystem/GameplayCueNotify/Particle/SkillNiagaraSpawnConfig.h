@@ -53,26 +53,23 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Parameters")
 	TMap<FName, FLinearColor> ColorParameters;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Parameters")
+	TMap<FName, bool> BoolParameters;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Parameters")
+	TMap<FName, int32> IntParameters;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Parameters")
+	TMap<FName, TSoftObjectPtr<UObject>> ObjectParameters;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Parameters")
+	TMap<FName, TObjectPtr<class UNiagaraDataInterface>> DataInterfaceParameters;
+
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	void RefreshParameters();
 #endif
 
 	/** UObject 필드를 기존 USTRUCT로 변환 (Helper 호환용) */
-	FSkillNiagaraSpawnSettings ToSettings() const
-	{
-		FSkillNiagaraSpawnSettings S;
-		S.NiagaraSystem = NiagaraSystem;
-		S.bAttachToSource = bAttachToSource;
-		S.SocketOrBoneName = SocketOrBoneName;
-		S.bUseSourceRotationForLocationOffset = bUseSourceRotationForLocationOffset;
-		S.LocationOffset = LocationOffset;
-		S.RotationMode = RotationMode;
-		S.RotationOffset = RotationOffset;
-		S.CueTag = CueTag;
-		S.FloatParameters = FloatParameters;
-		S.VectorParameters = VectorParameters;
-		S.ColorParameters = ColorParameters;
-		return S;
-	}
+	FSkillNiagaraSpawnSettings ToSettings() const;
 };

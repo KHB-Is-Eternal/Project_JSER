@@ -3,6 +3,7 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "NiagaraComponent.h"
+#include "NiagaraDataInterface.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnSettings.h"
 #include "Engine/World.h"
 
@@ -164,6 +165,22 @@ void SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World, const FSkill
 	for (const auto& Pair : Settings.ColorParameters)
 	{
 		ResultNC->SetVariableLinearColor(Pair.Key, Pair.Value);
+	}
+	for (const auto& Pair : Settings.BoolParameters)
+	{
+		ResultNC->SetVariableBool(Pair.Key, Pair.Value);
+	}
+	for (const auto& Pair : Settings.IntParameters)
+	{
+		ResultNC->SetVariableInt(Pair.Key, Pair.Value);
+	}
+	for (const auto& Pair : Settings.ObjectParameters)
+	{
+		ResultNC->SetVariableObject(Pair.Key, Pair.Value);
+	}
+	for (const auto& Pair : Settings.DataInterfaceParameters)
+	{
+		ResultNC->SetVariableObject(Pair.Key, Pair.Value.Get());
 	}
 
 	ResultNC->Activate();
