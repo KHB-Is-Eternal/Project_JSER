@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameplayEffectComponent.h"
 #include "GameplayPrediction.h"
-#include "SkillSystem/GameplayCueNotify/ProjectERSummonedActorInterface.h"
+#include "SkillSystem/Interfaces/SkillVisualDataProvider.h"
 #include "BaseGEC.generated.h"
 
 /**
@@ -20,7 +20,7 @@ struct FGameplayEffectSpecHandle;
 struct FGameplayEffectSpec;
 
 UCLASS()
-class PROJECTER_API UBaseGEC : public UGameplayEffectComponent, public IProjectERSummonedActorInterface
+class PROJECTER_API UBaseGEC : public UGameplayEffectComponent, public ISkillVisualDataProvider
 {
 	GENERATED_BODY()
 
