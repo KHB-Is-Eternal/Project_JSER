@@ -6,7 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "GameplayEffectTypes.h"
 #include "GameplayPrediction.h"
-#include "SkillSystem/GameplayCueNotify/ProjectERSummonedActorInterface.h"
+#include "SkillSystem/Interfaces/SkillSummonedActor.h"
 #include "BaseMissileActor.generated.h"
 
 class UProjectileMovementComponent;
@@ -17,14 +17,14 @@ class USceneComponent;
  * Tick에서 대상과의 거리를 계산하여 ReachThreshold 이내이면 적중 처리합니다.
  */
 UCLASS()
-class PROJECTER_API ABaseMissileActor : public AActor, public IProjectERSummonedActorInterface
+class PROJECTER_API ABaseMissileActor : public AActor, public ISkillSummonedActor
 {
 	GENERATED_BODY()
 
 public:
 	ABaseMissileActor();
 
-	// IProjectERSummonedActorInterface interface implementation
+	// ISkillSummonedActor interface implementation
 	virtual void OnVfxHandshakeCompleted_Implementation(AActor* VfxActor) override;
 	
 	UFUNCTION()

@@ -5,6 +5,7 @@
 #include "SkillSystem/GameplayEffectComponent/LaunchHomingMissile.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
+#include "SkillSystem/Interfaces/SkillVisualDataProvider.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "GameFramework/ProjectileMovementComponent.h"
@@ -113,8 +114,8 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 
 
 
-	// [Refactor] 특정 GEC 클래스나 부모 GEC에 의존하지 않고 인터페이스(IProjectERSummonedActorInterface)를 사용합니다.
-	if (const IProjectERSummonedActorInterface* VisualSource = Cast<IProjectERSummonedActorInterface>(SourceObject))
+	// [Refactor] 특정 GEC 클래스나 부모 GEC에 의존하지 않고 인터페이스(ISkillVisualDataProvider)를 사용합니다.
+	if (const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(SourceObject))
 	{
 		// 1. 비주얼(VFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
 		SetupVfxComponent(VisualSource->GetAGCN_NiagaraConfig());

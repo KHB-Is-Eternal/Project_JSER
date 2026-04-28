@@ -1,5 +1,5 @@
 #include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
-#include "SkillSystem/GameplayCueNotify/ProjectERSummonedActorInterface.h"
+#include "SkillSystem/Interfaces/SkillSummonedActor.h"
 
 void UGCN_SummonedRegistrySubsystem::RegisterVfxActor(AActor* Instigator, float ActivationTime, AActor* VfxActor)
 {
@@ -43,10 +43,10 @@ void UGCN_SummonedRegistrySubsystem::RegisterVfxActor(AActor* Instigator, float 
 			VfxActor->SetLifeSpan(BestPendingActor->GetLifeSpan());
 		}
 
-		if (BestPendingActor->GetClass()->ImplementsInterface(UProjectERSummonedActorInterface::StaticClass()) || 
-			BestPendingActor->Implements<UProjectERSummonedActorInterface>())
+		if (BestPendingActor->GetClass()->ImplementsInterface(USkillSummonedActor::StaticClass()) || 
+			BestPendingActor->Implements<USkillSummonedActor>())
 		{
-			IProjectERSummonedActorInterface::Execute_OnVfxHandshakeCompleted(BestPendingActor, VfxActor);
+			ISkillSummonedActor::Execute_OnVfxHandshakeCompleted(BestPendingActor, VfxActor);
 		}
 		return;
 	}
