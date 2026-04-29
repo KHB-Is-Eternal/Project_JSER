@@ -1,4 +1,4 @@
-﻿#include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
+#include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
@@ -144,6 +144,9 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 	{
 		const float LocalDamage = GetIncomingDamage();
 		SetIncomingDamage(0.0f); // Meta Data 초기화 
+
+		UE_LOG(LogTemp, Warning, TEXT("[BaseAttributeSet] PostGameplayEffectExecute for IncomingDamage! LocalDamage: %f"), LocalDamage);
+
 		
 		// 공격 대상 설정
 		const FGameplayEffectContextHandle& Context =
