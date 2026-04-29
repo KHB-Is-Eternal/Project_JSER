@@ -338,9 +338,15 @@ void ABaseCharacter::Tick(float DeltaTime)
 			CheckCombatTarget(DeltaTime);
 		}
 
+		// Phase 3: 스캔 스로틀 — 매 프레임 SphereOverlap → 0.15초 간격
 		if (bIsAttackMoving && !TargetActor)
 		{
-			ScanForEnemiesWhileMoving();
+			ScanTimer += DeltaTime;
+			if (ScanTimer >= ScanInterval)
+			{
+				ScanTimer = 0.0f;
+				ScanForEnemiesWhileMoving();
+			}
 		}
 	}
 }
@@ -1365,14 +1371,14 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 		}
 	}
 
-	float Distance = GetDistanceTo(TargetActor);
-	float AttackRange = GetAttackRange();
+	// Phase 3: DistSquared — sqrt 제거
+	const float DistSq = FVector::DistSquared(GetActorLocation(), TargetActor->GetActorLocation());
+	const float AttackRange = GetAttackRange();
+	const float AttackRangeSq = AttackRange * AttackRange;
 	
-	float Tolerance = 20.0f; // 사거리 보정 값 유사 시 사용
-	float CheckRange = HasAuthority() ? (AttackRange + Tolerance) : (AttackRange - Tolerance); // 보정된 사거리
-	
-	if (Distance <= AttackRange) // 사거리 내 진입 시
+	if (DistSq <= AttackRangeSq) // 사거리 내 진입 시
 	{
+		// Phase 3: 중복 태그 검사 제거 — 1회만 체크
 		if (AbilitySystemComponent.IsValid())
 		{
 			static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
@@ -1381,7 +1387,7 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 			if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
 				AbilitySystemComponent->HasMatchingGameplayTag(ActiveTag))
 			{
-				return; 
+				return; // 스킬 캐스팅/시전 중일 시 공격 시도 종료
 			}
 		}
 		
@@ -1397,16 +1403,7 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 		// 공격 어빌리티 실행 (GAS) : 서버 판정 우선
 		if (HasAuthority() && AbilitySystemComponent.IsValid())
 		{
-			// 공격 제한 태그 검사
-			static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting")); 
-			static const FGameplayTag ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
-            
-			if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
-				AbilitySystemComponent->HasMatchingGameplayTag(ActiveTag))
-			{
-				return; // 스킬 캐스팅 혹은 시전 중일 시 일반 공격 시도 종료
-			}
-			
+			// Phase 3: 중복 태그 검사 제거됨 — 위에서 이미 체크 완료
 			FGameplayTag AttackTag = FGameplayTag::RequestGameplayTag(FName("Ability.Action.AutoAttack"));
 			
 			TArray<FGameplayAbilitySpec*> Specs;
