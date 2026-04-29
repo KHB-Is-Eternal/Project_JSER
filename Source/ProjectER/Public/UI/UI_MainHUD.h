@@ -305,9 +305,6 @@ protected:
 	UTextBlock* TeamLevel_02;
 
 	UPROPERTY(meta = (BindWidget))
-	UTextBlock* TextPhase;
-
-	UPROPERTY(meta = (BindWidget))
 	UImage* PhaseTimerMinTen;
 	UPROPERTY(meta = (BindWidget))
 	UImage* PhaseTimerMinOne;
