@@ -341,6 +341,12 @@ protected:
 	//  공격 명령 (A키 입력) 상태 확인 플래그
 	uint8 bIsAttackMoving : 1;
 	
+	// ─── Phase 3: 스캔 스로틀 ───
+	/** 적 스캔 간격 타이머 (매 프레임 → 0.15초 간격) */
+	float ScanTimer = 0.0f;
+	/** 적 스캔 주기 (초) */
+	static constexpr float ScanInterval = 0.15f;
+	
 	// 평타 순환용 인덱스 (0, 1, 2)
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Combat|Combo")
 	int32 AutoAttackIndex = 0;
