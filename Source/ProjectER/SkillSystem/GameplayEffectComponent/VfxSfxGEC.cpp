@@ -4,6 +4,8 @@
 #include "AbilitySystemGlobals.h"
 #include "GameplayCueManager.h"
 #include "GameplayEffect.h"
+#include "GameplayPrediction.h"
+#include "GameplayEffectTypes.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 
@@ -18,22 +20,52 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 	UAbilitySystemComponent* TargetASC = ActiveGEContainer.Owner;
 	if (IsValid(TargetASC) && TargetASC->IsOwnerActorAuthoritative())
 	{
-		// 1. 발동 효과 실행 (Trigger)
-		ExecuteEffects(TargetASC, ActiveGE.Spec, TriggerVfx.Get(), TriggerSound.Get());
+		// 1. 발동 효과 실행 (Duration/Infinite GE이므로 지속성 효과로 등록)
+		TArray<FGameplayTag> OngoingTags;
 
-		// 2. 제거 효과 바인딩 (Removal)
-		if (IsValid(RemovedVfx.Get()) || IsValid(RemovedSound.Get()))
+		auto AddOngoing = [&](const UObject* Config, FGameplayTag Tag)
 		{
-			// Weak Object Pointer를 사용하여 해제된 객체 접근 방지
+			if (IsValid(Config) && Tag.IsValid())
+			{
+				FGameplayCueParameters Params(ActiveGE.Spec);
+				Params.SourceObject = const_cast<UObject*>(Config);
+				Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
+				Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
+
+				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
+				TargetASC->AddGameplayCue(Tag, Params);
+				OngoingTags.Add(Tag);
+			}
+		};
+
+		if (IsValid(TriggerVfx)) AddOngoing(TriggerVfx.Get(), TriggerVfx->CueTag);
+		if (IsValid(TriggerSound)) AddOngoing(TriggerSound.Get(), TriggerSound->CueTag);
+
+		// 2. 제거 효과 바인딩 (Ongoing 중단 + Removed 효과 실행)
+		if (OngoingTags.Num() > 0 || IsValid(RemovedVfx.Get()) || IsValid(RemovedSound.Get()))
+		{
 			TWeakObjectPtr<const UVfxSfxGEC> WeakThis(this);
 			TWeakObjectPtr<UAbilitySystemComponent> WeakASC(TargetASC);
-			FGameplayEffectSpec Spec = ActiveGE.Spec; // 복사본 저장 (제거 시점에 Spec이 유효하지 않을 수 있음)
+			FGameplayEffectSpec Spec = ActiveGE.Spec; // 복사본 저장
 
-			ActiveGE.EventSet.OnEffectRemoved.AddLambda([WeakThis, WeakASC, Spec](const FGameplayEffectRemovalInfo& RemovalInfo)
+			ActiveGE.EventSet.OnEffectRemoved.AddLambda([WeakThis, WeakASC, Spec, OngoingTags](const FGameplayEffectRemovalInfo& RemovalInfo)
 			{
-				if (WeakThis.IsValid() && WeakASC.IsValid())
+				if (WeakASC.IsValid())
 				{
-					WeakThis->ExecuteEffects(WeakASC.Get(), Spec, WeakThis->RemovedVfx.Get(), WeakThis->RemovedSound.Get());
+					UAbilitySystemComponent* ASC = WeakASC.Get();
+
+					// 지속성으로 등록된 발동 효과 제거
+					for (const FGameplayTag& Tag : OngoingTags)
+					{
+						FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
+						ASC->RemoveGameplayCue(Tag);
+					}
+
+					// 제거 시점의 효과 실행 (Burst)
+					if (WeakThis.IsValid())
+					{
+						WeakThis->ExecuteEffects(ASC, Spec, WeakThis->RemovedVfx.Get(), WeakThis->RemovedSound.Get());
+					}
 				}
 			});
 		}
