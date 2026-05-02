@@ -180,7 +180,11 @@ void SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World, const FSkill
 	}
 	for (const auto& Pair : Settings.DataInterfaceParameters)
 	{
-		ResultNC->SetVariableObject(Pair.Key, Pair.Value.Get());
+		if (UNiagaraDataInterface* DI = Pair.Value.Get())
+		{
+			FNiagaraVariable Var(DI->GetClass(), Pair.Key);
+			ResultNC->GetOverrideParameters().SetDataInterface(DI, Var);
+		}
 	}
 
 	ResultNC->Activate();

@@ -180,7 +180,7 @@ FSkillNiagaraSpawnSettings USkillNiagaraSpawnConfig::ToSettings() const
 	{
 		if (Pair.Value)
 		{
-			S.ObjectParameters.Add(Pair.Key, Pair.Value.Get());
+			S.DataInterfaceParameters.Add(Pair.Key, Pair.Value.Get());
 		}
 	}
 
