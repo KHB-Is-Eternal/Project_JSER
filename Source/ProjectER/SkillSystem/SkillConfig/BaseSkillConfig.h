@@ -66,10 +66,15 @@ class PROJECTER_API UMouseTargetSkillConfig : public UBaseSkillConfig
 public:
 	UMouseTargetSkillConfig();
 	FORCEINLINE float GetRange() const { return Range; }
+	FORCEINLINE ETargetRelationship GetApplyTo() const { return ApplyTo; }
 	FORCEINLINE const TArray<TSubclassOf<UBaseGameplayEffect>>& GetEffectsToApply() const { return EffectsToApply; }
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Config", meta = (AllowPrivateAccess = "true"))
 	float Range;
+
+	/** 이 스킬이 적용될 대상 (Enemy: 적, Friend: 아군) */
+	UPROPERTY(EditDefaultsOnly, Category = "Config")
+	ETargetRelationship ApplyTo = ETargetRelationship::Enemy;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Config")
 	TArray<TSubclassOf<UBaseGameplayEffect>> EffectsToApply;

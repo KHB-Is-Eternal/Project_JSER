@@ -424,16 +424,10 @@ FGameplayTag USkillBase::GetInputTag()
 	return CachedConfig ? CachedConfig->Data.InputKeyTag : FGameplayTag();
 }
 
-ETargetRelationship USkillBase::GetSkillTargetRelationship()
+bool USkillBase::IsValidRelationship(AActor* Instigator, AActor* Target, ETargetRelationship Relationship)
 {
-	return CachedConfig ? CachedConfig->Data.ApplyTo : ETargetRelationship::None;
-}
+	if (!IsValid(Instigator) || !IsValid(Target)) return false;
 
-bool USkillBase::IsValidRelationship(AActor* Target)
-{
-	if (!IsValid(Target) || !IsValid(CachedConfig)) return false;
-
-	auto* Instigator = GetAvatar();
 	auto* I_Instigator = Cast<ITargetableInterface>(Instigator);
 	auto* I_Target = Cast<ITargetableInterface>(Target);
 
@@ -445,11 +439,9 @@ bool USkillBase::IsValidRelationship(AActor* Target)
 		return false;
 	}
 
-	//if (!IsValid(I_Instigator) || !IsValid()) return false;
 	if (!I_Instigator || !I_Target) return false;
 
 	bool bIsSameTeam = (I_Instigator->GetTeamType() == I_Target->GetTeamType());
-	const ETargetRelationship& Relationship = CachedConfig->Data.ApplyTo;
 
 	if (Relationship == ETargetRelationship::Friend) return bIsSameTeam;
 	if (Relationship == ETargetRelationship::Enemy)  return !bIsSameTeam && I_Target->IsTargetable();

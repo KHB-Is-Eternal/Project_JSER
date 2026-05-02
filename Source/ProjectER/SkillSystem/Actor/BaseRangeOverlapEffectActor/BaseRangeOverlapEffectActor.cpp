@@ -13,6 +13,8 @@
 #include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
 #include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
 #include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "SkillSystem/GameAbility/SkillBase.h"
 
 // Sets default values
 ABaseRangeOverlapEffectActor::ABaseRangeOverlapEffectActor()
@@ -197,9 +199,7 @@ void ABaseRangeOverlapEffectActor::OnShapeBeginOverlap(UPrimitiveComponent* Over
 	ITargetableInterface* MyInstigatorTargetable = Cast<ITargetableInterface>(InstigatorActor);
 	ITargetableInterface* OtherTargetable = Cast<ITargetableInterface>(OtherActor);
 	if(!MyInstigatorTargetable || !OtherTargetable) return;
-	if (MyInstigatorTargetable->GetTeamType() == OtherTargetable->GetTeamType()) {
-		return;
-	}
+
 
 	// 주기적 효과가 설정되어 있다면 컴포넌트에 타겟 추가
 	if (IsValid(AreaPeriodicComponent))
@@ -218,11 +218,6 @@ void ABaseRangeOverlapEffectActor::OnShapeBeginOverlap(UPrimitiveComponent* Over
 	if (bHitOncePerTarget)
 	{
 		HitActors.Add(OtherActor);
-	}
-
-	if (bDestroyOnOverlap)
-	{
-		Destroy();
 	}
 }
 
@@ -299,11 +294,27 @@ void ABaseRangeOverlapEffectActor::ApplyEffectsToTarget(AActor* TargetActor)
 	if (!IsValid(TargetASC)) return;
 	if (EffectSpecHandles.Num() <= 0) return;
 
+	bool bSuccessApplyGE = false;
+
 	for (const FGameplayEffectSpecHandle& EffectSpecHandle : EffectSpecHandles)
 	{
 		if (EffectSpecHandle.IsValid())
 		{
+			// GE 레벨의 타겟팅 속성을 검사하여 부여 전에 필터링
+			if (EffectSpecHandle.Data->Def)
+			{
+				const UBaseGameplayEffect* BaseGE = Cast<UBaseGameplayEffect>(EffectSpecHandle.Data->Def.Get());
+				if (BaseGE)
+				{
+					if (!USkillBase::IsValidRelationship(InstigatorActor, TargetActor, BaseGE->TargetRelationship))
+					{
+						continue;
+					}
+				}
+			}
+
 			InstigatorASC->ApplyGameplayEffectSpecToTarget(*EffectSpecHandle.Data.Get(), TargetASC);
+			bSuccessApplyGE = true;
 		}
 	}
 
@@ -331,6 +342,11 @@ void ABaseRangeOverlapEffectActor::ApplyEffectsToTarget(AActor* TargetActor)
 			FScopedPredictionWindow ForcedWindow(InstigatorASC, FPredictionKey(), false);
 			InstigatorASC->ExecuteGameplayCue(CueParameters.OriginalTag, CueParameters);
 		}
+	}
+
+	if (bSuccessApplyGE && bDestroyOnOverlap)
+	{
+		Destroy();
 	}
 }
 

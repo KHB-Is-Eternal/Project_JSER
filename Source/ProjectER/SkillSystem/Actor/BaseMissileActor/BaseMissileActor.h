@@ -7,6 +7,7 @@
 #include "GameplayEffectTypes.h"
 #include "GameplayPrediction.h"
 #include "SkillSystem/Interfaces/SkillSummonedActor.h"
+#include "SkillSystem/SkillData.h"
 #include "BaseMissileActor.generated.h"
 
 class UProjectileMovementComponent;
@@ -45,7 +46,7 @@ public:
 		float InHomingAcceleration,
 		float InReachThreshold,
 		bool bInDestroyOnHit,
-		const FVector& InInitialDirection = FVector::ForwardVector
+		const FVector& InInitialDirection
 	);
 
 	/** 서버에서 시전 시간을 초기화합니다. */

@@ -8,6 +8,7 @@
 #include "GameplayPrediction.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnSettings.h"
 #include "SkillSystem/Interfaces/SkillSummonedActor.h"
+#include "SkillSystem/SkillData.h"
 #include "BaseRangeOverlapEffectActor.generated.h"
 
 class UShapeComponent;

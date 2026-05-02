@@ -5,7 +5,6 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "GameplayEffect.h"
-#include "GameplayEffect/BaseGameplayEffect.h"
 #include "SkillData.generated.h"
 
 /**
@@ -37,9 +36,6 @@ struct FSkillDefaultData {
 
     /*UPROPERTY(EditDefaultsOnly, Category = "Skill")
     ESkillActivationType SkillActivationType;*/
-
-    UPROPERTY(EditDefaultsOnly, Category = "Skill")
-    ETargetRelationship ApplyTo = ETargetRelationship::None;
 
     UPROPERTY(EditDefaultsOnly, Category = "Skill")
     bool bIsUseCasting = false;

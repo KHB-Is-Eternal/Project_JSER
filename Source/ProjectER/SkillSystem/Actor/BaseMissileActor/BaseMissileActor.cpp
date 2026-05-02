@@ -11,6 +11,9 @@
 #include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
 #include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
 #include "SkillSystem/GameplayEffectComponent/LaunchHomingMissile.h"
+#include "CharacterSystem/Interface/TargetableInterface.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "SkillSystem/GameAbility/SkillBase.h"
 
 ABaseMissileActor::ABaseMissileActor()
 {
@@ -256,6 +259,19 @@ void ABaseMissileActor::ApplyEffectsToTarget(AActor* TargetActor)
 	{
 		if (Handle.IsValid())
 		{
+			// GE 레벨의 타겟팅 속성을 검사하여 부여 전에 필터링
+			if (Handle.Data->Def)
+			{
+				const UBaseGameplayEffect* BaseGE = Cast<UBaseGameplayEffect>(Handle.Data->Def.Get());
+				if (BaseGE)
+				{
+					if (!USkillBase::IsValidRelationship(InstigatorActor, TargetActor, BaseGE->TargetRelationship))
+					{
+						continue;
+					}
+				}
+			}
+
 			TargetASC->ApplyGameplayEffectSpecToSelf(*Handle.Data.Get());
 		}
 	}

@@ -2,8 +2,8 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
 #include "GameplayEffect.h"
+#include "SkillSystem/SkillData.h"
 #include "BaseGameplayEffect.generated.h"
 
 /**
@@ -27,9 +27,13 @@ protected:
 
 private:
 
-public:
 	/*UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GameplayEffect|GameplayModifier", meta = (FilterMetaTag = "HideFromModifiers"))
 	FGameplayAttribute SourceAttribute;	*/
+
+public:
+	/** 이 GE가 적용될 대상 (Enemy, Friend 등). 액터가 부여하기 전에 이 값을 읽어 필터링합니다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Targeting")
+	ETargetRelationship TargetRelationship = ETargetRelationship::Enemy;
 
 protected:
 

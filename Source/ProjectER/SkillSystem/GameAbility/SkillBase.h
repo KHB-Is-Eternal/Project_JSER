@@ -25,6 +25,7 @@ public:
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
+	
 protected:
 	virtual void ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const;
 	virtual const FGameplayTagContainer* GetCooldownTags() const;
@@ -49,9 +50,13 @@ protected:
 	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
 	bool TryExecuteSkill();
 	FGameplayTag GetInputTag();
-	ETargetRelationship GetSkillTargetRelationship();
-	bool IsValidRelationship(AActor* Target);
 
+public:
+	/** 피아 식별 여부를 체크하는 정적 유틸리티 함수 */
+	UFUNCTION(BlueprintCallable, Category = "Skill|Targeting")
+	static bool IsValidRelationship(AActor* Instigator, AActor* Target, ETargetRelationship Relationship);
+
+protected:
 	UFUNCTION()
 	void OnActiveTagEventReceived(FGameplayEventData Payload);
 

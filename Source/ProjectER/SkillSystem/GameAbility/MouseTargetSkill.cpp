@@ -191,7 +191,11 @@ AActor* UMouseTargetSkill::GetTargetUnderCursorInRange()
 
 bool UMouseTargetSkill::IsTargetActorInRange(AActor* InTargetActor)
 {
-	return IsInRange(InTargetActor) && IsValidRelationship(InTargetActor);
+	UMouseTargetSkillConfig* Config = Cast<UMouseTargetSkillConfig>(CachedConfig);
+	if (!Config) return false;
+	
+	ETargetRelationship Rel = Config->GetApplyTo();
+	return IsInRange(InTargetActor) && USkillBase::IsValidRelationship(GetAvatarActorFromActorInfo(), InTargetActor, Rel);
 }
 
 AActor* UMouseTargetSkill::GetTargetUnderCursor()
@@ -256,8 +260,13 @@ void UMouseTargetSkill::RotateToTarget(AActor* Actor)
 
 void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets)
 {
+	UMouseTargetSkillConfig* Config = Cast<UMouseTargetSkillConfig>(CachedConfig);
+	if (!Config) return;
+	
+	ETargetRelationship Rel = Config->GetApplyTo();
+
 	// 1. 타겟 유효성 및 팀 관계 확인
-	if (!IsValid(TargetActor) || !IsValidRelationship(TargetActor))
+	if (!IsValid(TargetActor) || !USkillBase::IsValidRelationship(GetAvatarActorFromActorInfo(), TargetActor, Rel))
 	{
 		return;
 	}

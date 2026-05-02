@@ -55,35 +55,33 @@ void UDamageExecutionCalculation::Execute_Implementation(const FGameplayEffectCu
 
 	Super::Execute_Implementation(ExecutionParams, OutExecutionOutput);
 
-    UE_LOG(LogTemp, Log, TEXT("UDamageExecutionCalculation: Execute_Implementation started."));
+
 
     const FGameplayEffectSpec& Spec = ExecutionParams.GetOwningSpec();
 
     // 1. 캡처한 IncomingDamage 어트리뷰트에서 기초 데미지(Raw Damage) 가져오기
     float BaseDamage = FindValueByAttribute(ExecutionParams, UBaseAttributeSet::GetIncomingDamageAttribute(), AttributeStatics().TargetAttributeMap);
-    UE_LOG(LogTemp, Log, TEXT("UDamageExecutionCalculation: BaseDamage (from Captured IncomingDamage) = %f"), BaseDamage);
+
 
 
     // 2. 방어력 캡처
     float TargetDefense = FindValueByAttribute(ExecutionParams, UBaseAttributeSet::GetDefenseAttribute(), AttributeStatics().TargetAttributeMap);
     TargetDefense = FMath::Max<float>(TargetDefense, 0.0f);
-    UE_LOG(LogTemp, Log, TEXT("UDamageExecutionCalculation: TargetDefense captured = %f"), TargetDefense);
+
 
     if (BaseDamage <= 0.0f)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UDamageExecutionCalculation: BaseDamage is <= 0.0f. Aborting execution."));
         return;
     }
 
     // 3. 가상 함수를 통해 자식 클래스의 특수 계산식 실행
     float FinalDamage = CalculateFinalDamage(BaseDamage, TargetDefense, Spec);
-    UE_LOG(LogTemp, Log, TEXT("UDamageExecutionCalculation: FinalDamage calculated = %f"), FinalDamage);
+
 
 
     // 4. 최종 산출된 데미지를 IncomingDamage 어트리뷰트에 주입 (+)
     if (FinalDamage > 0.0f)
     {
-        UE_LOG(LogTemp, Log, TEXT("UDamageExecutionCalculation: Applying Additive IncomingDamage Mod: %f"), FinalDamage);
         OutExecutionOutput.AddOutputModifier(FGameplayModifierEvaluatedData(UBaseAttributeSet::GetIncomingDamageAttribute(), EGameplayModOp::Additive, FinalDamage));
     }
 

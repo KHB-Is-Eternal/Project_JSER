@@ -11,6 +11,7 @@
 #include "GameFramework/Pawn.h"
 #include "SkillSystem/Actor/BaseRangeOverlapEffectActor/BaseRangeOverlapEffectActor.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "SkillSystem/GameAbility/SkillBase.h"
 
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
