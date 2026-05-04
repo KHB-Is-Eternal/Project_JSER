@@ -4,10 +4,12 @@
 #include "SkillSystem/GameplayEffectComponent/LaunchProjectile.h"
 #include "SkillSystem/GameplayEffectComponent/LaunchHomingMissile.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 #include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
 #include "SkillSystem/Interfaces/SkillVisualDataProvider.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
+#include "Components/AudioComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 
 AGCN_SummonedActor::AGCN_SummonedActor()
@@ -24,6 +26,10 @@ AGCN_SummonedActor::AGCN_SummonedActor()
 	MovementComponent->bAutoActivate = false;
 	MovementComponent->bRotationFollowsVelocity = true;
 	MovementComponent->ProjectileGravityScale = 0.0f;
+
+	// 사운드 재생을 위한 컴포넌트 생성
+	SfxComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("SfxComponent"));
+	SfxComponent->bAutoActivate = false;
 }
 
 bool AGCN_SummonedActor::OnExecute_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters)
@@ -120,7 +126,10 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 		// 1. 비주얼(VFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
 		SetupVfxComponent(VisualSource->GetAGCN_NiagaraConfig());
 
-		// 2. 이동(Movement) 초기화 - GEC인 경우에만 추가 설정 수행
+		// 2. 사운드(SFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
+		SetupSfxComponent(VisualSource->GetAGCN_SoundConfig());
+
+		// 3. 이동(Movement) 초기화 - GEC인 경우에만 추가 설정 수행
 		if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(VisualSource))
 		{
 			if (MovementComponent)
@@ -176,6 +185,48 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 		for (auto& Pair : NiagaraConfig->VectorParameters) VfxComponent->SetVariableVec3(Pair.Key, Pair.Value);
 		for (auto& Pair : NiagaraConfig->ColorParameters) VfxComponent->SetVariableLinearColor(Pair.Key, Pair.Value);
 	}
+}
+
+void AGCN_SummonedActor::SetupSfxComponent(const USkillSoundSpawnConfig* SoundConfig)
+{
+	if (!SoundConfig || SoundConfig->Sound.IsNull())
+	{
+		return;
+	}
+
+	USoundBase* LoadedSound = SoundConfig->Sound.LoadSynchronous();
+	if (!LoadedSound)
+	{
+		return;
+	}
+
+	if (!SfxComponent)
+	{
+		// 생성자에서 실패했을 경우를 대비한 방어 로직
+		SfxComponent = NewObject<UAudioComponent>(this, TEXT("SfxComponentRuntime"));
+		SfxComponent->RegisterComponent();
+		SfxComponent->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+	}
+
+	SfxComponent->SetSound(LoadedSound);
+	SfxComponent->VolumeMultiplier = SoundConfig->VolumeMultiplier;
+	SfxComponent->PitchMultiplier = SoundConfig->PitchMultiplier;
+
+	// 위치 설정 적용
+	if (SoundConfig->bAttachToSource)
+	{
+		SfxComponent->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform, SoundConfig->SocketOrBoneName);
+		SfxComponent->SetRelativeLocation(SoundConfig->LocationOffset);
+		SfxComponent->SetRelativeRotation(SoundConfig->RotationOffset);
+	}
+	else
+	{
+		// 어태치하지 않는 경우 현재 위치에 고정 (비주얼 액터는 어차피 이동하므로 보통 어태치가 기본)
+		SfxComponent->SetWorldLocation(GetActorLocation() + GetActorRotation().RotateVector(SoundConfig->LocationOffset));
+		SfxComponent->SetWorldRotation(GetActorRotation() + SoundConfig->RotationOffset);
+	}
+
+	SfxComponent->Activate(true);
 }
 
 

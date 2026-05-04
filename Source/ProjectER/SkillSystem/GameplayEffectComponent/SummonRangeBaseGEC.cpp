@@ -88,9 +88,9 @@ void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FG
 			}
 		}
 	}
-
-	if (IsValid(this->RangeSpawnSound) && this->RangeSpawnSound->CueTag.IsValid())
+	else if (IsValid(this->RangeSpawnSound) && this->RangeSpawnSound->CueTag.IsValid())
 	{
+		// [Conditional] VFX 태그가 없어 비주얼 액터가 생성되지 않는 경우에만 직접 사운드 큐를 실행합니다.
 		FGameplayCueParameters Params(GESpec);
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;

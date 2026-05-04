@@ -5,8 +5,10 @@
 #include "AGCN_SummonedActor.generated.h"
 
 class UNiagaraComponent;
+class UAudioComponent;
 class UProjectileMovementComponent;
 class USkillNiagaraSpawnConfig;
+class USkillSoundSpawnConfig;
 
 /**
  * 소환물 비주얼을 담당하며 예측 키를 통해 판정 액터와 동기화되는 GCN 액터
@@ -37,11 +39,18 @@ protected:
 	/** 나이아가라 컴포넌트 초기화 및 재생 */
 	void SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig);
 
+	/** 오디오 컴포넌트 초기화 및 재생 */
+	void SetupSfxComponent(const USkillSoundSpawnConfig* SoundConfig);
+
 
 public:
 	/** 비주얼을 담당하는 나이아가라 컴포넌트 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Visual")
 	TObjectPtr<UNiagaraComponent> VfxComponent;
+
+	/** 사운드를 담당하는 오디오 컴포넌트 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Audio")
+	TObjectPtr<UAudioComponent> SfxComponent;
 
 	/** 예측 이동을 담당하는 컴포넌트 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Movement")

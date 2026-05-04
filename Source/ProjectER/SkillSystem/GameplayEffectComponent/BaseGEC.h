@@ -62,6 +62,7 @@ public:
 
 	/** GCN 액터(AGCN_SummonedActor) 초기화를 위한 데이터 제공 함수들 */
 	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const override { return nullptr; }
+	virtual class USkillSoundSpawnConfig* GetAGCN_SoundConfig() const override { return nullptr; }
 	virtual void SetupMovement(class UProjectileMovementComponent* Movement) const {}
 
 protected:

@@ -43,6 +43,7 @@ public:
 
 	/** GCN 액터 초기화 데이터 제공 */
 	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const override { return MissileVfx.Get(); }
+	virtual class USkillSoundSpawnConfig* GetAGCN_SoundConfig() const override { return MissileSound.Get(); }
 	virtual void SetupMovement(class UProjectileMovementComponent* Movement) const override;
 
 protected:

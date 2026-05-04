@@ -7,6 +7,7 @@
 #include "SkillVisualDataProvider.generated.h"
 
 class USkillNiagaraSpawnConfig;
+class USkillSoundSpawnConfig;
 
 UINTERFACE(MinimalAPI)
 class USkillVisualDataProvider : public UInterface
@@ -24,4 +25,7 @@ class PROJECTER_API ISkillVisualDataProvider
 public:
 	/** 비주얼(GCN) 액터 초기화를 위한 니아가라 설정 데이터 제공 */
 	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const { return nullptr; }
+
+	/** 비주얼(GCN) 액터 초기화를 위한 사운드 설정 데이터 제공 */
+	virtual class USkillSoundSpawnConfig* GetAGCN_SoundConfig() const { return nullptr; }
 };

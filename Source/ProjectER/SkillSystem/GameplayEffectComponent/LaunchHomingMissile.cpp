@@ -153,10 +153,9 @@ void ULaunchHomingMissile::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const F
 			}
 		}
 	}
-
-	// 3. 미사일 발사 사운드 트리거
-	if (IsValid(this->MissileSound) && this->MissileSound->CueTag.IsValid())
+	else if (IsValid(this->MissileSound) && this->MissileSound->CueTag.IsValid())
 	{
+		// [Conditional] VFX 태그가 없어 비주얼 액터가 생성되지 않는 경우에만 직접 사운드 큐를 실행합니다.
 		FGameplayCueParameters Params(GESpec);
 		Params.Location = CueLocation;
 		Params.Normal = CueDirection;

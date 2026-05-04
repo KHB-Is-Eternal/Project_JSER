@@ -56,8 +56,6 @@ void USkillBase::SetSkillTagCount(FGameplayTag Tag, int32 Count)
 
 void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[SkillBase] ActivateAbility Called! Skill: %s"), *GetName());
-
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
 	{

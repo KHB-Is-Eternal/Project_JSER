@@ -42,6 +42,7 @@ public:
 
 	/** GCN 액터 초기화 데이터 제공 */
 	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const override { return RangeSpawnVfx.Get(); }
+	virtual class USkillSoundSpawnConfig* GetAGCN_SoundConfig() const override { return RangeSpawnSound.Get(); }
 
 protected:
 	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
