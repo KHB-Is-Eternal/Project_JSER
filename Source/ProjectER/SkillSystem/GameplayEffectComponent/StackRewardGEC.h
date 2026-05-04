@@ -35,25 +35,25 @@ struct FStackRewardInfo
 	bool bClearStack = false;
 
 	// 시전자(공격자) 측에서 재생할 이펙트
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VFX")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "StackReward|VFX")
 	TObjectPtr<class USkillNiagaraSpawnConfig> InstigatorVfxConfig;
 
 	// 발동 대상(피격자) 측에서 재생할 이펙트
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VFX")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "StackReward|VFX")
 	TObjectPtr<class USkillNiagaraSpawnConfig> TargetVfxConfig;
 
 	// 시전자(공격자) 측에서 재생할 사운드
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "StackReward|SFX")
 	TObjectPtr<class USkillSoundSpawnConfig> InstigatorSoundConfig;
 
 	// 발동 대상(피격자) 측에서 재생할 사운드
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "StackReward|SFX")
 	TObjectPtr<class USkillSoundSpawnConfig> TargetSoundConfig;
 };
 
 
 
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API UStackRewardGEC : public UBaseGEC
 {
 	GENERATED_BODY()
@@ -63,7 +63,7 @@ public:
 	virtual bool OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& ActiveGEContainer, FActiveGameplayEffect& ActiveGE) const override;
 
 	// 스택 수치별 보상 설정 목록
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "StackReward")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "StackReward|Logic")
 	TArray<FStackRewardInfo> Rewards;
 
 protected:

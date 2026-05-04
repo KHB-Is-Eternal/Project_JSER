@@ -11,7 +11,7 @@
 /**
  * 캐릭터 본에 부착되어 지속시간 동안 주기적으로 효과를 적용하는 GEC
  */
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API UAouraGEC : public USummonRangeAtBone
 {
 	GENERATED_BODY()
@@ -22,9 +22,9 @@ protected:
 	virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const override;
 
 public:
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic")
 	float Period = 1.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic")
 	bool bApplyImmediately = true;
 };

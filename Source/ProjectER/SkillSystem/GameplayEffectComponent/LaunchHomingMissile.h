@@ -22,7 +22,7 @@ struct FPredictionKey;
  * 유도 미사일을 발사하는 GameplayEffectComponent.
  * UBaseGEC를 직접 상속하여 SummonRange 계열 종속성을 제거합니다.
  */
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API ULaunchHomingMissile : public UBaseGEC
 {
 	GENERATED_BODY()

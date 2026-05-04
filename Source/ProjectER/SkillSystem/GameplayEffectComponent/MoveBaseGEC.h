@@ -25,7 +25,7 @@ enum class EMoveDirectionSource : uint8
 	TowardTarget  UMETA(DisplayName = "Target Actor 방향"),
 };
 
-UCLASS(Abstract)
+UCLASS(Abstract, DontCollapseCategories)
 class PROJECTER_API UMoveBaseGEC : public UBaseGEC
 {
 	GENERATED_BODY()

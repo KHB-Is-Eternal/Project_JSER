@@ -23,7 +23,7 @@ struct FActiveGameplayEffectsContainer;
 struct FPredictionKey;
 
 
-UCLASS(Abstract)
+UCLASS(Abstract, DontCollapseCategories)
 class PROJECTER_API USummonRangeBaseGEC : public UBaseGEC
 {
 	GENERATED_BODY()
@@ -66,48 +66,48 @@ protected:
 	virtual FTransform ApplyCommonSpawnOptionsToTransform(const FTransform& InOriginTransform, const AActor* Instigator) const;
 
 public:
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Base")
 	TSubclassOf<ABaseRangeOverlapEffectActor> RangeActorClass;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Base")
 	float LifeSpan = 1.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Base")
 	FVector CollisionRadius = FVector(100.0f);
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Base")
 	FVector LocationOffset = FVector::ZeroVector;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Rotation")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Rotation")
 	FRotator RotationOffset = FRotator::ZeroRotator;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Snap")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Snap")
 	bool bSnapToGround = true;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Snap", meta = (EditCondition = "bSnapToGround"))
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Snap", meta = (EditCondition = "bSnapToGround"))
 	float FloatingHeight = 2.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Snap", meta = (EditCondition = "bSnapToGround"))
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Snap", meta = (EditCondition = "bSnapToGround"))
 	bool bUseBoxExtentOffset = true;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Snap", meta = (EditCondition = "bSnapToGround"))
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Snap", meta = (EditCondition = "bSnapToGround"))
 	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_GameTraceChannel9;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Effect")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Effect")
 	bool bHitOncePerTarget = true;
 
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Niagara")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|VFX")
 	TObjectPtr<USkillNiagaraSpawnConfig> RangeSpawnVfx;
 
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Niagara")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|VFX")
 	TObjectPtr<USkillNiagaraSpawnConfig> HitTargetVfx;
 
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Sound")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|SFX")
 	TObjectPtr<USkillSoundSpawnConfig> RangeSpawnSound;
 
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Sound")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|SFX")
 	TObjectPtr<USkillSoundSpawnConfig> HitTargetSound;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Effect")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Effect")
 	TArray<TSubclassOf<UBaseGameplayEffect>> Applied;
 };

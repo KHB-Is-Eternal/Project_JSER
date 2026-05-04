@@ -9,7 +9,7 @@
 
 
 
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API ULaunchProjectile : public USummonRangeAtBone
 {
 	GENERATED_BODY()
@@ -21,15 +21,15 @@ protected:
 	virtual FTransform CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const override;
 
 public:
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile | Movement")
+	UPROPERTY(EditDefaultsOnly, Category = "Projectile|Movement")
 	float InitialSpeed = 2000.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile | Movement")
+	UPROPERTY(EditDefaultsOnly, Category = "Projectile|Movement")
 	float GravityScale = 0.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile | Collision")
+	UPROPERTY(EditDefaultsOnly, Category = "Projectile|Collision")
 	bool bDestroyOnHit = true;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Rotation", meta = (EditCondition = "!bUseInstigatorRotation"))
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Rotation", meta = (EditCondition = "!bUseInstigatorRotation"))
 	bool bUseEffectContextDirection = true;
 };

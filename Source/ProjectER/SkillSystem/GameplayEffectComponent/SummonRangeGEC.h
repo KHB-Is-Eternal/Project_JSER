@@ -15,7 +15,7 @@ class ABaseRangeOverlapEffectActor;
 struct FGameplayEffectContextHandle;
 struct FGameplayCueParameters;
 
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API USummonRangeGEC : public USummonRangeBaseGEC
 {
 	GENERATED_BODY()
@@ -28,6 +28,6 @@ protected:
 	FVector GetAnyLocation(const FGameplayEffectContextHandle& ContextHandle) const;
 
 public:
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Rotation")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Rotation")
 	bool bLookAtTargetLocation = false;
 };

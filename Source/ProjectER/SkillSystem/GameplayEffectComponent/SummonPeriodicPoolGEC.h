@@ -15,7 +15,7 @@ enum class ESummonOriginType : uint8
 
 
 
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API USummonPeriodicPoolGEC : public USummonRangeGEC
 {
     GENERATED_BODY()
@@ -28,21 +28,21 @@ protected:
     virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const override;
 
 public:
-    UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic")
+    UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic")
     float Period = 1.0f;
 
-    UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic")
+    UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic")
     bool bApplyImmediately = true;
 
-    UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic")
+    UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic")
     ESummonOriginType OriginType = ESummonOriginType::Context;
 
-    UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic", meta = (EditCondition = "OriginType == ESummonOriginType::InstigatorBone"))
+    UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic", meta = (EditCondition = "OriginType == ESummonOriginType::InstigatorBone"))
     FName SummonBoneName;
 
-    UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Periodic")
+    UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|VFX")
     TObjectPtr<USkillNiagaraSpawnConfig> PeriodicVfx;
 
-    UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Periodic")
+    UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|SFX")
     TObjectPtr<USkillSoundSpawnConfig> PeriodicSound;
 };

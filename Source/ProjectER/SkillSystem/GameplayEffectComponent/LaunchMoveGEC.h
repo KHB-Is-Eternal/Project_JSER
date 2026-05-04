@@ -8,7 +8,7 @@
 
 
 
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API ULaunchMoveGEC : public UMoveBaseGEC
 {
 	GENERATED_BODY()
@@ -25,12 +25,12 @@ public:
 	// 수직 발사 속도 (Z축)
 	// - 0보다 크면 '도약'으로 처리되어 MoveDistance 지점에 정확히 착지하도록 수평 속도가 계산됩니다.
 	// - 0이면 '지면 대쉬'로 처리됩니다.
-	UPROPERTY(EditDefaultsOnly, Category = "Launch")
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Launch")
 	float VerticalLaunchSpeed = 0.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Launch")
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Launch")
 	bool bXYOverride = true;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Launch")
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Launch")
 	bool bZOverride = true;
 };

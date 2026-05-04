@@ -13,7 +13,7 @@ class USkillSoundSpawnConfig;
  * GameplayEffect의 생명주기(적용, 실행, 제거) 시점에 맞춰 
  * 지정된 VFX와 SFX를 실행하는 컴포넌트입니다.
  */
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API UVfxSfxGEC : public UBaseGEC
 {
 	GENERATED_BODY()
@@ -33,26 +33,26 @@ protected:
 
 public:
 	/** 발동(Trigger) 시점에 실행할 VFX (Instant 실행 또는 Duration 최초 적용 시) */
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VFX")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|VFX")
 	TObjectPtr<USkillNiagaraSpawnConfig> TriggerVfx;
 
 	/** 발동(Trigger) 시점에 실행할 사운드 (Instant 실행 또는 Duration 최초 적용 시) */
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "SFX")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|SFX")
 	TObjectPtr<USkillSoundSpawnConfig> TriggerSound;
 
 	/** 주기적(Periodic) 틱마다 실행할 VFX */
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VFX")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|VFX")
 	TObjectPtr<USkillNiagaraSpawnConfig> PeriodicVfx;
 
 	/** 주기적(Periodic) 틱마다 실행할 사운드 */
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "SFX")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|SFX")
 	TObjectPtr<USkillSoundSpawnConfig> PeriodicSound;
 
 	/** 제거(Removed) 시점에 실행할 VFX */
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VFX")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|VFX")
 	TObjectPtr<USkillNiagaraSpawnConfig> RemovedVfx;
 
 	/** 제거(Removed) 시점에 실행할 사운드 */
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "SFX")
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|SFX")
 	TObjectPtr<USkillSoundSpawnConfig> RemovedSound;
 };

@@ -8,7 +8,7 @@
 
 
 
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API UTeleportMoveGEC : public UMoveBaseGEC
 {
 	GENERATED_BODY()
@@ -25,12 +25,12 @@ private:
 	void UpdateLevelTracker(AActor* Actor) const;
 
 public:
-	UPROPERTY(EditDefaultsOnly, Category = "Teleport")
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Teleport")
 	bool bSweep = true;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Teleport")
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Teleport")
 	float NavProjectionRadius = 300.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Teleport")
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Teleport")
 	float TeleportSafetyOffset = 2.0f;
 };

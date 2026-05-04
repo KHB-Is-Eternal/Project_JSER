@@ -16,7 +16,7 @@ struct FGameplayCueParameters;
 
 
 
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API USummonRangeAtBone : public USummonRangeBaseGEC
 {
 	GENERATED_BODY()
@@ -30,12 +30,12 @@ protected:
 	virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const override;
 
 public:
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Base")
 	FName BoneName;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Rotation")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Rotation")
 	bool bUseInstigatorRotation = false;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Attachment")
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Attachment")
 	bool bAttachToBone = false;
 };

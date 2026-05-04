@@ -19,7 +19,7 @@ struct FGameplayEffectContextHandle;
 struct FGameplayEffectSpecHandle;
 struct FGameplayEffectSpec;
 
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API UBaseGEC : public UGameplayEffectComponent, public ISkillVisualDataProvider
 {
 	GENERATED_BODY()
