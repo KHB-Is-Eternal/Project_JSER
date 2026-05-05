@@ -15,6 +15,12 @@
 #include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "SkillSystem/GameAbility/SkillBase.h"
+#include "Components/AudioComponent.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
+#include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnHelper.h"
+#include "SkillSystem/Interfaces/SkillVisualDataProvider.h"
 
 // Sets default values
 ABaseRangeOverlapEffectActor::ABaseRangeOverlapEffectActor()
@@ -88,11 +94,22 @@ void ABaseRangeOverlapEffectActor::OnVfxHandshakeCompleted_Implementation(AActor
 	// [Fix] 언리얼 생명주기 싱크 맞추기 위해 OnDestroyed 델리게이트에 VFX 액터를 바인딩
 	if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
 	{
-		// 액터 전체를 붙이는 대신 알맹이인 나이아가라 컴포넌트만 스킬 액터로 이전해서 부착합니다!
-		if (UNiagaraComponent* NiagaraComp = SummonedGCN->GetVfxComponent())
+		const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(SummonedGCN->GetSourceObject());
+
+		// [Refactor] 헬퍼를 사용하여 VFX/SFX 핸드셰이크(이전 부착) 수행
+		if (VisualSource)
 		{
-			FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
-			NiagaraComp->AttachToComponent(this->GetRootComponent(), AttachRules);
+			// VFX 이전
+			if (UNiagaraComponent* NiagaraComp = SummonedGCN->GetVfxComponent())
+			{
+				SkillNiagaraSpawnHelper::AttachNiagaraByConfig(NiagaraComp, GetRootComponent(), VisualSource->GetAGCN_NiagaraConfig());
+			}
+
+			// SFX 이전
+			if (UAudioComponent* SfxComp = SummonedGCN->GetSfxComponent())
+			{
+				SkillSoundSpawnHelper::AttachSoundByConfig(SfxComp, GetRootComponent(), VisualSource->GetAGCN_SoundConfig());
+			}
 		}
 
 		// [Fix] 중복 바인딩 방지 (ensure 방지)
@@ -325,6 +342,7 @@ void ABaseRangeOverlapEffectActor::ApplyEffectsToTarget(AActor* TargetActor)
 		CueParameters.Location = TargetActor->GetActorLocation();
 		CueParameters.EffectCauser = this;
 		CueParameters.TargetAttachComponent = TargetActor->GetRootComponent();
+
 		{
 			FScopedPredictionWindow ForcedWindow(InstigatorASC, FPredictionKey(), false);
 			InstigatorASC->ExecuteGameplayCue(CueParameters.OriginalTag, CueParameters);
@@ -338,6 +356,7 @@ void ABaseRangeOverlapEffectActor::ApplyEffectsToTarget(AActor* TargetActor)
 		CueParameters.Location = TargetActor->GetActorLocation();
 		CueParameters.EffectCauser = this;
 		CueParameters.TargetAttachComponent = TargetActor->GetRootComponent();
+
 		{
 			FScopedPredictionWindow ForcedWindow(InstigatorASC, FPredictionKey(), false);
 			InstigatorASC->ExecuteGameplayCue(CueParameters.OriginalTag, CueParameters);

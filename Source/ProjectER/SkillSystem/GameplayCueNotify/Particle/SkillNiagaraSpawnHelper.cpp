@@ -5,6 +5,7 @@
 #include "NiagaraComponent.h"
 #include "NiagaraDataInterface.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnSettings.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "Engine/World.h"
 
 namespace
@@ -60,7 +61,6 @@ namespace
 		switch (Settings.RotationMode)
 		{
 		case ENiagaraSpawnRotationMode::WorldRotationOffsetOnly:
-			// 부모의 회전을 취소하고 순수 월드 오프셋만 바라보게 함
 			return (ParentTransform.GetRotation().Inverse() * Settings.RotationOffset.Quaternion()).Rotator();
 
 		case ENiagaraSpawnRotationMode::LookAtTargetPlusOffset:
@@ -78,25 +78,24 @@ namespace
 
 		case ENiagaraSpawnRotationMode::SourceRotationPlusOffset:
 		default:
-			// 부모(Source)를 그대로 따라가면 되므로 순수 로컬 오프셋만 반환
 			return Settings.RotationOffset;
 		}
 	}
 }
 
-void SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World, const FSkillNiagaraSpawnSettings& Settings, const FTransform& SourceTransform, const AActor* SourceActor, const FVector* OptionalLookAtTarget, USceneComponent* AttachTarget)
+UNiagaraComponent* SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World, const FSkillNiagaraSpawnSettings& Settings, const FTransform& SourceTransform, const AActor* SourceActor, const FVector* OptionalLookAtTarget, USceneComponent* AttachTarget)
 {
 	UNiagaraComponent* ResultNC = nullptr;
 
 	if (!IsValid(World) || Settings.NiagaraSystem.IsNull())
 	{
-		return;
+		return nullptr;
 	}
 
 	UNiagaraSystem* LoadedNiagaraSystem = Settings.NiagaraSystem.LoadSynchronous();
 	if (!IsValid(LoadedNiagaraSystem))
 	{
-		return;
+		return nullptr;
 	}
 
 	if (Settings.bAttachToSource && (IsValid(SourceActor) || IsValid(AttachTarget)))
@@ -104,27 +103,25 @@ void SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World, const FSkill
 		USceneComponent* FinalAttachComponent = IsValid(AttachTarget) ? AttachTarget : ResolveNiagaraAttachComponent(SourceActor, Settings);
 		if (!IsValid(FinalAttachComponent))
 		{
-			return;
+			return nullptr;
 		}
 
 		const FTransform ParentTransform = FinalAttachComponent->GetSocketTransform(Settings.SocketOrBoneName);
 		const FRotator RelativeAttachRotation = CalculateNiagaraRelativeRotation(Settings, ParentTransform, OptionalLookAtTarget);
-		ResultNC = UNiagaraFunctionLibrary::SpawnSystemAttached(LoadedNiagaraSystem, FinalAttachComponent, Settings.SocketOrBoneName, Settings.LocationOffset, RelativeAttachRotation, EAttachLocation::KeepRelativeOffset, true, false);
+		
+		ResultNC = UNiagaraFunctionLibrary::SpawnSystemAttached(LoadedNiagaraSystem, FinalAttachComponent, Settings.SocketOrBoneName, Settings.LocationOffset, RelativeAttachRotation, EAttachLocation::KeepRelativeOffset, true, true);
 	}
 	else {
 		FTransform BaseTransform = SourceTransform;
-		FQuat OffsetRotation = SourceTransform.GetRotation(); // 오프셋 계산에 사용할 회전 (시전자 기준)
+		FQuat OffsetRotation = SourceTransform.GetRotation();
 
-		// [Fix] 부착하지 않더라도 본 이름이 있으면 해당 위치와 회전을 기준점으로 사용합니다.
 		if (Settings.SocketOrBoneName != NAME_None)
 		{
-			// 1. 명시적으로 전달된 AttachTarget(컴포넌트)이 있다면 최우선적으로 그 본 트랜스폼을 사용
 			if (IsValid(AttachTarget))
 			{
 				BaseTransform = AttachTarget->GetSocketTransform(Settings.SocketOrBoneName);
 				OffsetRotation = BaseTransform.GetRotation();
 			}
-			// 2. 아니면 SourceActor에서 컴포넌트를 찾아 해결
 			else if (IsValid(SourceActor))
 			{
 				if (USceneComponent* BoneComponent = ResolveNiagaraAttachComponent(SourceActor, Settings))
@@ -141,16 +138,13 @@ void SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World, const FSkill
 			: Settings.LocationOffset;
 		
 		const FVector SpawnLocation = SourceLocation + WorldLocationOffset;
-		
-		// 회전값 결정 (본을 찾았다면 본의 회전 기준, 아니면 시전자 기준)
 		const FRotator SpawnRotation = CalculateNiagaraWorldRotation(Settings, BaseTransform, OptionalLookAtTarget);
 		
-		ResultNC = UNiagaraFunctionLibrary::SpawnSystemAtLocation(World, LoadedNiagaraSystem, SpawnLocation, SpawnRotation, FVector(1.f), true, false);
+		ResultNC = UNiagaraFunctionLibrary::SpawnSystemAtLocation(World, LoadedNiagaraSystem, SpawnLocation, SpawnRotation, FVector(1.f), true, true);
 	}
 	
 	if (!IsValid(ResultNC)) {
-		UE_LOG(LogTemp, Warning, TEXT("ResultNC is Null, Niagara is Not Spawn"));
-		return;
+		return nullptr;
 	}
 
 	// 파라미터 적용
@@ -188,4 +182,30 @@ void SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World, const FSkill
 	}
 
 	ResultNC->Activate();
+	return ResultNC;
+}
+
+UNiagaraComponent* SkillNiagaraSpawnHelper::SpawnNiagara(UWorld* World, const USkillNiagaraSpawnConfig* Config, const FTransform& SourceTransform, const AActor* SourceActor, const FVector* OptionalLookAtTarget, USceneComponent* AttachTarget)
+{
+	if (!IsValid(Config))
+	{
+		return nullptr;
+	}
+
+	return SpawnNiagaraBySettings(World, Config->ToSettings(), SourceTransform, SourceActor, OptionalLookAtTarget, AttachTarget);
+}
+
+void SkillNiagaraSpawnHelper::AttachNiagaraByConfig(UNiagaraComponent* Component, USceneComponent* NewParent, const USkillNiagaraSpawnConfig* Config)
+{
+	if (!IsValid(Component) || !IsValid(NewParent) || !IsValid(Config))
+	{
+		return;
+	}
+
+	if (Config->bAttachToSource)
+	{
+		// [Fix] SnapToTarget 대신 KeepRelative를 사용하여 처음 설정된 오프셋 유지
+		FAttachmentTransformRules AttachRules(EAttachmentRule::KeepRelative, true);
+		Component->AttachToComponent(NewParent, AttachRules, Config->SocketOrBoneName);
+	}
 }
