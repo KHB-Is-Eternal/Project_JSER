@@ -34,22 +34,49 @@ void UMoveBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& Acti
 		return;
 	}
 
-	// 루트 모션 애니메이션 재생 중이면 이동 무시
+	// 루트 모션 애니메이션 재생 중이면 이동 무시 (서버 사이드 체크)
 	if (this->bIgnoreIfRootMotion && IsRootMotionActive(Instigator))
 	{
 		return;
 	}
 
-	const FVector StartLoc = Instigator->GetActorLocation();
 	const FVector Direction = CalculateMoveDirection(GESpec, Instigator);
-
 	const float Duration = CalculateMoveDuration(GESpec, Instigator, Direction);
 
-	// 시전자 효과(Start/Moving/End)는 이제 몽타주의 AnimNotify에서 처리됩니다.
-	// 로컬 예측은 몽타주 재생 시스템이 자동으로 수행합니다.
+	// 파생 클래스가 실제 이동 방식 구현 (서버 실행 시 전달받은 예측 키 사용)
+	Execute(Instigator, Direction, GESpec, PredictionKey);
 
-	// 파생 클래스가 실제 이동 방식 구현
-	Execute(Instigator, Direction, GESpec);
+	// 애니메이션 속도 동기화
+	if (ACharacter* Character = Cast<ACharacter>(Instigator))
+	{
+		AdjustActiveMontageRate(Character, Duration);
+	}
+}
+
+void UMoveBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
+{
+	if (!ASC || !ASC->AbilityActorInfo->IsLocallyControlled())
+	{
+		return;
+	}
+
+	AActor* const Instigator = ASC->GetAvatarActor();
+	if (!IsValid(Instigator))
+	{
+		return;
+	}
+
+	// 루트 모션 애니메이션 재생 중이면 이동 무시 (클라이언트 사이드 예측 체크)
+	if (this->bIgnoreIfRootMotion && IsRootMotionActive(Instigator))
+	{
+		return;
+	}
+
+	const FVector Direction = CalculateMoveDirection(GESpec, Instigator);
+	const float Duration = CalculateMoveDuration(GESpec, Instigator, Direction);
+
+	// 파생 클래스가 실제 이동 방식 구현 (클라이언트 예측 실행 시 ScopedPredictionKey 사용)
+	Execute(Instigator, Direction, GESpec, ASC->ScopedPredictionKey);
 
 	// 애니메이션 속도 동기화
 	if (ACharacter* Character = Cast<ACharacter>(Instigator))
@@ -142,7 +169,8 @@ FVector UMoveBaseGEC::CalculateTargetLocation(const FGameplayEffectSpec& GESpec,
 
 	// 컨텍스트 위치 우선 사용 옵션이 켜져 있고, TowardContext/TowardTarget 방식일 때 체크
 	if (this->bPreferContextLocation &&
-		(this->DirectionSource == EMoveDirectionSource::TowardContext || this->DirectionSource == EMoveDirectionSource::TowardTarget))
+		(this->DirectionSource == EMoveDirectionSource::TowardContext || 
+		 this->DirectionSource == EMoveDirectionSource::TowardTarget))
 	{
 		const FGameplayEffectContextHandle& Context = GESpec.GetEffectContext();
 		FVector ContextLoc = FVector::ZeroVector;

@@ -19,7 +19,7 @@ float UTeleportMoveGEC::CalculateMoveDuration(const FGameplayEffectSpec& GESpec,
 	return 0.15f;
 }
 
-void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const
+void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const
 {
 	UWorld* const World = Instigator->GetWorld();
 	if (!IsValid(World)) return;

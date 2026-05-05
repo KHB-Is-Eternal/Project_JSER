@@ -26,7 +26,7 @@ float UConstantForceMoveGEC::CalculateMoveDuration(const FGameplayEffectSpec& GE
 	return 0.2f;
 }
 
-void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const
+void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const
 {
 	ACharacter* const Character = Cast<ACharacter>(Instigator);
 	if (!IsValid(Character))
@@ -47,12 +47,20 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
 		: 0.2f;
 
 	TSharedPtr<FRootMotionSource_ConstantForce> ConstantForce = MakeShared<FRootMotionSource_ConstantForce>();
-	ConstantForce->InstanceName = FName(TEXT("ConstantForceMoveGEC"));
+	
+	// 예측 키를 사용하여 인스턴스 이름 동기화 (네트워크 버벅임 해결 핵심)
+	FString KeyStr = PredictionKey.IsValidKey() ? FString::FromInt(PredictionKey.Current) : TEXT("NoKey");
+	ConstantForce->InstanceName = FName(*FString::Printf(TEXT("ConstantForceMoveGEC_%s"), *KeyStr));
+	
 	ConstantForce->AccumulateMode = ERootMotionAccumulateMode::Override;
 	ConstantForce->Priority = 5;
 	ConstantForce->Force = Direction * this->MoveSpeed;
 	ConstantForce->Duration = Duration;
-	ConstantForce->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::MaintainLastRootMotionVelocity;
+	
+	// 부모 클래스의 공통 종료 설정 적용
+	ConstantForce->FinishVelocityParams.Mode = this->FinishVelocityMode;
+	ConstantForce->FinishVelocityParams.SetVelocity = this->FinishSetVelocity;
+	ConstantForce->FinishVelocityParams.ClampVelocity = this->FinishClampVelocity;
 
 	CMC->ApplyRootMotionSource(ConstantForce);
 
