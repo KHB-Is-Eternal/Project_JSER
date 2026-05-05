@@ -75,4 +75,8 @@ public:
 	/** 나이아가라 컴포넌트를 외부에서 부착할 수 있도록 반환합니다. */
 	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
 	UNiagaraComponent* GetVfxComponent() const { return VfxComponent; }
+
+	/** 오디오 컴포넌트를 외부에서 부착할 수 있도록 반환합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	UAudioComponent* GetSfxComponent() const { return SfxComponent; }
 };

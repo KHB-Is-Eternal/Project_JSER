@@ -10,11 +10,13 @@
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "Components/AudioComponent.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
+#include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnHelper.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 
 AGCN_SummonedActor::AGCN_SummonedActor()
 {
-	// GCN 액터는 기본적으로 클라이언트에서 실행되므로 리플리케이션은 끄는 것이 일반적입니다.
+	// [Network Optimization] GCN 액터는 기본적으로 클라이언트에서 실행되므로 리플리케이션은 끄는 것이 일반적입니다.
 	bReplicates = false;
 
 	// [Fix] RootComponent 생성 (루트가 없으면 월드 위치 설정이 불가능합니다.)
@@ -26,10 +28,6 @@ AGCN_SummonedActor::AGCN_SummonedActor()
 	MovementComponent->bAutoActivate = false;
 	MovementComponent->bRotationFollowsVelocity = true;
 	MovementComponent->ProjectileGravityScale = 0.0f;
-
-	// 사운드 재생을 위한 컴포넌트 생성
-	SfxComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("SfxComponent"));
-	SfxComponent->bAutoActivate = false;
 }
 
 bool AGCN_SummonedActor::OnExecute_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters)
@@ -85,8 +83,6 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 		SetLifeSpan(10.0f); // 10초 후 자동 소멸 (핸드셰이크 성공 시 갱신될 수 있음)
 	}
 
-	InitializeFromGEC(Parameters.SourceObject.Get());
-
 	AActor* ActualInstigator = GetActualInstigator(Parameters);
 	const FProjectERGameplayEffectContext* Context = static_cast<const FProjectERGameplayEffectContext*>(Parameters.EffectContext.Get());
 
@@ -97,10 +93,9 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 			{
 				// [중요] Standalone/ListenServer 호스트 등에서의 중복 실행 방지
-				// NetMode 체크 대신 레지스트리에 이미 등록된 키가 있는지 확인하는 데이터 기반 로직으로 처리
+				// 이미 예측으로 생성된 액터가 있다면 이 인스턴스는 아무것도 하지 않고 즉시 소멸해야 합니다.
 				if (Registry->IsVfxActorRegistered(ActualInstigator, Context->ClientActivationTime))
 				{
-
 					Destroy();
 					return;
 				}
@@ -110,6 +105,9 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 			}
 		}
 	}
+
+	// [Fix] 중복 체크를 통과한 경우에만 실제 비주얼/오디오 초기화 수행 (중복 재생 방지)
+	InitializeFromGEC(Parameters.SourceObject.Get());
 }
 
 void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
@@ -149,84 +147,24 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 
 void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig)
 {
-	if(!NiagaraConfig){
+	if (!NiagaraConfig)
+	{
 		return;
 	}
 
-	if(NiagaraConfig->NiagaraSystem.IsNull()){
-		return;
-	}
-
-
-	// 기존 컴포넌트가 없다면 생성 (미래의 풀링을 위해 별도 함수화 고려 가능)
-	if (!VfxComponent)
-	{
-
-		VfxComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
-			NiagaraConfig->NiagaraSystem.LoadSynchronous(),
-			GetRootComponent(),
-			NiagaraConfig->SocketOrBoneName,
-			NiagaraConfig->LocationOffset,
-			NiagaraConfig->RotationOffset,
-			EAttachLocation::KeepRelativeOffset,
-			true
-		);
-	}
-	else
-	{
-		VfxComponent->SetAsset(NiagaraConfig->NiagaraSystem.LoadSynchronous());
-		VfxComponent->Activate(true);
-	}
-
-	if (VfxComponent)
-	{
-		// 파라미터 적용 로직 (생략 가능하나 확장성을 위해 남겨둠)
-		for (auto& Pair : NiagaraConfig->FloatParameters) VfxComponent->SetVariableFloat(Pair.Key, Pair.Value);
-		for (auto& Pair : NiagaraConfig->VectorParameters) VfxComponent->SetVariableVec3(Pair.Key, Pair.Value);
-		for (auto& Pair : NiagaraConfig->ColorParameters) VfxComponent->SetVariableLinearColor(Pair.Key, Pair.Value);
-	}
+	// [Refactor] 전역 헬퍼를 사용하여 VFX 생성 및 설정 통합
+	VfxComponent = SkillNiagaraSpawnHelper::SpawnNiagara(GetWorld(), NiagaraConfig, GetActorTransform(), this);
 }
 
 void AGCN_SummonedActor::SetupSfxComponent(const USkillSoundSpawnConfig* SoundConfig)
 {
-	if (!SoundConfig || SoundConfig->Sound.IsNull())
+	if (!SoundConfig)
 	{
 		return;
 	}
 
-	USoundBase* LoadedSound = SoundConfig->Sound.LoadSynchronous();
-	if (!LoadedSound)
-	{
-		return;
-	}
-
-	if (!SfxComponent)
-	{
-		// 생성자에서 실패했을 경우를 대비한 방어 로직
-		SfxComponent = NewObject<UAudioComponent>(this, TEXT("SfxComponentRuntime"));
-		SfxComponent->RegisterComponent();
-		SfxComponent->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-	}
-
-	SfxComponent->SetSound(LoadedSound);
-	SfxComponent->VolumeMultiplier = SoundConfig->VolumeMultiplier;
-	SfxComponent->PitchMultiplier = SoundConfig->PitchMultiplier;
-
-	// 위치 설정 적용
-	if (SoundConfig->bAttachToSource)
-	{
-		SfxComponent->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform, SoundConfig->SocketOrBoneName);
-		SfxComponent->SetRelativeLocation(SoundConfig->LocationOffset);
-		SfxComponent->SetRelativeRotation(SoundConfig->RotationOffset);
-	}
-	else
-	{
-		// 어태치하지 않는 경우 현재 위치에 고정 (비주얼 액터는 어차피 이동하므로 보통 어태치가 기본)
-		SfxComponent->SetWorldLocation(GetActorLocation() + GetActorRotation().RotateVector(SoundConfig->LocationOffset));
-		SfxComponent->SetWorldRotation(GetActorRotation() + SoundConfig->RotationOffset);
-	}
-
-	SfxComponent->Activate(true);
+	// [Refactor] 전역 헬퍼를 사용하여 사운드 생성 및 설정 통합
+	SfxComponent = SkillSoundSpawnHelper::SpawnSound(GetWorld(), SoundConfig, GetActorTransform(), this);
 }
 
 
@@ -249,10 +187,23 @@ AActor* AGCN_SummonedActor::GetActualInstigator(const FGameplayCueParameters& Pa
 
 void AGCN_SummonedActor::OnTargetActorDestroyed(AActor* DestroyedActor)
 {
+	// [Fix] 부착된 경우에만 액터와 함께 즉시 제거합니다. 
+	// 부착되지 않은(AtLocation) 경우, 나이아가라 자체 수명에 맡겨 잔상이 남도록 합니다.
 	if (VfxComponent)
 	{
-		// 파티클 잔상이나 페이드 아웃 없이 즉시 월드에서 컴포넌트 자체를 강제 파괴/제거합니다.
-		VfxComponent->DestroyComponent();
+		bool bShouldDestroyInstantly = true;
+		if (const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(CachedSourceObject.Get()))
+		{
+			if (const USkillNiagaraSpawnConfig* Config = VisualSource->GetAGCN_NiagaraConfig())
+			{
+				bShouldDestroyInstantly = Config->bAttachToSource;
+			}
+		}
+
+		if (bShouldDestroyInstantly)
+		{
+			VfxComponent->DestroyComponent();
+		}
 	}
 
 	Destroy();
