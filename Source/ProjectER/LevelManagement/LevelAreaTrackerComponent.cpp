@@ -26,6 +26,7 @@ void ULevelAreaTrackerComponent::UpdateArea()
     if (!Owner) return;
 
     int32 NewNodeID = TraceForNodeID();
+    if (NewNodeID == INDEX_NONE) return;
 
     if (NewNodeID != CurrentNodeID)
     {
