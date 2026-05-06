@@ -203,6 +203,8 @@ namespace ProjectER
 				UE_DEFINE_GAMEPLAY_TAG_COMMENT(E, "GameplayCue.Sound.Skill.E", "E Particle");
 				UE_DEFINE_GAMEPLAY_TAG_COMMENT(R, "GameplayCue.Sound.Skill.R", "R Particle");
 			}
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Summoner, "GameplayCue.Sound.Summoner", "");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(HitTarget, "GameplayCue.Sound.HitTarget", "");
 		}
 		namespace Decal
 		{
@@ -231,8 +233,8 @@ namespace ProjectER
 
 		namespace Skill
 		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Actor, "GameplayCue.Skill.Actor", "");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Summoner, "GameplayCue.Skill.Summoner", "Cue for Skill SummonVFX");
-			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Range, "GameplayCue.Skill.Range", "Cue for RangeVFX");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(HitTarget, "GameplayCue.Skill.HitTarget", "Cue for HitTargetVFX");
 		}
 		

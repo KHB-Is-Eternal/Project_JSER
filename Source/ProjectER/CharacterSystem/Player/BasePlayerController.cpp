@@ -1,4 +1,4 @@
-﻿#include "CharacterSystem/Player/BasePlayerController.h"
+#include "CharacterSystem/Player/BasePlayerController.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -339,8 +339,13 @@ void ABasePlayerController::PlayerTick(float DeltaTime)
 	// 마우스를 꾹 누르고 있으면 계속 이동 위치 갱신 
 	if (bIsMousePressed)
 	{
+		// 루팅/텔레포트 UI가 열려있으면 이동 차단
+		if (IsValid(LootWidgetInstance) || IsValid(TeleportUIInstance))
+		{
+			bIsMousePressed = false;
+		}
 		// 0.1초 쿨타임 체크
-		if (GetWorld()->GetTimeSeconds() - LastRPCUpdateTime > RPCUpdateInterval)
+		else if (GetWorld()->GetTimeSeconds() - LastRPCUpdateTime > RPCUpdateInterval)
 		{
 			//MoveToMouseCursor(); 태웅님 기존 코드
 			// [김현수 추가분] 아이템 판별 기능이 포함된 함수로 변경 호출
@@ -2284,29 +2289,57 @@ bool ABasePlayerController::HasMaterialsInInventory(const FItemRecipeRow* Recipe
 	OutMat2Index = -1;
 
 	// 인벤토리 순회
-	for (int32 i = 0; i < InvComp->MaxSlots; ++i)
+	if (Mat1 == Mat2)
 	{
-		UBaseItemData* const SlotItem = InvComp->GetItemAt(i);
-		if (SlotItem == nullptr) continue;
-
-		// 재료 1 매칭
-		if (OutMat1Index == -1 && SlotItem == Mat1)
+		// 동일한 아이템이 2개 필요한 경우
+		for (int32 i = 0; i < InvComp->MaxSlots; ++i)
 		{
-			OutMat1Index = i;
-			continue;
+			UBaseItemData* const SlotItem = InvComp->GetItemAt(i);
+			if (SlotItem == Mat1)
+			{
+				if (OutMat1Index == -1)
+				{
+					OutMat1Index = i;
+					// 한 슬롯에 2개 이상 있다면 Mat2Index도 동일하게 설정하고 즉시 종료
+					if (InvComp->GetStackCountAt(i) >= 2)
+					{
+						OutMat2Index = i;
+						return true;
+					}
+				}
+				else
+				{
+					// 다른 슬롯에서 두 번째 재료를 찾은 경우
+					OutMat2Index = i;
+					return true;
+				}
+			}
 		}
-
-		// 재료 2 매칭
-		if (OutMat2Index == -1 && SlotItem == Mat2)
+	}
+	else
+	{
+		// 서로 다른 아이템이 필요한 경우
+		for (int32 i = 0; i < InvComp->MaxSlots; ++i)
 		{
-			OutMat2Index = i;
-			continue;
-		}
+			UBaseItemData* const SlotItem = InvComp->GetItemAt(i);
+			if (SlotItem == nullptr) continue;
 
-		// 둘 다 찾으면 종료
-		if (OutMat1Index != -1 && OutMat2Index != -1)
-		{
-			break;
+			if (OutMat1Index == -1 && SlotItem == Mat1)
+			{
+				OutMat1Index = i;
+				continue;
+			}
+
+			if (OutMat2Index == -1 && SlotItem == Mat2)
+			{
+				OutMat2Index = i;
+				continue;
+			}
+
+			if (OutMat1Index != -1 && OutMat2Index != -1)
+			{
+				break;
+			}
 		}
 	}
 
@@ -2746,25 +2779,52 @@ bool ABasePlayerController::FindMaterialIndicesForRecipe(const FItemRecipeRow& R
 		return false;
 	}
 
-	for (int32 SlotIndex = 0; SlotIndex < Inventory->MaxSlots; ++SlotIndex)
+	if (Material1Data == Material2Data)
 	{
-		UBaseItemData* SlotItem = Inventory->GetItemAt(SlotIndex);
-		if (!SlotItem)
+		for (int32 SlotIndex = 0; SlotIndex < Inventory->MaxSlots; ++SlotIndex)
 		{
-			continue;
+			UBaseItemData* SlotItem = Inventory->GetItemAt(SlotIndex);
+			if (SlotItem == Material1Data)
+			{
+				if (OutMat1Index == INDEX_NONE)
+				{
+					OutMat1Index = SlotIndex;
+					if (Inventory->GetStackCountAt(SlotIndex) >= 2)
+					{
+						OutMat2Index = SlotIndex;
+						return true;
+					}
+				}
+				else
+				{
+					OutMat2Index = SlotIndex;
+					return true;
+				}
+			}
 		}
-
-		if (OutMat1Index == INDEX_NONE && SlotItem == Material1Data)
+	}
+	else
+	{
+		for (int32 SlotIndex = 0; SlotIndex < Inventory->MaxSlots; ++SlotIndex)
 		{
-			OutMat1Index = SlotIndex;
-			continue;
-		}
+			UBaseItemData* SlotItem = Inventory->GetItemAt(SlotIndex);
+			if (!SlotItem) continue;
 
-		if (OutMat2Index == INDEX_NONE && SlotItem == Material2Data)
-		{
-			if (SlotIndex != OutMat1Index)
+			if (OutMat1Index == INDEX_NONE && SlotItem == Material1Data)
+			{
+				OutMat1Index = SlotIndex;
+				continue;
+			}
+
+			if (OutMat2Index == INDEX_NONE && SlotItem == Material2Data)
 			{
 				OutMat2Index = SlotIndex;
+				continue;
+			}
+
+			if (OutMat1Index != INDEX_NONE && OutMat2Index != INDEX_NONE)
+			{
+				break;
 			}
 		}
 	}

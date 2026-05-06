@@ -4,7 +4,7 @@
 #include "AbilitySystemComponent.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "AbilitySystemInterface.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 
 UWatchTagAbility::UWatchTagAbility()
 {
@@ -71,19 +71,14 @@ void UWatchTagAbility::ApplySkillEffects(AActor* TargetActor)
 	ContextHandle.AddInstigator(GetAvatarActorFromActorInfo(), TargetActor);
 	ContextHandle.SetAbility(this);
 
-	for (const TObjectPtr<USkillEffectDataAsset>& EffectData : SkillEffectDataAssets)
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : SkillEffectDataAssets)
 	{
-		if (!IsValid(EffectData)) continue;
+		if (!IsValid(EffectClass)) continue;
 
-		// USkillBase* 자리에는 nullptr를 넣어도 됨 (MakeSpecs 내부에서 레벨 계산 등에 쓰이는데 필요한 경우 캐스팅)
-		TArray<FGameplayEffectSpecHandle> Specs = EffectData->MakeSpecs(MyASC, this, GetAvatarActorFromActorInfo(), ContextHandle);
-		
-		for (FGameplayEffectSpecHandle& SpecHandle : Specs)
+		FGameplayEffectSpecHandle SpecHandle = MyASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), ContextHandle);
+		if (SpecHandle.IsValid())
 		{
-			if (SpecHandle.IsValid())
-			{
-				MyASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-			}
+			MyASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 		}
 	}
 }

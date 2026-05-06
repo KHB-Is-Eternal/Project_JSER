@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 enum class ETargetRelationship : uint8;
 class USkillDataAsset;
-class USkillEffectDataAsset;
+class UBaseGameplayEffect;
 class UBaseSkillConfig;
 
 UCLASS()
@@ -25,6 +25,7 @@ public:
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
+	
 protected:
 	virtual void ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const;
 	virtual const FGameplayTagContainer* GetCooldownTags() const;
@@ -35,17 +36,27 @@ protected:
 	virtual void OnCancelAbility();
 	virtual void OnExecuteSkill_InClient();
 	virtual void CompleteFinishSkill();
+
+	/** 스킬 효과 적용 핵심 로직 - 중복 코드 제거를 위해 통합됨 */
+	void ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
+
 	void SetSkillTagCount(FGameplayTag Tag, int32 Count);
 	void PlayAnimMontage();
 	void SetWaitEventActiveTag();
 	void SetWaitEventCastingTag();
 	void PrepareToActiveSkill();
-	void ApplyExcutionEffectToSelf(const TArray<TObjectPtr<USkillEffectDataAsset>>& SkillEffectDataAssets);
+	
+	/** 자신에게 효과 적용 (ApplyEffectToTargetInternal 호출) */
+	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
 	bool TryExecuteSkill();
 	FGameplayTag GetInputTag();
-	ETargetRelationship GetSkillTargetRelationship();
-	bool IsValidRelationship(AActor* Target);
 
+public:
+	/** 피아 식별 여부를 체크하는 정적 유틸리티 함수 */
+	UFUNCTION(BlueprintCallable, Category = "Skill|Targeting")
+	static bool IsValidRelationship(AActor* Instigator, AActor* Target, ETargetRelationship Relationship);
+
+protected:
 	UFUNCTION()
 	void OnActiveTagEventReceived(FGameplayEventData Payload);
 
@@ -61,13 +72,16 @@ protected:
 	UFUNCTION()
 	void OnMontageCompleted();
 
-private:
+protected:
 	FORCEINLINE UAbilitySystemComponent* GetASC() const { return GetAbilitySystemComponentFromActorInfo(); }
 	FORCEINLINE AActor* GetAvatar() const { return GetAvatarActorFromActorInfo(); }
 
 public:
 
 protected:
+	/** 클라이언트로부터 직렬화되어 전달된 정확한 시전 시작 시간 (동기화 및 렉보상용) */
+	float SyncedActivationTime = 0.0f;
+
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UBaseSkillConfig> CachedConfig;
 

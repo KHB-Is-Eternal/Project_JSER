@@ -3,33 +3,20 @@
 #include "StackRewardGEC.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
-#include "SkillSystem/SkillNiagaraSpawnConfig.h"
-#include "SkillSystem/SkillSoundSpawnConfig.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 
 UStackRewardGEC::UStackRewardGEC()
 {
-	ConfigClass = UStackRewardGECConfig::StaticClass();
-}
-
-TSubclassOf<UBaseGECConfig> UStackRewardGEC::GetRequiredConfigClass() const
-{
-	return UStackRewardGECConfig::StaticClass();
 }
 
 bool UStackRewardGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer &ActiveGEContainer, FActiveGameplayEffect &ActiveGE) const
 {
     bool bResult = Super::OnActiveGameplayEffectAdded(ActiveGEContainer, ActiveGE);
 
-    const UStackRewardGECConfig *Config = ResolveTypedConfigFromSpec<UStackRewardGECConfig>(ActiveGE.Spec);
-
     // 1. Config 유효성 및 보상 목록 개수 체크
-    if (!IsValid(Config))
-    {        
-        return bResult;
-    }
-
-    if (Config->Rewards.Num() <= 0)
+    if (this->Rewards.Num() <= 0)
     {
         return bResult;
     }
@@ -43,21 +30,21 @@ bool UStackRewardGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContaine
 
     // 람다 바인딩: 스택이 변경될 때마다 호출
     ActiveGE.EventSet.OnStackChanged.AddLambda(
-        [this, Config, TargetASC](FActiveGameplayEffectHandle InHandle, int32 NewStack, int32 OldStack)
+        [this, TargetASC](FActiveGameplayEffectHandle InHandle, int32 NewStack, int32 OldStack)
         { 
-			ProcessStackRewards(TargetASC, InHandle, NewStack, Config);
+			ProcessStackRewards(TargetASC, InHandle, NewStack);
         });
 
     // 3. 최초 부여 시점(1스택) 체크 로그
     int32 InitialStack = ActiveGE.Spec.GetStackCount();
-    ProcessStackRewards(TargetASC, ActiveGE.Handle, InitialStack, Config);
+    ProcessStackRewards(TargetASC, ActiveGE.Handle, InitialStack);
 
     return bResult;
 }
 
-void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FActiveGameplayEffectHandle InHandle, int32 CurrentStack, const UStackRewardGECConfig* Config) const
+void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FActiveGameplayEffectHandle InHandle, int32 CurrentStack) const
 {
-	for (const FStackRewardInfo& RewardInfo : Config->Rewards)
+	for (const FStackRewardInfo& RewardInfo : this->Rewards)
 	{
 		if (CurrentStack == RewardInfo.StackCount)
 		{
@@ -66,22 +53,20 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 			UAbilitySystemComponent* SourceASC = Effect->Spec.GetContext().GetInstigatorAbilitySystemComponent();
 			if (IsValid(SourceASC))
 			{
-				if (IsValid(RewardInfo.SkillEffectDataAsset))
+				if (IsValid(RewardInfo.AppliedEffect))
 				{
-					// 데이터 에셋(SkillEffectDataAsset)으로부터 강화 효과 스펙(들) 생성
-					TArray<FGameplayEffectSpecHandle> RewardSpecs = RewardInfo.SkillEffectDataAsset->MakeSpecs(SourceASC, const_cast<UGameplayAbility*>(Effect->Spec.GetContext().GetAbility()),  Effect->Spec.GetContext().GetEffectCauser(),  Effect->Spec.GetContext());
-					for (const FGameplayEffectSpecHandle& SpecHandle : RewardSpecs)
+					FGameplayEffectContextHandle EffectContext = Effect->Spec.GetContext();
+					FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(RewardInfo.AppliedEffect, Effect->Spec.GetLevel(), EffectContext);
+					
+					if (SpecHandle.IsValid())
 					{
-						if (SpecHandle.IsValid())
+						if (RewardInfo.bApplyToTarget)
 						{
-							if (RewardInfo.bApplyToTarget)
-							{
-								SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-							}
-							else
-							{
-								SourceASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-							}
+							SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
+						}
+						else
+						{
+							SourceASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 						}
 					}
 				}
@@ -89,12 +74,15 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 				{
 					// --- VFX 발동 로직 ---
 					// 1. 시전자(Instigator) 피드백 VFX
-					FScopedPredictionWindow ForcedWindow(SourceASC, FPredictionKey(), false);
 					if (IsValid(RewardInfo.InstigatorVfxConfig.Get()) && RewardInfo.InstigatorVfxConfig->CueTag.IsValid())
 					{
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorVfxConfig.Get();
-						SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorVfxConfig->CueTag, Params);
+
+						{
+							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
+							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorVfxConfig->CueTag, Params);
+						}
 					}
 					// 2. 발동 대상(Target) 피드백 VFX
 					if (IsValid(RewardInfo.TargetVfxConfig.Get()) && RewardInfo.TargetVfxConfig->CueTag.IsValid())
@@ -108,18 +96,24 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 						
-						SourceASC->ExecuteGameplayCue(RewardInfo.TargetVfxConfig->CueTag, Params);
+						{
+							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
+							SourceASC->ExecuteGameplayCue(RewardInfo.TargetVfxConfig->CueTag, Params);
+						}
 					}
 				}
 
 				{
 					// --- Sound 발동 로직 ---
-					FScopedPredictionWindow ForcedWindow(SourceASC, FPredictionKey(), false);
 					if (IsValid(RewardInfo.InstigatorSoundConfig.Get()) && RewardInfo.InstigatorSoundConfig->CueTag.IsValid())
 					{
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorSoundConfig.Get();
-						SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorSoundConfig->CueTag, Params);
+
+						{
+							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
+							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorSoundConfig->CueTag, Params);
+						}
 					}
 
 					if (IsValid(RewardInfo.TargetSoundConfig.Get()) && RewardInfo.TargetSoundConfig->CueTag.IsValid())
@@ -132,7 +126,10 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 
-						SourceASC->ExecuteGameplayCue(RewardInfo.TargetSoundConfig->CueTag, Params);
+						{
+							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
+							SourceASC->ExecuteGameplayCue(RewardInfo.TargetSoundConfig->CueTag, Params);
+						}
 					}
 				}
 			}

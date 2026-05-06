@@ -6,10 +6,8 @@
 #include "Abilities/GameplayAbility.h"
 #include "WatchTagAbility.generated.h"
 
-class USkillEffectDataAsset;
-
-/**
- * 특정 GameplayTag(이벤트)를 감시하다가 조건 충족 시 SkillEffectDataAsset의 효과를 적용하는 패시브 어빌리티
+class UBaseGameplayEffect;/**
+ * 특정 GameplayTag(이벤트)를 감시하다가 조건 충족 시 타겟에게 지정된 GameplayEffect를 적용하는 패시브 어빌리티
  */
 UCLASS()
 class PROJECTER_API UWatchTagAbility : public UGameplayAbility
@@ -28,7 +26,7 @@ protected:
 
 	/** 발동 시 적용할 이펙트 데이터 세트 */
 	UPROPERTY(EditDefaultsOnly, Category = "WatchTag")
-	TArray<TObjectPtr<USkillEffectDataAsset>> SkillEffectDataAssets;
+	TArray<TSubclassOf<UBaseGameplayEffect>> SkillEffectDataAssets;
 
 	/** 시전 대상(Instigator)에게 적용할지, 이벤트를 발생시킨 대상(Target)에게 적용할지 */
 	UPROPERTY(EditDefaultsOnly, Category = "WatchTag")

@@ -8,36 +8,28 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/RootMotionSource.h"
-#include "SkillSystem/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "TimerManager.h"
 
 UConstantForceMoveGEC::UConstantForceMoveGEC()
 {
-	ConfigClass = UConstantForceMoveGECConfig::StaticClass();
 }
 
-TSubclassOf<UBaseGECConfig> UConstantForceMoveGEC::GetRequiredConfigClass() const
+float UConstantForceMoveGEC::CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const
 {
-	return UConstantForceMoveGECConfig::StaticClass();
-}
-
-float UConstantForceMoveGEC::CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config) const
-{
-	const UConstantForceMoveGECConfig* const CFConfig = Cast<UConstantForceMoveGECConfig>(Config);
-	if (IsValid(CFConfig) && CFConfig->MoveSpeed > 0.0f)
+	if (this->MoveSpeed > 0.0f)
 	{
-		const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator, CFConfig);
+		const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator);
 		const float Distance = FVector::Dist(Instigator->GetActorLocation(), TargetLoc);
-		return Distance / CFConfig->MoveSpeed;
+		return Distance / this->MoveSpeed;
 	}
 	return 0.2f;
 }
 
-void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config, const FGameplayEffectSpec& GESpec) const
+void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const
 {
-	const UConstantForceMoveGECConfig* const CFConfig = Cast<UConstantForceMoveGECConfig>(Config);
 	ACharacter* const Character = Cast<ACharacter>(Instigator);
-	if (!IsValid(CFConfig) || !IsValid(Character))
+	if (!IsValid(Character))
 	{
 		return;
 	}
@@ -48,23 +40,23 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
 		return;
 	}
 
-	const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator, CFConfig);
+	const FVector TargetLoc = CalculateTargetLocation(GESpec, Instigator);
 	const float Distance = FVector::Dist(Instigator->GetActorLocation(), TargetLoc);
-	const float Duration = (CFConfig->MoveSpeed > 0.0f)
-		? (Distance / CFConfig->MoveSpeed)
+	const float Duration = (this->MoveSpeed > 0.0f)
+		? (Distance / this->MoveSpeed)
 		: 0.2f;
 
 	TSharedPtr<FRootMotionSource_ConstantForce> ConstantForce = MakeShared<FRootMotionSource_ConstantForce>();
 	ConstantForce->InstanceName = FName(TEXT("ConstantForceMoveGEC"));
 	ConstantForce->AccumulateMode = ERootMotionAccumulateMode::Override;
 	ConstantForce->Priority = 5;
-	ConstantForce->Force = Direction * CFConfig->MoveSpeed;
+	ConstantForce->Force = Direction * this->MoveSpeed;
 	ConstantForce->Duration = Duration;
 	ConstantForce->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::MaintainLastRootMotionVelocity;
 
 	CMC->ApplyRootMotionSource(ConstantForce);
 
-	if (CFConfig->bIgnoreUnitCollision)
+	if (this->bIgnoreUnitCollision)
 	{
 		SetPawnCollisionIgnore(Character, true);
 	}
@@ -78,10 +70,10 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
 	FTimerHandle PostMoveTimer;
 	Instigator->GetWorld()->GetTimerManager().SetTimer(
     PostMoveTimer,
-    [WeakThis, WeakInstigator, StartLoc, ExpectedEndLoc, ConfigRef = CFConfig, GESpecCopy = GESpec]()
+    [WeakThis, WeakInstigator, StartLoc, ExpectedEndLoc, GESpecCopy = GESpec]()
     {
         // 1. 유효성 검사 (가장 먼저 수행)
-        if (!WeakThis.IsValid() || !WeakInstigator.IsValid() || !IsValid(ConfigRef))
+        if (!WeakThis.IsValid() || !WeakInstigator.IsValid())
         {
             return;
         }
@@ -90,7 +82,7 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
         const FVector ActualEndLoc = InstigatorPtr->GetActorLocation();
 
         // 2. 벽 충돌 감지 로직
-        if (ConfigRef->bDetectWallHit)
+        if (WeakThis->bDetectWallHit)
         {
             const float ExpectedDist = FVector::Dist(StartLoc, ExpectedEndLoc);
             const float ActualDist = FVector::Dist(StartLoc, ActualEndLoc);
@@ -102,23 +94,20 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
                 FakeHit.Location = ActualEndLoc;
                 FakeHit.ImpactPoint = ActualEndLoc; // ImpactPoint도 채워주는 것이 안전합니다.
                 
-                WeakThis->HandleWallHit(InstigatorPtr, FakeHit, ConfigRef, GESpecCopy);
+                WeakThis->HandleWallHit(InstigatorPtr, FakeHit, GESpecCopy);
             }
         }
 
         // 3. 충돌 무시 복구 로직
-        if (ConfigRef->bIgnoreUnitCollision)
+        if (WeakThis->bIgnoreUnitCollision)
         {
             if (ACharacter* CharPtr = Cast<ACharacter>(InstigatorPtr))
             {
                 WeakThis->SetPawnCollisionIgnore(CharPtr, false);
             }
         }
-        WeakThis->ExecuteMoveCue(ConfigRef->EndVfx, GESpecCopy, InstigatorPtr, ActualEndLoc);
-        WeakThis->ExecuteMoveSound(ConfigRef->EndSound, GESpecCopy, InstigatorPtr, ActualEndLoc);
-        WeakThis->RemoveMovingCue(ConfigRef->MovingVfx, InstigatorPtr);
-        WeakThis->RemoveMovingSoundCue(ConfigRef->MovingSound, InstigatorPtr);
 
+        // 시전자 효과(EndVfx, MovingVfx 종료 등)는 몽타주의 AnimNotify에서 처리됩니다.
     },
     Duration + 0.05f,
     false);

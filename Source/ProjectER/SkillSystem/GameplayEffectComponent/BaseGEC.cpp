@@ -1,19 +1,11 @@
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
-#include "SkillSystem/GameplayEffectComponent/BaseGECConfig.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
 #include "SkillSystem/GameplayEffectComponent/AdditionalEffectGEC.h"
-#include "SkillSystem/GameAbility/SkillBase.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 
 UBaseGEC::UBaseGEC()
 {
-	ConfigClass = UBaseGECConfig::StaticClass();
-}
-
-TSubclassOf<UBaseGECConfig> UBaseGEC::GetRequiredConfigClass() const
-{
-	return UBaseGECConfig::StaticClass();
 }
 
 void UBaseGEC::OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const
@@ -21,26 +13,6 @@ void UBaseGEC::OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& ActiveG
 	Super::OnGameplayEffectExecuted(ActiveGEContainer, GESpec, PredictionKey);
 }
 
-const UBaseGECConfig* UBaseGEC::ResolveBaseConfigFromSpec(const FGameplayEffectSpec& GESpec)
-{
-	const USkillEffectDataAsset* const SkillDataAsset = Cast<USkillEffectDataAsset>(GESpec.GetEffectContext().GetSourceObject());
-	if (!IsValid(SkillDataAsset))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("UBaseGEC::ResolveBaseConfigFromSpec = !IsValid(SkillDataAsset)"));
-		return nullptr;
-	}
-
-	const FGameplayTag IndexTag = SkillDataAsset->GetIndexTag();
-	const int32 DataIndex = FMath::RoundToInt(GESpec.GetSetByCallerMagnitude(IndexTag, false, -1.0f));
-	const FSkillEffectContainer& SkillContainer = SkillDataAsset->GetData();
-	if (!SkillContainer.SkillEffectDefinition.IsValidIndex(DataIndex))
-	{
-        UE_LOG(LogTemp, Warning, TEXT("UBaseGEC::ResolveBaseConfigFromSpec = !SkillContainer.SkillEffectDefinition.IsValidIndex(DataIndex)"));
-		return nullptr;
-	}
-
-	return SkillContainer.SkillEffectDefinition[DataIndex].Config;
-}
 
 void UBaseGEC::GetSkillProcEffects(UAbilitySystemComponent* InstigatorASC, UGameplayAbility* InstigatorSkill, AActor* InEffectCauser, const FGameplayEffectContextHandle& CurrentContext, TArray<FGameplayEffectSpecHandle>& OutSpecs, bool bDefaultConsume)
 {
@@ -65,21 +37,22 @@ void UBaseGEC::GetSkillProcEffects(UAbilitySystemComponent* InstigatorASC, UGame
 		{
 			bool bShouldConsume = bDefaultConsume;
 
-			// 3. AdditionalEffectConfig 추출
-			const UAdditionalEffectConfig* const ExtraConfig = ResolveTypedConfigFromSpec<UAdditionalEffectConfig>(ActiveGE->Spec);
-			if (IsValid(ExtraConfig))
+			// 3. AdditionalEffectGEC 컴포넌트 추출
+			const UAdditionalEffectGEC* ExtraGEC = ActiveGE->Spec.Def->FindComponent<UAdditionalEffectGEC>();
+			if (IsValid(ExtraGEC))
 			{
 				// 4. 추가 효과들로부터 스펙 생성
-				for (const USkillEffectDataAsset* const EffectAsset : ExtraConfig->Bonus)
+				for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : ExtraGEC->Bonus)
 				{
-					if (IsValid(EffectAsset))
+					if (IsValid(EffectClass))
 					{
-						OutSpecs.Append(EffectAsset->MakeSpecs(InstigatorASC, InstigatorSkill, InEffectCauser, CurrentContext));
+						FGameplayEffectSpecHandle NewSpecHandle = InstigatorASC->MakeOutgoingSpec(EffectClass, InstigatorSkill->GetAbilityLevel(), CurrentContext);
+						OutSpecs.Add(NewSpecHandle);
 					}
 				}
 
 				// 5. 서버 설정(Config)에서 소모 여부 결정
-				bShouldConsume = ExtraConfig->bConsumeBuff;
+				bShouldConsume = ExtraGEC->bConsumeBuff;
 			}
 
 			// 6. 버프 소모 처리

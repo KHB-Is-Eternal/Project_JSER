@@ -97,6 +97,7 @@ ProjectER.code-workspace
 .aiexclude
 .clangd
 .clang-format
+.agents
 
 # IDE Search Ignore File
 .ignore

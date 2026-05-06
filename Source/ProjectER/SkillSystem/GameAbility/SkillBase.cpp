@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "SkillBase.h"
@@ -13,7 +13,7 @@
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
 #include "SkillSystem/SkillDataAsset.h"
 #include "SkillSystem/SkillData.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "SkillSystem/GameplayEffect/GE_SharedCooldown.h"
 #include "Monster/BaseMonster.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
@@ -24,6 +24,10 @@
 #include "AbilitySystemGlobals.h" // [김현수 추가분] 태그 체크용
 
 #include "CharacterSystem/Player/BasePlayerController.h" // [김현수 추가분]
+#include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/GameState.h"
+#include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 
 USkillBase::USkillBase()
 {
@@ -52,7 +56,6 @@ void USkillBase::SetSkillTagCount(FGameplayTag Tag, int32 Count)
 
 void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
-
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
 	{
@@ -182,25 +185,43 @@ void USkillBase::ExecuteSkill()
 {
 	auto* ASC = GetASC();
 	auto* Avatar = GetAvatar();
-	if (!IsValid(CachedConfig) || !IsValid(ASC) || !IsValid(Avatar))
+	
+	if (!ensure(CachedConfig) || !IsValid(ASC) || !IsValid(Avatar))
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 		return;
 	}
 
-	// 메인 로직: 들여쓰기 없이 평탄하게 진행
+	// 1. 자신에게 효과 적용
 	ApplyExcutionEffectToSelf(CachedConfig->GetExecutionEffects());
 
+	// 2. 권한 서버에서 처리할 공통 로직 (예: 이동 정지)
 	if (HasAuthority(&CurrentActivationInfo))
 	{
-		if (auto* Character = Cast<ABaseCharacter>(Avatar)) Character->StopMove();
+		if (ABaseCharacter* Character = Cast<ABaseCharacter>(Avatar))
+		{
+			Character->StopMove();
+		}
 	}
 
-	if (IsLocallyControlled()) OnExecuteSkill_InClient();
+	// 3. 디버그 로그 및 클라이언트 전용 이벤트
+	if (ASC->IsNetMode(NM_Client))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[SkillBase] ExecuteSkill on Client. HasValidPredictionKey: %s"), 
+			ASC->ScopedPredictionKey.IsValidKey() ? TEXT("True") : TEXT("False"));
+	}
+
+	if (IsLocallyControlled())
+	{
+		OnExecuteSkill_InClient();
+	}
 }
 
 void USkillBase::OnActiveTagEventReceived(FGameplayEventData Payload)
 {
+	// [ProjectER] 클라이언트 사이드 예측 실행을 보장하기 위해 예측 창을 엽니다.
+	FScopedPredictionWindow ScopedWindow(GetASC(), IsLocallyControlled());
+
 	if (!TryExecuteSkill())
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
@@ -208,6 +229,10 @@ void USkillBase::OnActiveTagEventReceived(FGameplayEventData Payload)
 	else{
 		SetSkillTagCount(CastingTag, 0);
 		SetSkillTagCount(ActiveTag, 1);
+		
+		// 클라이언트가 전달한 정확한 시전 시작 시간을 저장 (렉 보상 및 VFX 동기화용)
+		this->SyncedActivationTime = Payload.EventMagnitude;
+
 		ExecuteSkill();
 	}
 }
@@ -287,24 +312,76 @@ void USkillBase::PrepareToActiveSkill()
 	//if (IsLocallyControlled() || HasAuthority(&CurrentActivationInfo)) PlayAnimMontage();
 }
 
-void USkillBase::ApplyExcutionEffectToSelf(const TArray<TObjectPtr<USkillEffectDataAsset>>& SkillEffectDataAssets)
+void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle)
 {
-	UAbilitySystemComponent* const ASC = GetASC();
-	AActor* const Avatar = GetAvatar();
-	if (!IsValid(ASC) || !IsValid(Avatar) || SkillEffectDataAssets.Num() <= 0) return;
+	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, ContextHandle);
+}
 
-	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
+void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle)
+{
+	UAbilitySystemComponent* const SourceASC = GetASC();
+	AActor* const Avatar = GetAvatar();
+
+	if (!ensure(SourceASC) || !ensure(Avatar) || !IsValid(TargetASC) || Effects.Num() <= 0)
+	{
+		return;
+	}
+
+	// 1. 컨텍스트 초기화 및 커스텀 데이터(시각 동기화) 주입
+	if (!ContextHandle.IsValid())
+	{
+		ContextHandle = SourceASC->MakeEffectContext();
+	}
 	ContextHandle.AddInstigator(Avatar, Avatar);
 	ContextHandle.SetAbility(this);
 
-	for (USkillEffectDataAsset* const Effect : SkillEffectDataAssets)
+	if (FProjectERGameplayEffectContext* ERContext = ProjectERContextUtils::GetMutableProjectERContext(ContextHandle))
 	{
-		if (!IsValid(Effect)) continue;
-
-		for (FGameplayEffectSpecHandle& Spec : Effect->MakeSpecs(ASC, this, Avatar, ContextHandle))
+		if (this->SyncedActivationTime > 0.0f)
 		{
-			if (!Spec.IsValid() || !Spec.Data.IsValid()) continue;
-			ASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), ASC);
+			ERContext->ClientActivationTime = this->SyncedActivationTime;
+		}
+		else if (UWorld* World = GetWorld())
+		{
+			if (AGameStateBase* GameState = World->GetGameState())
+			{
+				ERContext->ClientActivationTime = GameState->GetServerWorldTimeSeconds();
+			}
+		}
+	}
+
+	// 2. 각 이팩트 순회하며 적용
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Effects)
+	{
+		if (!IsValid(EffectClass)) continue;
+
+		// 개별 이펙트용 컨텍스트 독립화 (오염 방지)
+		FGameplayEffectContextHandle EffectSpecificContext = ContextHandle.Duplicate();
+		FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), EffectSpecificContext);
+		
+		if (SpecHandle.IsValid())
+		{
+			// [GEC Hook] Phase 1, 2: 좌표 보정 및 클라이언트 예측 비주얼 생성
+			if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
+			{
+				for (const TObjectPtr<UGameplayEffectComponent>& Component : GEInstance->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						FGameplayEffectContextHandle SpecContext = SpecHandle.Data.Get()->GetContext();
+
+						BaseGEC->PreApplyEffect(SourceASC, SpecContext, *SpecHandle.Data.Get());
+						
+						if (IsLocallyControlled())
+						{
+							BaseGEC->OnExecutePredictive(SourceASC, SpecContext, *SpecHandle.Data.Get());
+						}
+					}
+				}
+			}
+
+			// Phase 3: 최종 적용
+			SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 		}
 	}
 }
@@ -345,16 +422,10 @@ FGameplayTag USkillBase::GetInputTag()
 	return CachedConfig ? CachedConfig->Data.InputKeyTag : FGameplayTag();
 }
 
-ETargetRelationship USkillBase::GetSkillTargetRelationship()
+bool USkillBase::IsValidRelationship(AActor* Instigator, AActor* Target, ETargetRelationship Relationship)
 {
-	return CachedConfig ? CachedConfig->Data.ApplyTo : ETargetRelationship::None;
-}
+	if (!IsValid(Instigator) || !IsValid(Target)) return false;
 
-bool USkillBase::IsValidRelationship(AActor* Target)
-{
-	if (!IsValid(Target) || !IsValid(CachedConfig)) return false;
-
-	auto* Instigator = GetAvatar();
 	auto* I_Instigator = Cast<ITargetableInterface>(Instigator);
 	auto* I_Target = Cast<ITargetableInterface>(Target);
 
@@ -366,11 +437,9 @@ bool USkillBase::IsValidRelationship(AActor* Target)
 		return false;
 	}
 
-	//if (!IsValid(I_Instigator) || !IsValid()) return false;
 	if (!I_Instigator || !I_Target) return false;
 
 	bool bIsSameTeam = (I_Instigator->GetTeamType() == I_Target->GetTeamType());
-	const ETargetRelationship& Relationship = CachedConfig->Data.ApplyTo;
 
 	if (Relationship == ETargetRelationship::Friend) return bIsSameTeam;
 	if (Relationship == ETargetRelationship::Enemy)  return !bIsSameTeam && I_Target->IsTargetable();

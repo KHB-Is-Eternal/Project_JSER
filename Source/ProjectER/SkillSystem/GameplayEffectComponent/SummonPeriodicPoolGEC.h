@@ -13,41 +13,36 @@ enum class ESummonOriginType : uint8
     InstigatorBone
 };
 
-UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
-class PROJECTER_API USummonPeriodicPoolConfig : public USummonRangeByWorldOriginGECConfig
-{
-    GENERATED_BODY()
 
-public:
-    UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic")
-    float Period = 1.0f;
 
-    UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic")
-    bool bApplyImmediately = true;
-
-    UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic")
-    ESummonOriginType OriginType = ESummonOriginType::Context;
-
-    UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Periodic", meta = (EditCondition = "OriginType == ESummonOriginType::InstigatorBone"))
-    FName SummonBoneName;
-
-    UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Periodic")
-    TObjectPtr<USkillNiagaraSpawnConfig> PeriodicVfx;
-
-    UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Periodic")
-    TObjectPtr<USkillSoundSpawnConfig> PeriodicSound;
-};
-
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API USummonPeriodicPoolGEC : public USummonRangeGEC
 {
     GENERATED_BODY()
 
 public:
     USummonPeriodicPoolGEC();
-    virtual TSubclassOf<UBaseGECConfig> GetRequiredConfigClass() const override;
 
 protected:
     virtual FTransform CalculateOriginTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const override;
-    virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, const USummonRangeBaseConfig* Config, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const override;
+    virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const override;
+
+public:
+    UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic")
+    float Period = 1.0f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic")
+    bool bApplyImmediately = true;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic")
+    ESummonOriginType OriginType = ESummonOriginType::Context;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Summon|Periodic", meta = (EditCondition = "OriginType == ESummonOriginType::InstigatorBone"))
+    FName SummonBoneName;
+
+    UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|VFX")
+    TObjectPtr<USkillNiagaraSpawnConfig> PeriodicVfx;
+
+    UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|SFX")
+    TObjectPtr<USkillSoundSpawnConfig> PeriodicSound;
 };

@@ -6,9 +6,8 @@
 #include "GameFramework/Character.h"
 #include "Engine/EngineTypes.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
-#include "SkillSystem/GameplayEffectComponent/BaseGECConfig.h"
 
-class USkillEffectDataAsset;
+class UBaseGameplayEffect;
 class USkillNiagaraSpawnConfig;
 class USkillSoundSpawnConfig;
 struct FGameplayEffectSpec;
@@ -26,14 +25,40 @@ enum class EMoveDirectionSource : uint8
 	TowardTarget  UMETA(DisplayName = "Target Actor 방향"),
 };
 
-// ======================================================
-// Config Base
-// ======================================================
-
-UCLASS(Abstract, BlueprintType, EditInlineNew, DefaultToInstanced)
-class PROJECTER_API UMoveBaseConfig : public UBaseGECConfig
+UCLASS(Abstract, DontCollapseCategories)
+class PROJECTER_API UMoveBaseGEC : public UBaseGEC
 {
 	GENERATED_BODY()
+
+public:
+	UMoveBaseGEC();
+
+protected:
+	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
+
+	// 파생 클래스에서 이동 방식별 구현 (순수 가상)
+	virtual void Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const PURE_VIRTUAL(UMoveBaseGEC::Execute, );
+
+	// 이동 소요 시간 반환 (애니메이션 동기화용)
+	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const PURE_VIRTUAL(UMoveBaseGEC::CalculateMoveDuration, return 0.15f;);
+
+	// 공통 유틸리티 함수
+	bool IsRootMotionActive(const AActor* Actor) const;
+
+	FVector CalculateMoveDirection(const FGameplayEffectSpec& GESpec, const AActor* Instigator) const;
+
+	// 컨텍스트 위치와 MoveDistance를 고려한 최종 타겟 위치 계산
+	FVector CalculateTargetLocation(const FGameplayEffectSpec& GESpec, const AActor* Instigator) const;
+
+	void HandleWallHit(AActor* Instigator, const FHitResult& Hit, const FGameplayEffectSpec& GESpec) const;
+
+	void SnapToGround(FVector& InOutLocation, const AActor* Instigator) const;
+	
+	// 활성 몽타주 속도 조정
+	void AdjustActiveMontageRate(ACharacter* Character, float MoveDuration) const;
+
+	// 유닛 충돌 채널 설정/복구 헬퍼
+	void SetPawnCollisionIgnore(ACharacter* Character, bool bIgnore) const;
 
 public:
 	// --- 공통 이동 설정 ---
@@ -59,7 +84,7 @@ public:
 	float GroundTraceDistance = 500.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Move|Safety")
-	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_Visibility;
+	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_GameTraceChannel9;
 
 	// --- Wall Hit (벽꿍) ---
 	UPROPERTY(EditDefaultsOnly, Category = "Move|WallHit")
@@ -67,27 +92,7 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Move|WallHit",
 		meta = (EditCondition = "bDetectWallHit"))
-	TArray<TObjectPtr<USkillEffectDataAsset>> WallHitApplied;
-
-	// --- VFX ---
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|VFX")
-	TObjectPtr<USkillNiagaraSpawnConfig> StartVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|VFX")
-	TObjectPtr<USkillNiagaraSpawnConfig> MovingVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|VFX")
-	TObjectPtr<USkillNiagaraSpawnConfig> EndVfx;
-
-	// --- Sound ---
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> StartSound;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> MovingSound;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Move|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> EndSound;
+	TArray<TSubclassOf<UBaseGameplayEffect>> WallHitApplied;
 
 	// --- Animation ---
 	// 활성 몽타주 속도 조정 여부
@@ -103,55 +108,4 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Move|Animation",
 		meta = (EditCondition = "bAdjustMontageRate"))
 	float MaxPlayRate = 3.0f;
-};
-
-// ======================================================
-// GEC Base
-// ======================================================
-
-UCLASS(Abstract)
-class PROJECTER_API UMoveBaseGEC : public UBaseGEC
-{
-	GENERATED_BODY()
-
-public:
-	UMoveBaseGEC();
-
-protected:
-	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
-
-	// 파생 클래스에서 이동 방식별 구현 (순수 가상)
-	virtual void Execute(AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config, const FGameplayEffectSpec& GESpec) const PURE_VIRTUAL(UMoveBaseGEC::Execute, );
-
-	// 이동 소요 시간 반환 (애니메이션 동기화용)
-	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction, const UMoveBaseConfig* Config) const PURE_VIRTUAL(UMoveBaseGEC::CalculateMoveDuration, return 0.15f;);
-
-	// 공통 유틸리티 함수
-	bool IsRootMotionActive(const AActor* Actor) const;
-
-	FVector CalculateMoveDirection(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const UMoveBaseConfig* Config) const;
-
-	// 컨텍스트 위치와 MoveDistance를 고려한 최종 타겟 위치 계산
-	FVector CalculateTargetLocation(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const UMoveBaseConfig* Config) const;
-
-	void HandleWallHit(AActor* Instigator, const FHitResult& Hit, const UMoveBaseConfig* Config, const FGameplayEffectSpec& GESpec) const;
-
-	void SnapToGround(FVector& InOutLocation, const UMoveBaseConfig* Config, const AActor* Instigator) const;
-	
-	// 개별 큐 실행 헬퍼
-	void ExecuteMoveCue(const USkillNiagaraSpawnConfig* VfxConfig, const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Location) const;
-	void ExecuteMoveSound(const USkillSoundSpawnConfig* SoundConfig, const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Location) const;
-
-	// Moving 루핑 큐 추가/제거 (Direction과 Speed를 파라미터로 넘겨 클라이언트 동기화 지원)
-	void AddMovingCue(const USkillNiagaraSpawnConfig* VfxConfig, const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Direction = FVector::ZeroVector, float Speed = 0.0f, float Duration = 0.0f) const;
-	void RemoveMovingCue(const USkillNiagaraSpawnConfig* VfxConfig, AActor* Instigator) const;
-
-	void AddMovingSoundCue(const USkillSoundSpawnConfig* SoundConfig, const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Direction = FVector::ZeroVector, float Speed = 0.0f, float Duration = 0.0f) const;
-	void RemoveMovingSoundCue(const USkillSoundSpawnConfig* SoundConfig, AActor* Instigator) const;
-
-	// 활성 몽타주 속도 조정
-	void AdjustActiveMontageRate(ACharacter* Character, float MoveDuration, const UMoveBaseConfig* Config) const;
-
-	// 유닛 충돌 채널 설정/복구 헬퍼
-	void SetPawnCollisionIgnore(ACharacter* Character, bool bIgnore) const;
 };

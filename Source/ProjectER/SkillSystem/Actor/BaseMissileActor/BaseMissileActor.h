@@ -5,6 +5,9 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayEffectTypes.h"
+#include "GameplayPrediction.h"
+#include "SkillSystem/Interfaces/SkillSummonedActor.h"
+#include "SkillSystem/SkillData.h"
 #include "BaseMissileActor.generated.h"
 
 class UProjectileMovementComponent;
@@ -15,12 +18,18 @@ class USceneComponent;
  * Tick에서 대상과의 거리를 계산하여 ReachThreshold 이내이면 적중 처리합니다.
  */
 UCLASS()
-class PROJECTER_API ABaseMissileActor : public AActor
+class PROJECTER_API ABaseMissileActor : public AActor, public ISkillSummonedActor
 {
 	GENERATED_BODY()
 
 public:
 	ABaseMissileActor();
+
+	// ISkillSummonedActor interface implementation
+	virtual void OnVfxHandshakeCompleted_Implementation(AActor* VfxActor) override;
+	
+	UFUNCTION()
+	void OnRep_InstigatorActor();
 
 	/**
 	 * GEC에서 호출하여 미사일의 모든 데이터를 초기화합니다.
@@ -37,11 +46,15 @@ public:
 		float InHomingAcceleration,
 		float InReachThreshold,
 		bool bInDestroyOnHit,
-		const FVector& InInitialDirection = FVector::ForwardVector
+		const FVector& InInitialDirection
 	);
+
+	/** 서버에서 시전 시간을 초기화합니다. */
+	void SetClientActivationTime(float InTime) { ClientActivationTime = InTime; }
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void PostNetInit() override;
 	virtual void Tick(float DeltaTime) override;
 
 	/** 대상에 도달했을 때 호출. 효과 적용 및 파괴를 수행합니다. */
@@ -64,7 +77,7 @@ protected:
 	UPROPERTY()
 	TArray<FGameplayEffectSpecHandle> EffectSpecHandles;
 
-	UPROPERTY()
+	UPROPERTY(ReplicatedUsing = OnRep_InstigatorActor)
 	TObjectPtr<AActor> InstigatorActor;
 
 	UPROPERTY()
@@ -82,8 +95,13 @@ protected:
 	UPROPERTY()
 	bool bDestroyOnHit = true;
 
-	UPROPERTY()
+	UPROPERTY(Replicated)
 	FRotator InitialTargetRotation; // 추가: 엔진에 의한 회전값 왜곡 방지용
 
 	bool bHasReached = false;
+
+protected:
+	/** 리플리케이션된 시전 시간 (VFX 핸드셰이크용) */
+	UPROPERTY(Replicated)
+	float ClientActivationTime;
 };
