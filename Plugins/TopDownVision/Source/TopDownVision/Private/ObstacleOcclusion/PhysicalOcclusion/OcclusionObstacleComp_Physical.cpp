@@ -194,14 +194,15 @@ void UOcclusionObstacleComp_Physical::InitializeMaterials()
 {
     // No pool passed — creates directly, bPooled=false on all slots
     // These slots stay for the lifetime of the comp
+    // OccludedMeshes are intentionally excluded — their material is never touched
+    // so they remain always visible at full opacity.
     const FName AlphaParam = UOcclusionMeshUtil::GetAlphaParameterName();
 
-    UOcclusionMeshUtil::AcquireMaterials(NormalMeshes,   { AlphaParam }, NormalSlots);
-    UOcclusionMeshUtil::AcquireMaterials(OccludedMeshes, { AlphaParam }, OccludedSlots);
+    UOcclusionMeshUtil::AcquireMaterials(NormalMeshes, { AlphaParam }, NormalSlots);
 
     UE_LOG(Occlusion, Verbose,
-        TEXT("UOcclusionObstacleComp_Physical::InitializeMaterials>> Normal:%d Occluded:%d"),
-        NormalSlots.Num(), OccludedSlots.Num());
+        TEXT("UOcclusionObstacleComp_Physical::InitializeMaterials>> Normal:%d"),
+        NormalSlots.Num());
 }
 
 void UOcclusionObstacleComp_Physical::AcquireMIDs()
@@ -212,19 +213,17 @@ void UOcclusionObstacleComp_Physical::AcquireMIDs()
     const FName AlphaParam = UOcclusionMeshUtil::GetAlphaParameterName();
 
     TArray<FOcclusionMIDSlot> PooledNormal;
-    TArray<FOcclusionMIDSlot> PooledOccluded;
 
-    UOcclusionMeshUtil::AcquireMaterials(NormalMeshes,   { AlphaParam }, PooledNormal,   Sub);
-    UOcclusionMeshUtil::AcquireMaterials(OccludedMeshes, { AlphaParam }, PooledOccluded, Sub);
+    // OccludedMeshes are intentionally excluded from pooling — never faded
+    UOcclusionMeshUtil::AcquireMaterials(NormalMeshes, { AlphaParam }, PooledNormal, Sub);
 
     NormalSlots.Append(PooledNormal);
-    OccludedSlots.Append(PooledOccluded);
 
     UpdateMaterialAlpha();
 
     UE_LOG(Occlusion, Verbose,
-        TEXT("UOcclusionObstacleComp_Physical::AcquireMIDs>> %s | Normal:%d Occluded:%d"),
-        *GetOwner()->GetName(), NormalSlots.Num(), OccludedSlots.Num());
+        TEXT("UOcclusionObstacleComp_Physical::AcquireMIDs>> %s | Normal:%d"),
+        *GetOwner()->GetName(), NormalSlots.Num());
 }
 
 void UOcclusionObstacleComp_Physical::ReleaseMIDs()
@@ -289,16 +288,11 @@ void UOcclusionObstacleComp_Physical::UpdateMaterialAlpha()
 {
     const FName AlphaParam = UOcclusionMeshUtil::GetAlphaParameterName();
 
-    const float NormalAlpha   =  CurrentAlpha;
-    const float OccludedAlpha = 1.f - CurrentAlpha;
-
+    // Only Normal meshes are faded. Occluded meshes are intentionally left
+    // at their original material so they are always visible.
     for (FOcclusionMIDSlot& Slot : NormalSlots)
         if (Slot.IsReady())
-            Slot.MID->SetScalarParameterValue(AlphaParam, NormalAlpha);
-
-    for (FOcclusionMIDSlot& Slot : OccludedSlots)
-        if (Slot.IsReady())
-            Slot.MID->SetScalarParameterValue(AlphaParam, OccludedAlpha);
+            Slot.MID->SetScalarParameterValue(AlphaParam, CurrentAlpha);
 }
 
 void UOcclusionObstacleComp_Physical::CleanupInvalidOverlaps()
