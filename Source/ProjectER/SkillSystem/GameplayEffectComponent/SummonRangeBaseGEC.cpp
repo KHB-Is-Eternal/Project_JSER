@@ -1,4 +1,4 @@
-﻿#include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
+#include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
 
 #include "Abilities/GameplayAbilityTypes.h"
 #include "GameplayEffectTypes.h"
@@ -27,7 +27,7 @@ void USummonRangeBaseGEC::PreApplyEffect(UAbilitySystemComponent* ASC, const FGa
 	AActor* const EffectInstigator = IsValid(ContextHandle.GetInstigator())
 		? ContextHandle.GetInstigator()
 		: ContextHandle.GetEffectCauser();
-	if (!IsValid(EffectInstigator) || !ShouldProcessOnInstigator(EffectInstigator)) return;
+	if (!IsValid(EffectInstigator)) return;
 
 	// 1. 타겟 식별 및 기준 위치(Origin) 계산
 	AActor* const TargetActor = nullptr; // Target을 뽑아오는건 Container에서 해야 가장 정확하지만, 여기서는 Context의 HitResult 사용
@@ -41,6 +41,7 @@ void USummonRangeBaseGEC::PreApplyEffect(UAbilitySystemComponent* ASC, const FGa
 		FHitResult SimulationHit;
 		SimulationHit.Location = SpawnTransform.GetLocation();
 		SimulationHit.Normal = SpawnTransform.Rotator().Vector();
+		
 		MutableContext->AddHitResult(SimulationHit, true);
 		MutableContext->AddOrigin(SpawnTransform.GetLocation());
 	}
@@ -63,8 +64,6 @@ void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FG
 	if (!IsValid(ASC)) return;
 	if (!PredictionKey.IsValidKey()) PredictionKey = ASC->ScopedPredictionKey;
 
-	FString NetModeStr = ASC->GetOwnerActor()->GetNetMode() == NM_Client ? TEXT("Client") : TEXT("Server");
-	UE_LOG(LogTemp, Error, TEXT("!!! SummonRangeBaseGEC: OnExecuteVFXCue Triggered !!! - Actor: [%s], PK: [%s], Mode: [%s]"), *ASC->GetAvatarActor()->GetName(), *PredictionKey.ToString(), *NetModeStr);
 	FVector CueLocation = ContextHandle.GetOrigin();
 	FVector CueDirection = FVector::UpVector;
 	if (const FHitResult* Hit = ContextHandle.GetHitResult())
@@ -121,7 +120,7 @@ void USummonRangeBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContaine
 	const FGameplayEffectContextHandle& ContextHandle = GESpec.GetEffectContext();
 	AActor* const EffectInstigator = ContextHandle.GetInstigator() ? ContextHandle.GetInstigator() : ContextHandle.GetEffectCauser();
 	
-	if (!IsValid(EffectInstigator) || !ShouldProcessOnInstigator(EffectInstigator)) return;
+	if (!IsValid(EffectInstigator)) return;
 
 	// 1. 소환 트랜스폼 계산
 	FTransform SpawnTransform = GetInitialTransform(ContextHandle, ActiveGEContainer, GESpec, EffectInstigator);
@@ -232,10 +231,6 @@ AActor* USummonRangeBaseGEC::GetTargetActorFromContainer(FActiveGameplayEffectsC
 	return ActiveGEContainer.Owner ? ActiveGEContainer.Owner->GetOwner() : nullptr;
 }
 
-bool USummonRangeBaseGEC::ShouldProcessOnInstigator(const AActor* Instigator) const
-{
-	return IsValid(Instigator);
-}
 
 FGameplayCueParameters USummonRangeBaseGEC::BuildNiagaraCueParameters(const FGameplayEffectSpec& GESpec, const FGameplayTag& OriginalTag, const FGameplayEffectContextHandle& EffectContext, AActor* EffectCauser, const FVector& CueLocation, const UObject* SourceObject, const FVector& CueNormal) const
 {

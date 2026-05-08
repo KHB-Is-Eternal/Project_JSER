@@ -13,15 +13,6 @@ USummonRangeAtBone::USummonRangeAtBone()
 {
 }
 
-bool USummonRangeAtBone::ShouldProcessOnInstigator(const AActor* Instigator) const
-{
-	if (!IsValid(Instigator))
-	{
-		return false;
-	}
-
-	return Instigator->HasAuthority();
-}
 
 FTransform USummonRangeAtBone::CalculateOriginTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const
 {

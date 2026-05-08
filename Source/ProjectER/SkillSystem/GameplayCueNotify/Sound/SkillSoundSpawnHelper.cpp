@@ -101,11 +101,6 @@ UAudioComponent* SkillSoundSpawnHelper::PlaySoundBySettings(UWorld* World, const
 		return nullptr;
 	}
 
-	FString ActorName = IsValid(SourceActor) ? SourceActor->GetName() : TEXT("None");
-	FString NetModeStr = World->GetNetMode() == NM_Client ? TEXT("Client") : TEXT("Server");
-	UE_LOG(LogTemp, Warning, TEXT("@@@ [SFX Play] Asset: [%s], Instigator: [%s], Location: %s, Mode: [%s]"), 
-		*LoadedSound->GetName(), *ActorName, *SourceTransform.GetLocation().ToString(), *NetModeStr);
-
 	if (Settings.bAttachToSource && (IsValid(SourceActor) || IsValid(AttachTarget)))
 	{
 		USceneComponent* FinalAttachComponent = IsValid(AttachTarget) ? AttachTarget : ResolveSoundAttachComponent(SourceActor, Settings);
