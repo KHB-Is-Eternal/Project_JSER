@@ -98,6 +98,11 @@ UNiagaraComponent* SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World
 		return nullptr;
 	}
 
+	FString ActorName = IsValid(SourceActor) ? SourceActor->GetName() : TEXT("None");
+	FString NetModeStr = World->GetNetMode() == NM_Client ? TEXT("Client") : TEXT("Server");
+	UE_LOG(LogTemp, Warning, TEXT("@@@ [VFX Spawn] Asset: [%s], Instigator: [%s], Location: %s, Mode: [%s]"), 
+		*LoadedNiagaraSystem->GetName(), *ActorName, *SourceTransform.GetLocation().ToString(), *NetModeStr);
+
 	if (Settings.bAttachToSource && (IsValid(SourceActor) || IsValid(AttachTarget)))
 	{
 		USceneComponent* FinalAttachComponent = IsValid(AttachTarget) ? AttachTarget : ResolveNiagaraAttachComponent(SourceActor, Settings);
