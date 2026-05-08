@@ -10,6 +10,8 @@
 #include "GameFramework/RootMotionSource.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "TimerManager.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
 
 UConstantForceMoveGEC::UConstantForceMoveGEC()
 {
@@ -78,7 +80,7 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
 	FTimerHandle PostMoveTimer;
 	Instigator->GetWorld()->GetTimerManager().SetTimer(
     PostMoveTimer,
-    [WeakThis, WeakInstigator, StartLoc, ExpectedEndLoc, GESpecCopy = GESpec]()
+    [WeakThis, WeakInstigator, StartLoc, ExpectedEndLoc, GESpecCopy = GESpec, PredictionKey]()
     {
         // 1. 유효성 검사 (가장 먼저 수행)
         if (!WeakThis.IsValid() || !WeakInstigator.IsValid())
@@ -88,6 +90,14 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
 
         AActor* InstigatorPtr = WeakInstigator.Get();
         const FVector ActualEndLoc = InstigatorPtr->GetActorLocation();
+        
+        // --- 이펙트 종료 처리 ---
+        if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(InstigatorPtr))
+        {
+            // 지속 효과 제거 및 도착 효과 실행
+            WeakThis->RemoveMoveCue(ASC, WeakThis->LoopVfxConfig, WeakThis->LoopSfxConfig);
+            WeakThis->ExecuteMoveCue(ASC, GESpecCopy, WeakThis->EndVfxConfig, WeakThis->EndSfxConfig, PredictionKey);
+        }
 
         // 2. 벽 충돌 감지 로직
         if (WeakThis->bDetectWallHit)

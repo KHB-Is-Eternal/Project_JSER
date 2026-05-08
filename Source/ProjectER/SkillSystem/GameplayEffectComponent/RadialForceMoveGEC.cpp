@@ -5,6 +5,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/RootMotionSource.h"
 #include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
 
 URadialForceMoveGEC::URadialForceMoveGEC()
 {
@@ -57,13 +58,32 @@ void URadialForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction, 
 
 	CMC->ApplyRootMotionSource(RadialForce);
 
+	// --- 이펙트 종료 타이머 ---
+	TWeakObjectPtr<URadialForceMoveGEC const> WeakThis = this;
+	TWeakObjectPtr<ACharacter> WeakChar = Character;
+
+	FTimerHandle EffectTimer;
+	Character->GetWorld()->GetTimerManager().SetTimer(
+		EffectTimer,
+		[WeakThis, WeakChar, GESpec, PredictionKey]()
+		{
+			if (WeakThis.IsValid() && WeakChar.IsValid())
+			{
+				if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(WeakChar.Get()))
+				{
+					WeakThis->RemoveMoveCue(ASC, WeakThis->LoopVfxConfig, WeakThis->LoopSfxConfig);
+					WeakThis->ExecuteMoveCue(ASC, GESpec, WeakThis->EndVfxConfig, WeakThis->EndSfxConfig, PredictionKey);
+				}
+			}
+		},
+		this->Duration,
+		false);
+
 	// 유닛 충돌 무시 처리
 	if (this->bIgnoreUnitCollision)
 	{
 		SetPawnCollisionIgnore(Character, true);
-		
-		TWeakObjectPtr<URadialForceMoveGEC const> WeakThis = this;
-		TWeakObjectPtr<ACharacter> WeakChar = Character;
+
 		FTimerHandle RestoreTimer;
 		Character->GetWorld()->GetTimerManager().SetTimer(
 			RestoreTimer,

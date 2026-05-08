@@ -43,6 +43,14 @@ protected:
 	// 파생 클래스에서 이동 방식별 구현 (예측 키 추가)
 	virtual void Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const PURE_VIRTUAL(UMoveBaseGEC::Execute, );
 
+	// 이동 이펙트 실행 도우미 (GameplayCue 기반)
+	void ExecuteMoveCue(UAbilitySystemComponent* ASC, const FGameplayEffectSpec& GESpec, const class USkillNiagaraSpawnConfig* Vfx, const class USkillSoundSpawnConfig* Sfx, FPredictionKey PK) const;
+	void AddMoveCue(UAbilitySystemComponent* ASC, const FGameplayEffectSpec& GESpec, const class USkillNiagaraSpawnConfig* Vfx, const class USkillSoundSpawnConfig* Sfx) const;
+	void RemoveMoveCue(UAbilitySystemComponent* ASC, const class USkillNiagaraSpawnConfig* Vfx, const class USkillSoundSpawnConfig* Sfx) const;
+
+	// 지속성 이펙트(Loop) 사용 여부 (텔레포트 등은 false)
+	virtual bool ShouldUseLoopEffects() const { return true; }
+
 	// 이동 소요 시간 반환 (애니메이션 동기화용)
 	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const PURE_VIRTUAL(UMoveBaseGEC::CalculateMoveDuration, return 0.15f;);
 
@@ -71,6 +79,26 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Move|Base", meta = (EditCondition = "DirectionSource != EMoveDirectionSource::TowardTarget"))
 	float MoveDistance = 500.0f;
+
+	// --- 이동 이펙트 설정 (GameplayCue) ---
+	
+	// [시작 효과]
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|Start")
+	TObjectPtr<class USkillNiagaraSpawnConfig> StartVfxConfig;
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|Start")
+	TObjectPtr<class USkillSoundSpawnConfig> StartSfxConfig;
+
+	// [지속 효과]
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|Looping")
+	TObjectPtr<class USkillNiagaraSpawnConfig> LoopVfxConfig;
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|Looping")
+	TObjectPtr<class USkillSoundSpawnConfig> LoopSfxConfig;
+
+	// [도착 효과]
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|End")
+	TObjectPtr<class USkillNiagaraSpawnConfig> EndVfxConfig;
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|End")
+	TObjectPtr<class USkillSoundSpawnConfig> EndSfxConfig;
 
 	// --- 이동 종료 설정 (Root Motion Finish Velocity) ---
 	UPROPERTY(EditDefaultsOnly, Category = "Move|Finish")

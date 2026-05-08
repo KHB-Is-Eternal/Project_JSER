@@ -5,6 +5,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/RootMotionSource.h"
 #include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
 
 UJumpForceMoveGEC::UJumpForceMoveGEC()
 {
@@ -59,14 +60,31 @@ void UJumpForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction, co
 
 	CMC->ApplyRootMotionSource(JumpForce);
 
+	// --- 이펙트 종료 타이머 ---
+	TWeakObjectPtr<UJumpForceMoveGEC const> WeakThis = this;
+	TWeakObjectPtr<ACharacter> WeakChar = Character;
+
+	FTimerHandle EffectTimer;
+	Character->GetWorld()->GetTimerManager().SetTimer(
+		EffectTimer,
+		[WeakThis, WeakChar, GESpec, PredictionKey]()
+		{
+			if (WeakThis.IsValid() && WeakChar.IsValid())
+			{
+				if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(WeakChar.Get()))
+				{
+					WeakThis->RemoveMoveCue(ASC, WeakThis->LoopVfxConfig, WeakThis->LoopSfxConfig);
+					WeakThis->ExecuteMoveCue(ASC, GESpec, WeakThis->EndVfxConfig, WeakThis->EndSfxConfig, PredictionKey);
+				}
+			}
+		},
+		this->JumpDuration,
+		false);
+
 	// 유닛 충돌 무시 처리
 	if (this->bIgnoreUnitCollision)
 	{
 		SetPawnCollisionIgnore(Character, true);
-		
-		// 착지 시 충돌 복구를 위해 타이머 설정 (bFinishOnLanded가 있어도 백업용)
-		TWeakObjectPtr<UJumpForceMoveGEC const> WeakThis = this;
-		TWeakObjectPtr<ACharacter> WeakChar = Character;
 		
 		FTimerHandle RestoreTimer;
 		Character->GetWorld()->GetTimerManager().SetTimer(

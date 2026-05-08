@@ -5,6 +5,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/RootMotionSource.h"
 #include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
 #include "TimerManager.h"
 
 UMoveToDynamicForceGEC::UMoveToDynamicForceGEC()
@@ -96,21 +97,22 @@ void UMoveToDynamicForceGEC::Execute(AActor* Instigator, const FVector& Directio
 		{
 			TWeakObjectPtr<ACharacter> WeakCharacter = Character;
 			TWeakObjectPtr<AActor> WeakTargetActor = WeakTarget.Get();
+			TWeakObjectPtr<UMoveToDynamicForceGEC const> WeakThis = this;
 			const float ArrivalDist = this->ReachedDestinationDistance;
 
 			// 매 프레임 타겟 위치 갱신을 위한 타이머 시작
 			FTimerHandle TrackingTimer;
 			Character->GetWorld()->GetTimerManager().SetTimer(
 				TrackingTimer,
-				[WeakCharacter, WeakTargetActor, RootMotionSourceID, ArrivalDist]()
+				[WeakCharacter, WeakTargetActor, WeakThis, RootMotionSourceID, ArrivalDist, GESpec, PredictionKey]()
 				{
-					if (!WeakCharacter.IsValid() || !WeakTargetActor.IsValid())
+					if (!WeakCharacter.IsValid() || !WeakTargetActor.IsValid() || !WeakThis.IsValid())
 					{
 						return;
 					}
 
 					UCharacterMovementComponent* CurrentCMC = WeakCharacter->GetCharacterMovement();
-					if (CurrentCMC && WeakTargetActor.IsValid())
+					if (CurrentCMC)
 					{
 						const FVector MyLoc = WeakCharacter->GetActorLocation();
 						const FVector TargetLoc = WeakTargetActor->GetActorLocation();
@@ -120,6 +122,13 @@ void UMoveToDynamicForceGEC::Execute(AActor* Instigator, const FVector& Directio
 						if (DistanceToTarget <= ArrivalDist)
 						{
 							CurrentCMC->CurrentRootMotion.RemoveRootMotionSourceByID(RootMotionSourceID);
+							
+							// 목적지 도달 시 도착 효과 실행 및 지속 효과 제거
+							if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(WeakCharacter.Get()))
+							{
+								WeakThis->RemoveMoveCue(ASC, WeakThis->LoopVfxConfig, WeakThis->LoopSfxConfig);
+								WeakThis->ExecuteMoveCue(ASC, GESpec, WeakThis->EndVfxConfig, WeakThis->EndSfxConfig, PredictionKey);
+							}
 							return; 
 						}
 
@@ -143,11 +152,21 @@ void UMoveToDynamicForceGEC::Execute(AActor* Instigator, const FVector& Directio
 			FTimerHandle StopTrackingTimer;
 			Character->GetWorld()->GetTimerManager().SetTimer(
 				StopTrackingTimer,
-				[WeakCharacter, TrackingTimer]() mutable
+				[WeakCharacter, WeakThis, GESpec, PredictionKey, TrackingTimer]() mutable
 				{
 					if (WeakCharacter.IsValid())
 					{
 						WeakCharacter->GetWorld()->GetTimerManager().ClearTimer(TrackingTimer);
+
+						// 시간 종료 시 도착 효과 실행 및 지속 효과 제거
+						if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(WeakCharacter.Get()))
+						{
+							if (WeakThis.IsValid())
+							{
+								WeakThis->RemoveMoveCue(ASC, WeakThis->LoopVfxConfig, WeakThis->LoopSfxConfig);
+								WeakThis->ExecuteMoveCue(ASC, GESpec, WeakThis->EndVfxConfig, WeakThis->EndSfxConfig, PredictionKey);
+							}
+						}
 					}
 				},
 				FinalDuration,

@@ -16,6 +16,7 @@ class PROJECTER_API UTeleportMoveGEC : public UMoveBaseGEC
 	UTeleportMoveGEC();
 
 	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const override;
+	virtual bool ShouldUseLoopEffects() const override { return false; }
 
 protected:
 	virtual void Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const override;
