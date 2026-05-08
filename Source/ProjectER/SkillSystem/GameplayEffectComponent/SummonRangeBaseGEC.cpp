@@ -1,4 +1,4 @@
-#include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
+﻿#include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
 
 #include "Abilities/GameplayAbilityTypes.h"
 #include "GameplayEffectTypes.h"
@@ -61,7 +61,10 @@ void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, cons
 void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const
 {
 	if (!IsValid(ASC)) return;
+	if (!PredictionKey.IsValidKey()) PredictionKey = ASC->ScopedPredictionKey;
 
+	FString NetModeStr = ASC->GetOwnerActor()->GetNetMode() == NM_Client ? TEXT("Client") : TEXT("Server");
+	UE_LOG(LogTemp, Error, TEXT("!!! SummonRangeBaseGEC: OnExecuteVFXCue Triggered !!! - Actor: [%s], PK: [%s], Mode: [%s]"), *ASC->GetAvatarActor()->GetName(), *PredictionKey.ToString(), *NetModeStr);
 	FVector CueLocation = ContextHandle.GetOrigin();
 	FVector CueDirection = FVector::UpVector;
 	if (const FHitResult* Hit = ContextHandle.GetHitResult())

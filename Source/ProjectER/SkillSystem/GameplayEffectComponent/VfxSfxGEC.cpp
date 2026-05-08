@@ -108,6 +108,7 @@ void UVfxSfxGEC::ExecuteEffects(UAbilitySystemComponent* ASC, const FGameplayEff
 		CueDirection = Hit->Normal;
 	}
 
+	if (!PredictionKey.IsValidKey()) PredictionKey = ASC->ScopedPredictionKey;
 	UGameplayCueManager* CueManager = UAbilitySystemGlobals::Get().GetGameplayCueManager();
 	if (!IsValid(CueManager)) return;
 

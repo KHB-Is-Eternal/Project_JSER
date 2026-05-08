@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "SkillBase.h"
@@ -335,6 +335,10 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 	ContextHandle.AddInstigator(Avatar, Avatar);
 	ContextHandle.SetAbility(this);
 
+	if(ContextHandle.HasOrigin() == false){
+		ContextHandle.AddOrigin(Avatar->GetActorLocation());
+	}
+
 	if (FProjectERGameplayEffectContext* ERContext = ProjectERContextUtils::GetMutableProjectERContext(ContextHandle))
 	{
 		if (this->SyncedActivationTime > 0.0f)
@@ -372,7 +376,8 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 
 						BaseGEC->PreApplyEffect(SourceASC, SpecContext, *SpecHandle.Data.Get());
 						
-						if (IsLocallyControlled())
+						// [Fix] 리슨 서버 호스트의 경우 권한을 가지고 있으므로 예측 로직을 실행하지 않도록 조건을 강화합니다.
+						if (IsLocallyControlled() && !SourceASC->IsOwnerActorAuthoritative())
 						{
 							BaseGEC->OnExecutePredictive(SourceASC, SpecContext, *SpecHandle.Data.Get());
 						}
@@ -381,6 +386,15 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 			}
 
 			// Phase 3: 최종 적용
+			// [Fix] 서버에서 Target에게 예측 키를 강제로 전파하여 GEC까지 전달되도록 합니다.
+			// ScopedPK가 유실된 경우 Ability의 ActivationPK를 백업으로 사용하여 랜덤성을 해결합니다.
+			FPredictionKey BestPK = SourceASC->ScopedPredictionKey;
+			if (!BestPK.IsValidKey()) 
+			{
+				BestPK = GetCurrentActivationInfo().GetActivationPredictionKey();
+			}
+			
+			FScopedPredictionWindow TargetScopedWindow(TargetASC, BestPK);
 			SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 		}
 	}
