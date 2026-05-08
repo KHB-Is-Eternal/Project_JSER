@@ -45,7 +45,6 @@ void UMoveBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& Acti
 	const FVector Direction = CalculateMoveDirection(GESpec, Instigator);
 	const float Duration = CalculateMoveDuration(GESpec, Instigator, Direction);
 
-	UE_LOG(LogTemp, Error, TEXT(">>> MoveBaseGEC: OnGameplayEffectApplied (Server) - Actor: [%s], PK: [%s]"), *Instigator->GetName(), *PredictionKey.ToString());
 
 	// --- ?´íŽ™???¤í–‰ ---
 	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Instigator))
@@ -92,7 +91,6 @@ void UMoveBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGame
 	const FVector Direction = CalculateMoveDirection(GESpec, Instigator);
 	const float Duration = CalculateMoveDuration(GESpec, Instigator, Direction);
 
-	UE_LOG(LogTemp, Error, TEXT(">>> MoveBaseGEC: OnExecutePredictive (Client) - Actor: [%s], ScopedPK: [%s]"), *Instigator->GetName(), *ASC->ScopedPredictionKey.ToString());
 
 	// --- ?´íŽ™???¤í–‰ (?ˆì¸¡) ---
 	// ?œìž‘ ?¨ê³¼ (Burst)
