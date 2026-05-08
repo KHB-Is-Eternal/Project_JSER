@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "SkillBase.h"
@@ -101,9 +101,17 @@ void USkillBase::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const
 void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const
 {
 	UGameplayEffect* CooldownGE = GetCooldownGameplayEffect();
+	UAbilitySystemComponent* const ASC = GetASC();
 
-	if (CooldownGE && CachedConfig)
+	if (CooldownGE && CachedConfig && IsValid(ASC))
 	{
+		// [Fix] 클라이언트에서 유효한 예측 키(PK)가 없는 경우 로컬 적용을 스킵합니다.
+		// PK 없이 적용된 GE는 서버 GE와 Reconcile되지 않아 '유령 태그'를 남기는 주범이 됩니다.
+		if (ASC->IsNetMode(NM_Client) && !ASC->ScopedPredictionKey.IsValidKey())
+		{
+			return;
+		}
+
 		FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGE->GetClass(), GetAbilityLevel());
 
 		if (SpecHandle.IsValid())
@@ -111,16 +119,14 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 			float Duration = CachedConfig->Data.BaseCoolTime.GetValueAtLevel(GetAbilityLevel());
 			
 			// Skill Haste (스킬 가속) 반영
-			if (UAbilitySystemComponent* ASC = GetASC())
-			{
-				float Haste = ASC->GetNumericAttribute(UBaseAttributeSet::GetCooldownReductionAttribute());
-				// 공식: 최종 쿨타임 = 기본 쿨타임 / (1 + (스킬가속 / 100))
-				Duration /= (1.0f + (FMath::Max(Haste, 0.0f) / 100.0f));
-				Duration = FMath::Max(Duration, 0.1f); // 최소 쿨타임 보장
-			}
+			float Haste = ASC->GetNumericAttribute(UBaseAttributeSet::GetCooldownReductionAttribute());
+			// 공식: 최종 쿨타임 = 기본 쿨타임 / (1 + (스킬가속 / 100))
+			Duration /= (1.0f + (FMath::Max(Haste, 0.0f) / 100.0f));
+			Duration = FMath::Max(Duration, 0.1f); // 최소 쿨타임 보장
 
 			SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Skill.Data.CoolTime")), Duration);
 			SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(CachedConfig->Data.CoolTimeTags);
+
 			ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, SpecHandle);
 		}
 	}
@@ -219,8 +225,8 @@ void USkillBase::ExecuteSkill()
 
 void USkillBase::OnActiveTagEventReceived(FGameplayEventData Payload)
 {
-	// [ProjectER] 클라이언트 사이드 예측 실행을 보장하기 위해 예측 창을 엽니다.
-	FScopedPredictionWindow ScopedWindow(GetASC(), IsLocallyControlled());
+	// [Fix] 이미 실행 중인 어빌리티 내부에서 중복된 PredictionWindow 생성을 제거합니다.
+	// 이는 예측 키 전달 체계를 단순화하여 동기화 오류를 방지합니다.
 
 	if (!TryExecuteSkill())
 	{

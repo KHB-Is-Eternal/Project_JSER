@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/UI_MainHUD.h"
@@ -1057,7 +1057,21 @@ void UUI_MainHUD::OnCooldownTagChanged(const FGameplayTag Tag, int32 NewCount, i
     }
     else
     {
-        // Cooldown Tag Removed
+        // [Fix] 특정 태그가 제거되었을 때, 해당 스킬의 다른 쿨타임 태그가 아직 남아있는지 확인합니다.
+        // 모든 쿨타임 태그가 사라졌을 때만 UI 쿨타임을 종료합니다.
+        if (IsValid(ASC) && SkillDataAssets.IsValidIndex(SkillIndex) && SkillDataAssets[SkillIndex] && SkillDataAssets[SkillIndex]->SkillConfig)
+        {
+            float RemainingTime = 0.0f;
+            float Duration = 0.0f;
+            if (GetCooldownRemainingForTag(SkillDataAssets[SkillIndex]->SkillConfig->Data.CoolTimeTags, RemainingTime, Duration))
+            {
+                // 아직 다른 태그에 의한 쿨타임이 남아있음 -> UI 갱신만 수행
+                ProcessCooldown(SkillIndex, Duration, RemainingTime);
+                return;
+            }
+        }
+
+        // 모든 쿨타임 태그가 제거됨 -> UI 종료
         ProcessCooldown(SkillIndex, 0.0f, 0.0f);
     }
 }
