@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "SkillBase.h"
@@ -36,7 +36,8 @@ USkillBase::USkillBase()
 	ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateYes;
 	CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
 	ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
-	//ActivationBlockedTags.AddTag(CastingTag);
+	BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+	ActivationBlockedTags.AddTag(CastingTag);
 	ActivationBlockedTags.AddTag(ActiveTag);
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
@@ -81,6 +82,7 @@ void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGame
 	}
 	SetSkillTagCount(CastingTag, 0);
 	SetSkillTagCount(ActiveTag, 0);
+	SetSkillTagCount(BackswingTag, 0);
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
@@ -251,6 +253,14 @@ void USkillBase::OnCastingTagEventReceived(FGameplayEventData Payload)
 	}
 }
 
+void USkillBase::OnBackswingTagEventReceived(FGameplayEventData Payload)
+{
+	// 후딜레이 진입 시 사용(Active) 태그는 제거하고 후딜레이 태그를 추가합니다.
+	// 이 시점부터 캐릭터는 이동이 가능해집니다.
+	SetSkillTagCount(ActiveTag, 0);
+	SetSkillTagCount(BackswingTag, 1);
+}
+
 void USkillBase::OnMontageInterrupted()
 {
 	if (IsActive())
@@ -302,6 +312,13 @@ void USkillBase::SetWaitEventCastingTag()
 	WaitEventTask->ReadyForActivation();
 }
 
+void USkillBase::SetWaitEventBackswingTag()
+{
+	UAbilityTask_WaitGameplayEventSyn* WaitEventTask = UAbilityTask_WaitGameplayEventSyn::WaitEventClientToServer(this, BackswingTag);
+	WaitEventTask->OnEventReceived.AddDynamic(this, &USkillBase::OnBackswingTagEventReceived);
+	WaitEventTask->ReadyForActivation();
+}
+
 void USkillBase::PrepareToActiveSkill()
 {
 	if (!IsValid(CachedConfig)) return;
@@ -314,6 +331,7 @@ void USkillBase::PrepareToActiveSkill()
 
 	SetWaitEventActiveTag();
 	if (CachedConfig->Data.bIsUseCasting) SetWaitEventCastingTag();
+	SetWaitEventBackswingTag();
 	PlayAnimMontage();
 	//if (IsLocallyControlled() || HasAuthority(&CurrentActivationInfo)) PlayAnimMontage();
 }
@@ -421,7 +439,7 @@ bool USkillBase::TryExecuteSkill()
 	if (!DoesAbilitySatisfyTagRequirements(*ASC, nullptr, nullptr, &RelevantTags)){
 		// 만약 차단된 원인이 오직 ActiveTag 하나뿐이라면 (글로벌 차단 태그 제외), 통과시킵니다.
 		RelevantTags.RemoveTag(UAbilitySystemGlobals::Get().ActivateFailTagsBlockedTag);
-		if (RelevantTags.Num() == 1 && RelevantTags.HasTag(ActiveTag))
+		if (RelevantTags.Num() == 1 && RelevantTags.HasTag(CastingTag))
 		{
 			return true;
 		}

@@ -91,6 +91,15 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
 	FGameplayTag ActiveTag;
 
+	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
+	FGameplayTag BackswingTag;
+
 	UPROPERTY()
 	TObjectPtr<UGameplayEffect> DynamicCostGE;
+
+protected:
+	UFUNCTION()
+	void OnBackswingTagEventReceived(FGameplayEventData Payload);
+
+	void SetWaitEventBackswingTag();
 };
