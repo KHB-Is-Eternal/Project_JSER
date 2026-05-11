@@ -27,6 +27,48 @@ UMouseTargetSkill::UMouseTargetSkill()
 void UMouseTargetSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+
+	// 1. 이벤트 데이터 기반 사전 검증 및 즉시 실행 (Fast Track)
+	if (TriggerEventData)
+	{
+		AActor* TargetActor = nullptr;
+
+		// TargetData에서 추출 (ActorArray)
+		if (TriggerEventData->TargetData.IsValid(0))
+		{
+			TArray<AActor*> TargetActors = UAbilitySystemBlueprintLibrary::GetActorsFromTargetData(TriggerEventData->TargetData, 0);
+			if (TargetActors.Num() > 0)
+			{
+				TargetActor = TargetActors[0];
+			}
+		}
+
+		// Target 필드에서 추출 (Fallback)
+		if (!IsValid(TargetActor) && IsValid(TriggerEventData->Target))
+		{
+			TargetActor = const_cast<AActor*>(TriggerEventData->Target.Get());
+		}
+
+		if (IsValid(TargetActor))
+		{
+			if (IsTargetActorInRange(TargetActor))
+			{
+				AffectedActor = TargetActor;
+				RotateToTarget(TargetActor);
+				PrepareToActiveSkill();
+				return;
+			}
+			else
+			{
+				// 범위 밖이거나 피아식별 불가 시: 커밋 전 즉시 스킬 종료 (자원 소모 없음)
+				//NotifyActivationFailed(FailedOutOfRangeTag, TEXT("Target is out of range or invalid relationship."));
+				EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+				return;
+			}
+		}
+	}
+
+	// 2. 이벤트 데이터가 없는 일반 케이스 (마우스 입력 대기)
 	SetWaitExternalTargetEventTask();
 	SetWaitTargetTask();
 }

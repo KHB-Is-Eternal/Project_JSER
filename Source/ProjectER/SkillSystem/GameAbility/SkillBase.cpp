@@ -4,6 +4,7 @@
 #include "SkillBase.h"
 #include "ProjectER.h"
 #include "AbilitySystemComponent.h"
+#include "AbilitySystemBlueprintLibrary.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayTag.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Abilities/Tasks/AbilityTask_WaitTargetData.h"
@@ -38,6 +39,7 @@ USkillBase::USkillBase()
 	CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
 	ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
 	BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+	//FailedOutOfRangeTag = FGameplayTag::RequestGameplayTag(FName("State.Failed.OutOfRange"));
 	ActivationBlockedTags.AddTag(CastingTag);
 	ActivationBlockedTags.AddTag(ActiveTag);
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
@@ -58,6 +60,11 @@ void USkillBase::SetSkillTagCount(FGameplayTag Tag, int32 Count)
 
 void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
+	if (TriggerEventData)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[FastTrack] ActivateAbility Triggered by Event: %s"), *TriggerEventData->EventTag.ToString());
+	}
+
 	CurrentPhaseIndex = 0;
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
@@ -95,6 +102,24 @@ void USkillBase::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const
 	CachedConfig = IsValid(DataAsset) ? DataAsset->SkillConfig : nullptr;
 	DynamicCostGE = IsValid(CachedConfig) ? CachedConfig->CreateCostGameplayEffect(this) : nullptr;
 }
+
+bool USkillBase::ActivateSkillByTag(UAbilitySystemComponent* ASC, FGameplayTag SkillTag, const FGameplayEventData& Payload)
+{
+	if (!IsValid(ASC) || !SkillTag.IsValid()) return false;
+
+	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	{
+		// 다이나믹 태그 또는 소스 태그에서 일치하는 스킬 검색
+		if (Spec.DynamicAbilityTags.HasTagExact(SkillTag) || Spec.GetDynamicSpecSourceTags().HasTagExact(SkillTag))
+		{
+			// 트리거 조건 없이 핸들을 지목하여 직접 시전 시도
+			return ASC->TriggerAbilityFromGameplayEvent(Spec.Handle, ASC->AbilityActorInfo.Get(), SkillTag, &Payload, *ASC);
+		}
+	}
+
+	return false;
+}
+
 
 //void USkillBase::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 //{
@@ -543,3 +568,25 @@ void USkillBase::OnExecuteSkill_InClient()
 {
 
 }
+
+/*
+void USkillBase::NotifyActivationFailed(const FGameplayTag& ReasonTag, const FString& DebugMessage)
+{
+	UE_LOG(LogTemp, Warning, TEXT("[SkillBase] Activation Failed: %s, Reason: %s"), *GetName(), *DebugMessage);
+
+	if (ReasonTag.IsValid())
+	{
+		UAbilitySystemComponent* ASC = GetASC();
+		if (IsValid(ASC))
+		{
+			// 실패 이벤트를 브로드캐스팅하여 AI나 다른 시스템이 실패를 인지할 수 있도록 함
+			FGameplayEventData Payload;
+			Payload.EventTag = ReasonTag;
+			Payload.Instigator = GetAvatar();
+			Payload.Target = GetAvatar();
+			
+			UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(GetAvatar(), ReasonTag, Payload);
+		}
+	}
+}
+*/

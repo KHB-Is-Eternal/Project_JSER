@@ -35,6 +35,9 @@ public:
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
 	
+	/** 태그를 통해 스펙을 직접 찾아 데이터와 함께 시전하는 헬퍼 함수 */
+	static bool ActivateSkillByTag(UAbilitySystemComponent* ASC, FGameplayTag SkillTag, const FGameplayEventData& Payload);
+
 protected:
 	virtual void ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const;
 	virtual const FGameplayTagContainer* GetCooldownTags() const;
@@ -45,6 +48,9 @@ protected:
 	virtual void OnCancelAbility();
 	virtual void OnExecuteSkill_InClient();
 	virtual void CompleteFinishSkill();
+
+	/** 스킬 활성화 실패 시 로그 출력 및 태그 브로드캐스팅 */
+	//void NotifyActivationFailed(const FGameplayTag& ReasonTag, const FString& DebugMessage);
 
 	/** 스킬 효과 적용 핵심 로직 - 중복 코드 제거를 위해 통합됨 */
 	void ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
@@ -100,6 +106,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
 	FGameplayTag BackswingTag;
+
+	//UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
+	//FGameplayTag FailedOutOfRangeTag;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Skill")
 	ESkillAbilityState CurrentState = ESkillAbilityState::None;

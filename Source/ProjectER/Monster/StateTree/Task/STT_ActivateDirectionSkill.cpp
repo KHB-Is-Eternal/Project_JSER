@@ -1,10 +1,11 @@
-﻿#include "Monster/StateTree/Task/STT_ActivateDirectionSkill.h"
+#include "Monster/StateTree/Task/STT_ActivateDirectionSkill.h"
 #include "StateTreeLinker.h"
 #include "StateTreeExecutionContext.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Monster/BaseMonster.h"
+#include "SkillSystem/GameAbility/SkillBase.h"
 
 FSTT_ActivateDirectionSkill::FSTT_ActivateDirectionSkill()
 {
@@ -44,57 +45,38 @@ EStateTreeRunStatus FSTT_ActivateDirectionSkill::EnterState(FStateTreeExecutionC
 		return EStateTreeRunStatus::Failed;
 	}
 
-	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
+	if (!Monster || !Monster->GetTargetPlayer())
 	{
-		if (Spec.DynamicAbilityTags.HasTagExact(InstanceData.AbilityTag))
-		{
-			// Ability 실행 시도
-			if (ASC->TryActivateAbility(Spec.Handle) == false)
-			{
-				UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateDirectionSkill::EnterState : Try Activate Skill Fail"));
-				return EStateTreeRunStatus::Failed;
-			}
-			
-			// Ability 실행 성공했으면
-			ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
-			if (IsValid(Monster) == false)
-				{
-					UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateDirectionSkill::EnterState : Not Monster"));
-					return EStateTreeRunStatus::Failed;
-				}
-			AActor* TargetActor = Monster->GetTargetPlayer();
-			if (IsValid(TargetActor) == false)
-				{
-					UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateDirectionSkill::EnterState : Not TargetActor"));
-					return EStateTreeRunStatus::Failed;
-				}
-			
-			FVector StartLocation = Actor->GetActorLocation();
-			FVector TargetLocation = TargetActor->GetActorLocation();
-			FVector Direction = (TargetLocation - StartLocation).GetSafeNormal();
-			FVector AimPoint = StartLocation + Direction;
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateDirectionSkill::EnterState : Invalid Monster or Target"));
+		return EStateTreeRunStatus::Failed;
+	}
 
-			FGameplayEventData Payload;
-			Payload.Instigator = Monster;
-			Payload.Target = TargetActor;
-			FHitResult HitResult;
-			HitResult.Location = AimPoint;
-			Payload.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(HitResult);
-			UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Actor, InstanceData.EventTag, Payload);
-			
-			// Decal 생성
-			if (InstanceData.GameplayCueTag.IsValid() == false)
-				{
-					UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateDirectionSkill::EnterState : Not GameplayCueTag"));
-					return EStateTreeRunStatus::Failed;
-				}
-			FGameplayCueParameters Params;
-			Params.Instigator = Actor;
-			Params.Location = AimPoint;
-			ASC->AddGameplayCue(InstanceData.GameplayCueTag, Params);
-			
-			break;
-		}
+	AActor* TargetActor = Monster->GetTargetPlayer();
+	FVector StartLocation = Actor->GetActorLocation();
+	FVector TargetLocation = TargetActor->GetActorLocation();
+	FVector Direction = (TargetLocation - StartLocation).GetSafeNormal();
+	FVector AimPoint = StartLocation + Direction;
+
+	// [Fast Track] 데이터 주입 시전
+	FGameplayEventData Payload;
+	Payload.Instigator = Actor;
+	Payload.Target = TargetActor;
+	FHitResult Hit; Hit.Location = AimPoint;
+	Payload.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(Hit);
+	Payload.EventTag = InstanceData.AbilityTag;
+
+	// [Fast Track] 데이터를 직접 지목하여 즉시 시전 시도
+	if (USkillBase::ActivateSkillByTag(ASC, InstanceData.AbilityTag, Payload) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateDirectionSkill::EnterState : ActivateSkillByTag Fail (Tag: %s)"), *InstanceData.AbilityTag.ToString());
+		return EStateTreeRunStatus::Failed;
+	}
+
+	if (InstanceData.GameplayCueTag.IsValid())
+	{
+		FGameplayCueParameters Params; Params.Instigator = Actor; Params.Location = AimPoint;
+		ASC->AddGameplayCue(InstanceData.GameplayCueTag, Params);
 	}
 
 	return EStateTreeRunStatus::Running;
