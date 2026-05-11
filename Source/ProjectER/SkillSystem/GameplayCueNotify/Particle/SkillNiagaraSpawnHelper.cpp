@@ -97,7 +97,7 @@ UNiagaraComponent* SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(UWorld* World
 	{
 		return nullptr;
 	}
-
+	
 	if (Settings.bAttachToSource && (IsValid(SourceActor) || IsValid(AttachTarget)))
 	{
 		USceneComponent* FinalAttachComponent = IsValid(AttachTarget) ? AttachTarget : ResolveNiagaraAttachComponent(SourceActor, Settings);

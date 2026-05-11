@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "Engine/EngineTypes.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
+#include "GameFramework/RootMotionSource.h"
 
 class UBaseGameplayEffect;
 class USkillNiagaraSpawnConfig;
@@ -20,9 +21,9 @@ struct FPredictionKey;
 UENUM(BlueprintType)
 enum class EMoveDirectionSource : uint8
 {
-	Forward       UMETA(DisplayName = "캐릭터 전방"),
-	TowardContext UMETA(DisplayName = "Context Origin 방향"),
-	TowardTarget  UMETA(DisplayName = "Target Actor 방향"),
+	Forward             UMETA(DisplayName = "캐릭터 전방"),
+	TowardContext       UMETA(DisplayName = "Context Origin 방향"),
+	TowardTarget        UMETA(DisplayName = "Target Actor 방향"),
 };
 
 UCLASS(Abstract, DontCollapseCategories)
@@ -36,8 +37,19 @@ public:
 protected:
 	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
 
-	// 파생 클래스에서 이동 방식별 구현 (순수 가상)
-	virtual void Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const PURE_VIRTUAL(UMoveBaseGEC::Execute, );
+	// 예측 실행 (클라이언트 선행 실행)
+	virtual void OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const override;
+
+	// 파생 클래스에서 이동 방식별 구현 (예측 키 추가)
+	virtual void Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const PURE_VIRTUAL(UMoveBaseGEC::Execute, );
+
+	// 이동 이펙트 실행 도우미 (GameplayCue 기반)
+	void ExecuteMoveCue(UAbilitySystemComponent* ASC, const FGameplayEffectSpec& GESpec, const class USkillNiagaraSpawnConfig* Vfx, const class USkillSoundSpawnConfig* Sfx, FPredictionKey PK) const;
+	void AddMoveCue(UAbilitySystemComponent* ASC, const FGameplayEffectSpec& GESpec, const class USkillNiagaraSpawnConfig* Vfx, const class USkillSoundSpawnConfig* Sfx) const;
+	void RemoveMoveCue(UAbilitySystemComponent* ASC, const class USkillNiagaraSpawnConfig* Vfx, const class USkillSoundSpawnConfig* Sfx) const;
+
+	// 지속성 이펙트(Loop) 사용 여부 (텔레포트 등은 false)
+	virtual bool ShouldUseLoopEffects() const { return true; }
 
 	// 이동 소요 시간 반환 (애니메이션 동기화용)
 	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const PURE_VIRTUAL(UMoveBaseGEC::CalculateMoveDuration, return 0.15f;);
@@ -65,8 +77,38 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Move|Base")
 	EMoveDirectionSource DirectionSource = EMoveDirectionSource::Forward;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Move|Base")
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Base", meta = (EditCondition = "DirectionSource != EMoveDirectionSource::TowardTarget"))
 	float MoveDistance = 500.0f;
+
+	// --- 이동 이펙트 설정 (GameplayCue) ---
+	
+	// [시작 효과]
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|Start")
+	TObjectPtr<class USkillNiagaraSpawnConfig> StartVfxConfig;
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|Start")
+	TObjectPtr<class USkillSoundSpawnConfig> StartSfxConfig;
+
+	// [지속 효과]
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|Looping")
+	TObjectPtr<class USkillNiagaraSpawnConfig> LoopVfxConfig;
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|Looping")
+	TObjectPtr<class USkillSoundSpawnConfig> LoopSfxConfig;
+
+	// [도착 효과]
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|End")
+	TObjectPtr<class USkillNiagaraSpawnConfig> EndVfxConfig;
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Effects|End")
+	TObjectPtr<class USkillSoundSpawnConfig> EndSfxConfig;
+
+	// --- 이동 종료 설정 (Root Motion Finish Velocity) ---
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Finish")
+	ERootMotionFinishVelocityMode FinishVelocityMode = ERootMotionFinishVelocityMode::MaintainLastRootMotionVelocity;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Finish", meta = (EditCondition = "FinishVelocityMode == ERootMotionFinishVelocityMode::SetVelocity"))
+	FVector FinishSetVelocity = FVector::ZeroVector;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Move|Finish", meta = (EditCondition = "FinishVelocityMode == ERootMotionFinishVelocityMode::ClampVelocity"))
+	float FinishClampVelocity = 0.0f;
 
 	// --- 안전 설정 ---
 	UPROPERTY(EditDefaultsOnly, Category = "Move|Safety")

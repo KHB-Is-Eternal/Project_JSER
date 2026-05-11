@@ -5,6 +5,8 @@
 #include "Components/CapsuleComponent.h"
 #include "GameplayEffect.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "LevelManagement/LevelAreaTrackerComponent.h"
 #include "NavigationSystem.h"
@@ -19,7 +21,7 @@ float UTeleportMoveGEC::CalculateMoveDuration(const FGameplayEffectSpec& GESpec,
 	return 0.15f;
 }
 
-void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const
+void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const
 {
 	UWorld* const World = Instigator->GetWorld();
 	if (!IsValid(World)) return;
@@ -96,6 +98,13 @@ void UTeleportMoveGEC::Execute(AActor* Instigator, const FVector& Direction, con
 	// ── 4. 최종 이동 ──
 	Instigator->SetActorLocation(Destination, false, nullptr, ETeleportType::TeleportPhysics);
 	UpdateLevelTracker(Instigator);
+
+	// --- 이펙트 종료 처리 ---
+	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Instigator))
+	{
+		// 도착 효과 실행 (지속 효과는 ShouldUseLoopEffects가 false이므로 자동 제외됨)
+		ExecuteMoveCue(ASC, GESpec, EndVfxConfig, EndSfxConfig, PredictionKey);
+	}
 }
 
 FVector UTeleportMoveGEC::CalculateDestination(const FGameplayEffectSpec& GESpec, AActor* Instigator, const FVector& Direction) const

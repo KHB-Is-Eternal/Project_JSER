@@ -1030,11 +1030,21 @@ void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 	{
 		static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
 		static const FGameplayTag ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
+		static const FGameplayTag BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
 
 		if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
 			AbilitySystemComponent->HasMatchingGameplayTag(ActiveTag))
 		{
-			return; // 아무것도 하지 않고 함수 종료 (이동, 회전 차단)
+			return; // 시전/발동 중에는 이동 차단
+		}
+
+		if (AbilitySystemComponent->HasMatchingGameplayTag(BackswingTag))
+		{
+			// 후딜레이 중 이동 시 현재 스킬 취소
+			// SkillDataAsset에서 설정한 Input.Skill 하위 태그를 가진 어빌리티를 취소합니다.
+			FGameplayTagContainer CancelTags;
+			CancelTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Input.Skill")));
+			AbilitySystemComponent->CancelAbilities(&CancelTags);
 		}
 	}
 	

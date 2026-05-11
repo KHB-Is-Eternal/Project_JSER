@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "SkillBase.h"
@@ -36,7 +36,8 @@ USkillBase::USkillBase()
 	ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateYes;
 	CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
 	ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
-	//ActivationBlockedTags.AddTag(CastingTag);
+	BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+	ActivationBlockedTags.AddTag(CastingTag);
 	ActivationBlockedTags.AddTag(ActiveTag);
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
@@ -81,6 +82,7 @@ void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGame
 	}
 	SetSkillTagCount(CastingTag, 0);
 	SetSkillTagCount(ActiveTag, 0);
+	SetSkillTagCount(BackswingTag, 0);
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
@@ -101,9 +103,17 @@ void USkillBase::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const
 void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const
 {
 	UGameplayEffect* CooldownGE = GetCooldownGameplayEffect();
+	UAbilitySystemComponent* const ASC = GetASC();
 
-	if (CooldownGE && CachedConfig)
+	if (CooldownGE && CachedConfig && IsValid(ASC))
 	{
+		// [Fix] 클라이언트에서 유효한 예측 키(PK)가 없는 경우 로컬 적용을 스킵합니다.
+		// PK 없이 적용된 GE는 서버 GE와 Reconcile되지 않아 '유령 태그'를 남기는 주범이 됩니다.
+		if (ASC->IsNetMode(NM_Client) && !ASC->ScopedPredictionKey.IsValidKey())
+		{
+			return;
+		}
+
 		FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGE->GetClass(), GetAbilityLevel());
 
 		if (SpecHandle.IsValid())
@@ -111,16 +121,14 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 			float Duration = CachedConfig->Data.BaseCoolTime.GetValueAtLevel(GetAbilityLevel());
 			
 			// Skill Haste (스킬 가속) 반영
-			if (UAbilitySystemComponent* ASC = GetASC())
-			{
-				float Haste = ASC->GetNumericAttribute(UBaseAttributeSet::GetCooldownReductionAttribute());
-				// 공식: 최종 쿨타임 = 기본 쿨타임 / (1 + (스킬가속 / 100))
-				Duration /= (1.0f + (FMath::Max(Haste, 0.0f) / 100.0f));
-				Duration = FMath::Max(Duration, 0.1f); // 최소 쿨타임 보장
-			}
+			float Haste = ASC->GetNumericAttribute(UBaseAttributeSet::GetCooldownReductionAttribute());
+			// 공식: 최종 쿨타임 = 기본 쿨타임 / (1 + (스킬가속 / 100))
+			Duration /= (1.0f + (FMath::Max(Haste, 0.0f) / 100.0f));
+			Duration = FMath::Max(Duration, 0.1f); // 최소 쿨타임 보장
 
 			SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Skill.Data.CoolTime")), Duration);
 			SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(CachedConfig->Data.CoolTimeTags);
+
 			ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, SpecHandle);
 		}
 	}
@@ -219,8 +227,8 @@ void USkillBase::ExecuteSkill()
 
 void USkillBase::OnActiveTagEventReceived(FGameplayEventData Payload)
 {
-	// [ProjectER] 클라이언트 사이드 예측 실행을 보장하기 위해 예측 창을 엽니다.
-	FScopedPredictionWindow ScopedWindow(GetASC(), IsLocallyControlled());
+	// [Fix] 이미 실행 중인 어빌리티 내부에서 중복된 PredictionWindow 생성을 제거합니다.
+	// 이는 예측 키 전달 체계를 단순화하여 동기화 오류를 방지합니다.
 
 	if (!TryExecuteSkill())
 	{
@@ -243,6 +251,14 @@ void USkillBase::OnCastingTagEventReceived(FGameplayEventData Payload)
 	{
 		SetSkillTagCount(CastingTag, 1);
 	}
+}
+
+void USkillBase::OnBackswingTagEventReceived(FGameplayEventData Payload)
+{
+	// 후딜레이 진입 시 사용(Active) 태그는 제거하고 후딜레이 태그를 추가합니다.
+	// 이 시점부터 캐릭터는 이동이 가능해집니다.
+	SetSkillTagCount(ActiveTag, 0);
+	SetSkillTagCount(BackswingTag, 1);
 }
 
 void USkillBase::OnMontageInterrupted()
@@ -296,6 +312,13 @@ void USkillBase::SetWaitEventCastingTag()
 	WaitEventTask->ReadyForActivation();
 }
 
+void USkillBase::SetWaitEventBackswingTag()
+{
+	UAbilityTask_WaitGameplayEventSyn* WaitEventTask = UAbilityTask_WaitGameplayEventSyn::WaitEventClientToServer(this, BackswingTag);
+	WaitEventTask->OnEventReceived.AddDynamic(this, &USkillBase::OnBackswingTagEventReceived);
+	WaitEventTask->ReadyForActivation();
+}
+
 void USkillBase::PrepareToActiveSkill()
 {
 	if (!IsValid(CachedConfig)) return;
@@ -308,6 +331,7 @@ void USkillBase::PrepareToActiveSkill()
 
 	SetWaitEventActiveTag();
 	if (CachedConfig->Data.bIsUseCasting) SetWaitEventCastingTag();
+	SetWaitEventBackswingTag();
 	PlayAnimMontage();
 	//if (IsLocallyControlled() || HasAuthority(&CurrentActivationInfo)) PlayAnimMontage();
 }
@@ -334,6 +358,10 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 	}
 	ContextHandle.AddInstigator(Avatar, Avatar);
 	ContextHandle.SetAbility(this);
+
+	if(ContextHandle.HasOrigin() == false){
+		ContextHandle.AddOrigin(Avatar->GetActorLocation());
+	}
 
 	if (FProjectERGameplayEffectContext* ERContext = ProjectERContextUtils::GetMutableProjectERContext(ContextHandle))
 	{
@@ -372,7 +400,8 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 
 						BaseGEC->PreApplyEffect(SourceASC, SpecContext, *SpecHandle.Data.Get());
 						
-						if (IsLocallyControlled())
+						// [Fix] 리슨 서버 호스트의 경우 권한을 가지고 있으므로 예측 로직을 실행하지 않도록 조건을 강화합니다.
+						if (IsLocallyControlled() && !SourceASC->IsOwnerActorAuthoritative())
 						{
 							BaseGEC->OnExecutePredictive(SourceASC, SpecContext, *SpecHandle.Data.Get());
 						}
@@ -381,6 +410,15 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 			}
 
 			// Phase 3: 최종 적용
+			// [Fix] 서버에서 Target에게 예측 키를 강제로 전파하여 GEC까지 전달되도록 합니다.
+			// ScopedPK가 유실된 경우 Ability의 ActivationPK를 백업으로 사용하여 랜덤성을 해결합니다.
+			FPredictionKey BestPK = SourceASC->ScopedPredictionKey;
+			if (!BestPK.IsValidKey()) 
+			{
+				BestPK = GetCurrentActivationInfo().GetActivationPredictionKey();
+			}
+			
+			FScopedPredictionWindow TargetScopedWindow(TargetASC, BestPK);
 			SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 		}
 	}
@@ -401,7 +439,7 @@ bool USkillBase::TryExecuteSkill()
 	if (!DoesAbilitySatisfyTagRequirements(*ASC, nullptr, nullptr, &RelevantTags)){
 		// 만약 차단된 원인이 오직 ActiveTag 하나뿐이라면 (글로벌 차단 태그 제외), 통과시킵니다.
 		RelevantTags.RemoveTag(UAbilitySystemGlobals::Get().ActivateFailTagsBlockedTag);
-		if (RelevantTags.Num() == 1 && RelevantTags.HasTag(ActiveTag))
+		if (RelevantTags.Num() == 1 && RelevantTags.HasTag(CastingTag))
 		{
 			return true;
 		}

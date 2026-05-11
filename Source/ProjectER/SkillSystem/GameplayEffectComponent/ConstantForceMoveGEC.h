@@ -17,7 +17,7 @@ public:
 	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const override;
 
 protected:
-	virtual void Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec) const override;
+	virtual void Execute(AActor* Instigator, const FVector& Direction, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const override;
 
 public:
 	UPROPERTY(EditDefaultsOnly, Category = "Move|ConstantForce")

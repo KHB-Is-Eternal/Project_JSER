@@ -9,6 +9,8 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "AbilitySystemGlobals.h"
+#include "GameplayCueManager.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 
@@ -34,24 +36,76 @@ void UMoveBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& Acti
 		return;
 	}
 
-	// 루트 모션 애니메이션 재생 중이면 이동 무시
+	// 루트 모션 ?�니메이???�생 중이�??�동 무시 (?�버 ?�이??체크)
 	if (this->bIgnoreIfRootMotion && IsRootMotionActive(Instigator))
 	{
 		return;
 	}
 
-	const FVector StartLoc = Instigator->GetActorLocation();
 	const FVector Direction = CalculateMoveDirection(GESpec, Instigator);
-
 	const float Duration = CalculateMoveDuration(GESpec, Instigator, Direction);
 
-	// 시전자 효과(Start/Moving/End)는 이제 몽타주의 AnimNotify에서 처리됩니다.
-	// 로컬 예측은 몽타주 재생 시스템이 자동으로 수행합니다.
 
-	// 파생 클래스가 실제 이동 방식 구현
-	Execute(Instigator, Direction, GESpec);
+	// --- ?�펙???�행 ---
+	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Instigator))
+	{
+		// ?�작 ?�과 (Burst)
+		ExecuteMoveCue(ASC, GESpec, StartVfxConfig, StartSfxConfig, PredictionKey);
+		
+		// 지???�과 (Added)
+		if (ShouldUseLoopEffects())
+		{
+			AddMoveCue(ASC, GESpec, LoopVfxConfig, LoopSfxConfig);
+		}
+	}
 
-	// 애니메이션 속도 동기화
+	// ?�생 ?�래?��? ?�제 ?�동 방식 구현 (?�버 ?�행 ???�달받�? ?�측 ???�용)
+	Execute(Instigator, Direction, GESpec, PredictionKey);
+
+	// ?�니메이???�도 ?�기??
+	if (ACharacter* Character = Cast<ACharacter>(Instigator))
+	{
+		AdjustActiveMontageRate(Character, Duration);
+	}
+}
+
+void UMoveBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const
+{
+	if (!ASC || !ASC->AbilityActorInfo->IsLocallyControlled())
+	{
+		return;
+	}
+
+	AActor* const Instigator = ASC->GetAvatarActor();
+	if (!IsValid(Instigator))
+	{
+		return;
+	}
+
+	// 루트 모션 ?�니메이???�생 중이�??�동 무시 (?�라?�언???�이???�측 체크)
+	if (this->bIgnoreIfRootMotion && IsRootMotionActive(Instigator))
+	{
+		return;
+	}
+
+	const FVector Direction = CalculateMoveDirection(GESpec, Instigator);
+	const float Duration = CalculateMoveDuration(GESpec, Instigator, Direction);
+
+
+	// --- ?�펙???�행 (?�측) ---
+	// ?�작 ?�과 (Burst)
+	ExecuteMoveCue(ASC, GESpec, StartVfxConfig, StartSfxConfig, ASC->ScopedPredictionKey);
+	
+	// 지???�과 (Added)
+	if (ShouldUseLoopEffects())
+	{
+		AddMoveCue(ASC, GESpec, LoopVfxConfig, LoopSfxConfig);
+	}
+
+	// ?�생 ?�래?��? ?�제 ?�동 방식 구현 (?�라?�언???�측 ?�행 ??ScopedPredictionKey ?�용)
+	Execute(Instigator, Direction, GESpec, ASC->ScopedPredictionKey);
+
+	// ?�니메이???�도 ?�기??
 	if (ACharacter* Character = Cast<ACharacter>(Instigator))
 	{
 		AdjustActiveMontageRate(Character, Duration);
@@ -140,9 +194,10 @@ FVector UMoveBaseGEC::CalculateTargetLocation(const FGameplayEffectSpec& GESpec,
 	const FVector Direction = CalculateMoveDirection(GESpec, Instigator);
 	const FVector DefaultTarget = StartLoc + Direction * this->MoveDistance;
 
-	// 컨텍스트 위치 우선 사용 옵션이 켜져 있고, TowardContext/TowardTarget 방식일 때 체크
+	// 컨텍?�트 ?�치 ?�선 ?�용 ?�션??켜져 ?�고, TowardContext/TowardTarget 방식????체크
 	if (this->bPreferContextLocation &&
-		(this->DirectionSource == EMoveDirectionSource::TowardContext || this->DirectionSource == EMoveDirectionSource::TowardTarget))
+		(this->DirectionSource == EMoveDirectionSource::TowardContext || 
+		 this->DirectionSource == EMoveDirectionSource::TowardTarget))
 	{
 		const FGameplayEffectContextHandle& Context = GESpec.GetEffectContext();
 		FVector ContextLoc = FVector::ZeroVector;
@@ -172,7 +227,7 @@ FVector UMoveBaseGEC::CalculateTargetLocation(const FGameplayEffectSpec& GESpec,
 
 		if (bHasValidContextLoc)
 		{
-			// 컨텍스트 위치가 사거리(MoveDistance) 이내라면 해당 위치 사용
+			// 컨텍?�트 ?�치가 ?�거�?MoveDistance) ?�내?�면 ?�당 ?�치 ?�용
 			const float DistSq = FVector::DistSquared(StartLoc, ContextLoc);
 			if (DistSq <= FMath::Square(this->MoveDistance))
 			{
@@ -263,7 +318,7 @@ void UMoveBaseGEC::AdjustActiveMontageRate(ACharacter* Character, float MoveDura
 		return;
 	}
 
-	// 현재 재생 위치를 고려하여 남은 시간 계산
+	// ?�재 ?�생 ?�치�?고려?�여 ?��? ?�간 계산
 	const float CurrentPosition = MontageInstance->GetPosition();
 	const float MontageLength = MontageInstance->Montage->GetPlayLength();
 	const float RemainingLength = MontageLength - CurrentPosition;
@@ -273,7 +328,7 @@ void UMoveBaseGEC::AdjustActiveMontageRate(ACharacter* Character, float MoveDura
 		return;
 	}
 
-	// 실제 이동 시간에 맞춰 재생 속도 계산 (남은 길이 / 이동 시간)
+	// ?�제 ?�동 ?�간??맞춰 ?�생 ?�도 계산 (?��? 길이 / ?�동 ?�간)
 	const float NewRate = FMath::Clamp(RemainingLength / MoveDuration, this->MinPlayRate, this->MaxPlayRate);
 	MontageInstance->SetPlayRate(NewRate);
 }
@@ -293,3 +348,59 @@ void UMoveBaseGEC::SetPawnCollisionIgnore(ACharacter* Character, bool bIgnore) c
 
 	Capsule->SetCollisionResponseToChannel(ECC_Pawn, bIgnore ? ECR_Ignore : ECR_Block);
 }
+
+void UMoveBaseGEC::ExecuteMoveCue(UAbilitySystemComponent* ASC, const FGameplayEffectSpec& GESpec, const USkillNiagaraSpawnConfig* Vfx, const USkillSoundSpawnConfig* Sfx, FPredictionKey PK) const
+{
+	if (!IsValid(ASC)) return;
+
+	auto ExecuteOne = [&](const UObject* Config, const FGameplayTag& Tag)
+	{
+		if (IsValid(Config) && Tag.IsValid())
+		{
+			FGameplayCueParameters Params(GESpec);
+			Params.Location = ASC->GetAvatarActor()->GetActorLocation();
+			Params.SourceObject = const_cast<UObject*>(Config);
+
+			// [Fix] ?�측 ?��? ?�효?��? ?��? 경우(?�버?�서 ?�실??경우) 중복 ?�행??막기 ?�한 가??
+			if (PK.IsValidKey() || ASC->GetOwnerActor()->HasAuthority())
+			{
+				ASC->ExecuteGameplayCue(Tag, Params);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Display, TEXT(">>> MoveBaseGEC: Suppressed Duplicate Cue (Client side, PK is 0) - Tag: [%s]"), *Tag.ToString());
+			}
+		}
+	};
+
+	if (Vfx) ExecuteOne(Vfx, Vfx->CueTag);
+	if (Sfx) ExecuteOne(Sfx, Sfx->CueTag);
+}
+
+void UMoveBaseGEC::AddMoveCue(UAbilitySystemComponent* ASC, const FGameplayEffectSpec& GESpec, const USkillNiagaraSpawnConfig* Vfx, const USkillSoundSpawnConfig* Sfx) const
+{
+	if (!IsValid(ASC)) return;
+
+	auto AddOne = [&](const UObject* Config, const FGameplayTag& Tag)
+	{
+		if (IsValid(Config) && Tag.IsValid())
+		{
+			FGameplayCueParameters Params(GESpec);
+			Params.Location = ASC->GetAvatarActor()->GetActorLocation();
+			Params.SourceObject = const_cast<UObject*>(Config);
+			ASC->AddGameplayCue(Tag, Params);
+		}
+	};
+
+	if (Vfx) AddOne(Vfx, Vfx->CueTag);
+	if (Sfx) AddOne(Sfx, Sfx->CueTag);
+}
+
+void UMoveBaseGEC::RemoveMoveCue(UAbilitySystemComponent* ASC, const USkillNiagaraSpawnConfig* Vfx, const USkillSoundSpawnConfig* Sfx) const
+{
+	if (!IsValid(ASC)) return;
+
+	if (Vfx && Vfx->CueTag.IsValid()) ASC->RemoveGameplayCue(Vfx->CueTag);
+	if (Sfx && Sfx->CueTag.IsValid()) ASC->RemoveGameplayCue(Sfx->CueTag);
+}
+
