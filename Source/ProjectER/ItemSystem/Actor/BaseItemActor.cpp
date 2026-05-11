@@ -1,8 +1,10 @@
-﻿#include "ItemSystem/Actor/BaseItemActor.h"
+#include "ItemSystem/Actor/BaseItemActor.h"
 #include "ItemSystem/Data/BaseItemData.h"
 #include "ItemSystem/Component/BaseInventoryComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/WidgetComponent.h"
+#include "ItemSystem/UI/ItemNameWidget.h"
 #include "Net/UnrealNetwork.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
@@ -21,6 +23,12 @@ ABaseItemActor::ABaseItemActor()
 	InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
 	InteractionSphere->SetupAttachment(RootComponent);
 	InteractionSphere->SetSphereRadius(150.f);
+
+	NameTagWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("NameTagWidget"));
+	NameTagWidget->SetupAttachment(RootComponent);
+	NameTagWidget->SetRelativeLocation(FVector(0.f, 0.f, 50.f)); // 메시 위쪽 50유닛 지점
+	NameTagWidget->SetWidgetSpace(EWidgetSpace::Screen); // 화면 공간 위젯으로 설정
+	NameTagWidget->SetDrawAtDesiredSize(true);
 
 	ApplyWorldItemCollisionSettings();
 }
@@ -75,6 +83,18 @@ void ABaseItemActor::RefreshVisualFromItemData()
 		if (UStaticMesh* Mesh = ItemData->ItemMesh.LoadSynchronous())
 		{
 			ItemMesh->SetStaticMesh(Mesh);
+
+			// 블루프린트에서 위젯 텍스트를 갱신하도록 이벤트 호출 (추가 연출용)
+			UpdateNameTagUI();
+
+			// [추가] C++에서 직접 위젯 텍스트 설정 (BP 로직 최소화)
+			if (NameTagWidget)
+			{
+				if (UItemNameWidget* NameWidget = Cast<UItemNameWidget>(NameTagWidget->GetUserWidgetObject()))
+				{
+					NameWidget->SetItemName(ItemData->ItemName);
+				}
+			}
 
 			// [중요]
 			// 메시 에셋 자체에 박혀 있는 Collision 설정이 다시 살아날 수 있으므로
