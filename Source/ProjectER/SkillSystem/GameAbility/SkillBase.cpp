@@ -1,7 +1,8 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "SkillBase.h"
+#include "ProjectER.h"
 #include "AbilitySystemComponent.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayTag.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
@@ -57,6 +58,7 @@ void USkillBase::SetSkillTagCount(FGameplayTag Tag, int32 Count)
 
 void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
+	CurrentPhaseIndex = 0;
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
 	{
@@ -77,12 +79,11 @@ void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const 
 
 void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
+	UE_LOG(LogTemp, Warning, TEXT("[DEBUG-Skill] EndAbility called. bWasCancelled: %d, Skill: %s"), bWasCancelled, *GetName());
 	if (bWasCancelled) {
 		OnCancelAbility();
 	}
-	SetSkillTagCount(CastingTag, 0);
-	SetSkillTagCount(ActiveTag, 0);
-	SetSkillTagCount(BackswingTag, 0);
+	ChangeSkillState(ESkillAbilityState::None);
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
@@ -200,8 +201,12 @@ void USkillBase::ExecuteSkill()
 		return;
 	}
 
-	// 1. 자신에게 효과 적용
-	ApplyExcutionEffectToSelf(CachedConfig->GetExecutionEffects());
+	// 1. 현재 페이즈의 자신 효과 적용
+	const TArray<FSkillExecutionPhase>& Phases = CachedConfig->GetExecutionPhases();
+	if (Phases.IsValidIndex(CurrentPhaseIndex))
+	{
+		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects);
+	}
 
 	// 2. 권한 서버에서 처리할 공통 로직 (예: 이동 정지)
 	if (HasAuthority(&CurrentActivationInfo))
@@ -225,40 +230,70 @@ void USkillBase::ExecuteSkill()
 	}
 }
 
-void USkillBase::OnActiveTagEventReceived(FGameplayEventData Payload)
+void USkillBase::OnSkillAnimationEventReceived(FGameplayEventData Payload)
 {
-	// [Fix] 이미 실행 중인 어빌리티 내부에서 중복된 PredictionWindow 생성을 제거합니다.
-	// 이는 예측 키 전달 체계를 단순화하여 동기화 오류를 방지합니다.
+	FGameplayTag EventTag = Payload.EventTag;
 
-	if (!TryExecuteSkill())
+	if (EventTag == CastingTag)
 	{
-		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		if (CachedConfig)
+		{
+			ChangeSkillState(ESkillAbilityState::Casting);
+		}
 	}
-	else{
-		SetSkillTagCount(CastingTag, 0);
-		SetSkillTagCount(ActiveTag, 1);
+	else if (EventTag == ActiveTag)
+	{
+		// [수정] 매 타격(Active) 시점마다 TryExecuteSkill을 호출하여 상태를 철저히 검증합니다.
+		if (!TryExecuteSkill())
+		{
+			// [V7.4 수정] 검증 실패 시 즉시 EndAbility를 부르지 않고 해당 타격만 무시합니다.
+			// 이를 통해 데이터 불일치 등으로 인한 보스 스킬의 '뚝 끊김' 현상을 방지합니다.
+			return;
+		}
+
+		// 상태 변경 (태그 토글용)
+		ChangeSkillState(ESkillAbilityState::Active);
 		
-		// 클라이언트가 전달한 정확한 시전 시작 시간을 저장 (렉 보상 및 VFX 동기화용)
+		// 클라이언트가 전달한 정확한 시전 시작 시간을 저장
 		this->SyncedActivationTime = Payload.EventMagnitude;
 
 		ExecuteSkill();
+		
+		// 실행 완료 후 다음 페이즈로 인덱스 증가
+		CurrentPhaseIndex++;
 	}
-}
-
-void USkillBase::OnCastingTagEventReceived(FGameplayEventData Payload)
-{
-	if (CachedConfig && CachedConfig->Data.bIsUseCasting)
+	else if (EventTag == BackswingTag)
 	{
-		SetSkillTagCount(CastingTag, 1);
+		ChangeSkillState(ESkillAbilityState::Backswing);
 	}
 }
 
-void USkillBase::OnBackswingTagEventReceived(FGameplayEventData Payload)
+void USkillBase::ChangeSkillState(ESkillAbilityState NewState)
 {
-	// 후딜레이 진입 시 사용(Active) 태그는 제거하고 후딜레이 태그를 추가합니다.
-	// 이 시점부터 캐릭터는 이동이 가능해집니다.
+	// [V7.4 최적화] 동일한 상태로 전이할 경우 태그 플래핑(0->1)을 방지하여 AI 안정성을 높입니다.
+	if (CurrentState == NewState && NewState != ESkillAbilityState::None)
+	{
+		return;
+	}
+
+	// 모든 애니메이션 관련 태그 초기화
+	SetSkillTagCount(CastingTag, 0);
 	SetSkillTagCount(ActiveTag, 0);
-	SetSkillTagCount(BackswingTag, 1);
+	SetSkillTagCount(BackswingTag, 0);
+
+	switch (NewState)
+	{
+	case ESkillAbilityState::Casting:   SetSkillTagCount(CastingTag, 1);   break;
+	case ESkillAbilityState::Active:    SetSkillTagCount(ActiveTag, 1);    break;
+	case ESkillAbilityState::Backswing: SetSkillTagCount(BackswingTag, 1); break;
+	default: break;
+	}
+
+	if (CurrentState != NewState)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[DEBUG-Skill] ChangeSkillState: %d -> %d (%s)"), (int32)CurrentState, (int32)NewState, *GetName());
+	}
+	CurrentState = NewState;
 }
 
 void USkillBase::OnMontageInterrupted()
@@ -298,25 +333,25 @@ void USkillBase::PlayAnimMontage()
 	BaseCharacter->StopMove();
 }
 
-void USkillBase::SetWaitEventActiveTag()
+void USkillBase::SetWaitAnimationEvents()
 {
-	UAbilityTask_WaitGameplayEventSyn* WaitEventTask = UAbilityTask_WaitGameplayEventSyn::WaitEventClientToServer(this, ActiveTag);
-	WaitEventTask->OnEventReceived.AddDynamic(this, &USkillBase::OnActiveTagEventReceived);
-	WaitEventTask->ReadyForActivation();
-}
+	// 커스텀 태스크가 계층형 매칭을 지원하지 않으므로, 각 태그에 대해 개별 태스크를 생성합니다.
+	// 대신 콜백 함수는 하나로 통합하여 상태 머신 로직을 유지합니다.
 
-void USkillBase::SetWaitEventCastingTag()
-{
-	UAbilityTask_WaitGameplayEventSyn* WaitEventTask = UAbilityTask_WaitGameplayEventSyn::WaitEventClientToServer(this, CastingTag);
-	WaitEventTask->OnEventReceived.AddDynamic(this, &USkillBase::OnCastingTagEventReceived);
-	WaitEventTask->ReadyForActivation();
-}
+	// 1. Casting
+	UAbilityTask_WaitGameplayEventSyn* WaitCasting = UAbilityTask_WaitGameplayEventSyn::WaitEventClientToServer(this, CastingTag);
+	WaitCasting->OnEventReceived.AddDynamic(this, &USkillBase::OnSkillAnimationEventReceived);
+	WaitCasting->ReadyForActivation();
 
-void USkillBase::SetWaitEventBackswingTag()
-{
-	UAbilityTask_WaitGameplayEventSyn* WaitEventTask = UAbilityTask_WaitGameplayEventSyn::WaitEventClientToServer(this, BackswingTag);
-	WaitEventTask->OnEventReceived.AddDynamic(this, &USkillBase::OnBackswingTagEventReceived);
-	WaitEventTask->ReadyForActivation();
+	// 2. Active
+	UAbilityTask_WaitGameplayEventSyn* WaitActive = UAbilityTask_WaitGameplayEventSyn::WaitEventClientToServer(this, ActiveTag);
+	WaitActive->OnEventReceived.AddDynamic(this, &USkillBase::OnSkillAnimationEventReceived);
+	WaitActive->ReadyForActivation();
+
+	// 3. Backswing
+	UAbilityTask_WaitGameplayEventSyn* WaitBackswing = UAbilityTask_WaitGameplayEventSyn::WaitEventClientToServer(this, BackswingTag);
+	WaitBackswing->OnEventReceived.AddDynamic(this, &USkillBase::OnSkillAnimationEventReceived);
+	WaitBackswing->ReadyForActivation();
 }
 
 void USkillBase::PrepareToActiveSkill()
@@ -329,9 +364,7 @@ void USkillBase::PrepareToActiveSkill()
 		return;
 	}
 
-	SetWaitEventActiveTag();
-	if (CachedConfig->Data.bIsUseCasting) SetWaitEventCastingTag();
-	SetWaitEventBackswingTag();
+	SetWaitAnimationEvents();
 	PlayAnimMontage();
 	//if (IsLocallyControlled() || HasAuthority(&CurrentActivationInfo)) PlayAnimMontage();
 }
@@ -431,18 +464,34 @@ bool USkillBase::TryExecuteSkill()
 		return false;
 	}
 
-	if (CachedConfig->Data.bIsUseCasting && ASC->HasMatchingGameplayTag(CastingTag) == false){
-		return false;
+	const TArray<FSkillExecutionPhase>& Phases = CachedConfig->GetExecutionPhases();
+	
+	// [수정] 해당 페이즈에 캐스팅 태그가 필수인 경우에만 체크합니다.
+	// 페이즈 데이터 자체가 없다면 캐스팅 체크를 건너뜁니다. (타겟 효과만 있는 스킬 대응)
+	if (Phases.IsValidIndex(CurrentPhaseIndex))
+	{
+		if (Phases[CurrentPhaseIndex].bRequireCastingTag && ASC->HasMatchingGameplayTag(CastingTag) == false) {
+			return false;
+		}
 	}
 
 	FGameplayTagContainer RelevantTags;
-	if (!DoesAbilitySatisfyTagRequirements(*ASC, nullptr, nullptr, &RelevantTags)){
-		// 만약 차단된 원인이 오직 ActiveTag 하나뿐이라면 (글로벌 차단 태그 제외), 통과시킵니다.
+	if (!DoesAbilitySatisfyTagRequirements(*ASC, nullptr, nullptr, &RelevantTags)) {
+		// 만약 차단된 원인이 오직 CastingTag나 ActiveTag뿐이라면 (자기 자신에 의한 차단), 통과시킵니다.
 		RelevantTags.RemoveTag(UAbilitySystemGlobals::Get().ActivateFailTagsBlockedTag);
-		if (RelevantTags.Num() == 1 && RelevantTags.HasTag(CastingTag))
-		{
+		
+		bool bOnlySelfBlocked = true;
+		for (const FGameplayTag& Tag : RelevantTags) {
+			if (Tag != CastingTag && Tag != ActiveTag) {
+				bOnlySelfBlocked = false;
+				break;
+			}
+		}
+
+		if (bOnlySelfBlocked) {
 			return true;
 		}
+		
 		return false;
 	}
 
@@ -487,7 +536,7 @@ bool USkillBase::IsValidRelationship(AActor* Instigator, AActor* Target, ETarget
 
 void USkillBase::OnCancelAbility()
 {
-
+	UE_LOG(LogTemp, Warning, TEXT("[DEBUG-Skill] OnCancelAbility: Skill was explicitly cancelled! (%s)"), *GetName());
 }
 
 void USkillBase::OnExecuteSkill_InClient()

@@ -41,9 +41,15 @@ void UMouseTargetSkill::ExecuteSkill()
 	UMouseTargetSkillConfig* Config = Cast<UMouseTargetSkillConfig>(CachedConfig);
 	if (!IsValid(Config)) return;
 
-	const TArray<TSubclassOf<UBaseGameplayEffect>>& EffectDataAssets = Config->GetEffectsToApply();
-	if (EffectDataAssets.Num() <= 0) return;
-	ApplyEffectsTarget(TargetActor, EffectDataAssets);
+	const TArray<FTargetExecutionPhase>& TargetPhases = Config->GetTargetPhases();
+	if (TargetPhases.IsValidIndex(CurrentPhaseIndex))
+	{
+		const TArray<TSubclassOf<UBaseGameplayEffect>>& EffectDataAssets = TargetPhases[CurrentPhaseIndex].TargetEffects;
+		if (EffectDataAssets.Num() > 0)
+		{
+			ApplyEffectsTarget(TargetActor, EffectDataAssets);
+		}
+	}
 }
 
 void UMouseTargetSkill::CompleteFinishSkill()

@@ -37,19 +37,22 @@ FSkillTooltipData USkillDataAsset::GetSkillTooltipData(int32 InLevel) const
 	Result.DetailedDescription = DetailedDescription;
 
 	TArray<FString> EffectDescriptions;
-	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : SkillConfig->GetExecutionEffects())
+	for (const FSkillExecutionPhase& Phase : SkillConfig->GetExecutionPhases())
 	{
-		if (!IsValid(EffectClass))
+		for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Phase.Effects)
 		{
-			continue;
-		}
+			if (!IsValid(EffectClass))
+			{
+				continue;
+			}
 
-		// TODO: Read modifiers from EffectClass and build tooltips here.
-		// const FString EffectDescription = ...;
-		// if (!EffectDescription.IsEmpty())
-		// {
-		// 	EffectDescriptions.Add(EffectDescription);
-		// }
+			// TODO: Read modifiers from EffectClass and build tooltips here.
+			// const FString EffectDescription = ...;
+			// if (!EffectDescription.IsEmpty())
+			// {
+			// 	EffectDescriptions.Add(EffectDescription);
+			// }
+		}
 	}
 
 	Result.SkillEffectDescription = FText::FromString(FString::Join(EffectDescriptions, TEXT("\n")));

@@ -81,7 +81,13 @@ void UMouseClickSkill::RotateToLocation(const FVector& Location)
 
 void UMouseClickSkill::ExecuteSkill()
 {
-	if (IsValid(CachedConfig) == false || CachedConfig->GetExecutionEffects().Num() <= 0) return;
+	if (IsValid(CachedConfig) == false) return;
+	
+	const TArray<FSkillExecutionPhase>& Phases = CachedConfig->GetExecutionPhases();
+	if (!Phases.IsValidIndex(CurrentPhaseIndex)) return;
+
+	const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = Phases[CurrentPhaseIndex].Effects;
+	if (ExecutionEffects.Num() <= 0) return;
 
 	AActor* Avatar = GetAvatarActorFromActorInfo();
 	if (IsValid(Avatar) == false) return;
@@ -89,7 +95,6 @@ void UMouseClickSkill::ExecuteSkill()
 	UAbilitySystemComponent* InstigatorASC = GetAbilitySystemComponentFromActorInfo();
 	if (!IsValid(InstigatorASC)) return;
 
-	const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
 	FGameplayEffectContext* EffectContext = TargetLocationEffectContext.Get();
 	if (EffectContext == nullptr || !EffectContext->HasOrigin())
 	{

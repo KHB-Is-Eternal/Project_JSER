@@ -15,6 +15,15 @@ class USkillDataAsset;
 class UBaseGameplayEffect;
 class UBaseSkillConfig;
 
+UENUM(BlueprintType)
+enum class ESkillAbilityState : uint8
+{
+	None,
+	Casting,
+	Active,
+	Backswing
+};
+
 UCLASS()
 class PROJECTER_API USkillBase : public UGameplayAbility
 {
@@ -42,8 +51,7 @@ protected:
 
 	void SetSkillTagCount(FGameplayTag Tag, int32 Count);
 	void PlayAnimMontage();
-	void SetWaitEventActiveTag();
-	void SetWaitEventCastingTag();
+	void SetWaitAnimationEvents();
 	void PrepareToActiveSkill();
 	
 	/** 자신에게 효과 적용 (ApplyEffectToTargetInternal 호출) */
@@ -58,10 +66,9 @@ public:
 
 protected:
 	UFUNCTION()
-	void OnActiveTagEventReceived(FGameplayEventData Payload);
+	void OnSkillAnimationEventReceived(FGameplayEventData Payload);
 
-	UFUNCTION()
-	void OnCastingTagEventReceived(FGameplayEventData Payload);
+	void ChangeSkillState(ESkillAbilityState NewState);
 
 	UFUNCTION()
 	void OnMontageInterrupted();
@@ -94,12 +101,16 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
 	FGameplayTag BackswingTag;
 
+	UPROPERTY(BlueprintReadOnly, Category = "Skill")
+	ESkillAbilityState CurrentState = ESkillAbilityState::None;
+
+	/** 현재 다단 히트(Active)의 페이즈 인덱스를 추적합니다. */
+	UPROPERTY(BlueprintReadOnly, Category = "Skill")
+	int32 CurrentPhaseIndex = 0;
+
 	UPROPERTY()
 	TObjectPtr<UGameplayEffect> DynamicCostGE;
 
 protected:
-	UFUNCTION()
-	void OnBackswingTagEventReceived(FGameplayEventData Payload);
-
 	void SetWaitEventBackswingTag();
 };

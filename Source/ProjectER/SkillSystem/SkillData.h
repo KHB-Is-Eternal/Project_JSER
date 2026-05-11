@@ -37,9 +37,6 @@ struct FSkillDefaultData {
     /*UPROPERTY(EditDefaultsOnly, Category = "Skill")
     ESkillActivationType SkillActivationType;*/
 
-    UPROPERTY(EditDefaultsOnly, Category = "Skill")
-    bool bIsUseCasting = false;
-
     UPROPERTY(EditDefaultsOnly, Category = "Skill|Animation")
     TObjectPtr<UAnimMontage> AnimMontage;
 
@@ -53,9 +50,26 @@ struct FSkillDefaultData {
     FGameplayTag InputKeyTag;
 };
 
-//class PROJECTER_API SkillData
-//{
-//public:
-//	SkillData();
-//	~SkillData();
-//};
+class UBaseGameplayEffect;
+
+USTRUCT(BlueprintType)
+struct FSkillExecutionPhase {
+    GENERATED_BODY()
+    
+    // 이 페이즈 발동 시 시전자에게 적용될 효과들
+    UPROPERTY(EditDefaultsOnly, Category = "Phase")
+    TArray<TSubclassOf<UBaseGameplayEffect>> Effects;
+
+    // 이 페이즈 실행 시 Casting 태그가 유지되고 있어야 하는지 여부
+    UPROPERTY(EditDefaultsOnly, Category = "Phase")
+    bool bRequireCastingTag = false;
+};
+
+USTRUCT(BlueprintType)
+struct FTargetExecutionPhase {
+    GENERATED_BODY()
+    
+    // 이 페이즈 발동 시 타겟에게 적용될 효과들
+    UPROPERTY(EditDefaultsOnly, Category = "Phase")
+    TArray<TSubclassOf<UBaseGameplayEffect>> TargetEffects;
+};

@@ -46,10 +46,10 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Config", meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<USkillBase> AbilityClass;
 
-	FORCEINLINE const TArray<TSubclassOf<UBaseGameplayEffect>>& GetExecutionEffects() const { return ExecutionEffects; }
+	FORCEINLINE const TArray<FSkillExecutionPhase>& GetExecutionPhases() const { return ExecutionPhases; }
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Config")
-	TArray<TSubclassOf<UBaseGameplayEffect>> ExecutionEffects;
+	TArray<FSkillExecutionPhase> ExecutionPhases;
 
 public:
 	UGameplayEffect* CreateCostGameplayEffect(UObject* Outer);
@@ -67,7 +67,7 @@ public:
 	UMouseTargetSkillConfig();
 	FORCEINLINE float GetRange() const { return Range; }
 	FORCEINLINE ETargetRelationship GetApplyTo() const { return ApplyTo; }
-	FORCEINLINE const TArray<TSubclassOf<UBaseGameplayEffect>>& GetEffectsToApply() const { return EffectsToApply; }
+	FORCEINLINE const TArray<FTargetExecutionPhase>& GetTargetPhases() const { return TargetPhases; }
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Config", meta = (AllowPrivateAccess = "true"))
 	float Range;
@@ -77,7 +77,7 @@ protected:
 	ETargetRelationship ApplyTo = ETargetRelationship::Enemy;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Config")
-	TArray<TSubclassOf<UBaseGameplayEffect>> EffectsToApply;
+	TArray<FTargetExecutionPhase> TargetPhases;
 };
 
 UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
