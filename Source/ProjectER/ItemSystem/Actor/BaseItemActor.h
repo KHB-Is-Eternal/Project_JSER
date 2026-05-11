@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
@@ -9,6 +9,7 @@ class USphereComponent;
 class UBaseItemData;
 class UStaticMeshComponent;
 class UPrimitiveComponent;
+class UWidgetComponent;
 
 UCLASS()
 class PROJECTER_API ABaseItemActor : public AActor, public II_ItemInteractable
@@ -32,6 +33,9 @@ protected:
 	// ItemData가 복제되면 클라이언트에서도 메시 갱신
 	UFUNCTION()
 	void OnRep_ItemData();
+	
+	UFUNCTION(BlueprintImplementableEvent, Category = "Item|UI")
+	void UpdateNameTagUI();
 
 	void RefreshVisualFromItemData();
 
@@ -54,6 +58,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item|Mesh")
 	TObjectPtr<UStaticMeshComponent> ItemMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item|UI")
+	TObjectPtr<UWidgetComponent> NameTagWidget;
 
 private:
 	// [추가] 드랍 직후 즉시 다시 먹는 버그 방지용
