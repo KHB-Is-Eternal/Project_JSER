@@ -84,7 +84,7 @@ struct FPathfindingMetrics
 		{
 			return;
 		}
-
+/*
 		if (RequestCount > 0)
 		{
 			const double AvgMs = (TotalTimeSeconds / RequestCount) * 1000.0;
@@ -95,7 +95,7 @@ struct FPathfindingMetrics
 				TEXT("[Pathfinding Metrics] Requests/s: %d | Total: %.3fms | Avg: %.3fms | Worst: %.3fms"),
 				RequestCount, TotalMs, AvgMs, WorstMs);
 		}
-
+*/
 		RequestCount = 0;
 		TotalTimeSeconds = 0.0;
 		WorstTimeSeconds = 0.0;

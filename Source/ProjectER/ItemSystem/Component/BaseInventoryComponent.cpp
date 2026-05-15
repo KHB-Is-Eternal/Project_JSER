@@ -556,11 +556,11 @@ void UBaseInventoryComponent::HandleFoodHealTick()
 	const int32 RemainingTicksAfterThisTick = FMath::Max(CurrentFoodHealEffect.RemainingTicks - 1, 0);
 	const float RemainingDurationSeconds = static_cast<float>(RemainingTicksAfterThisTick) * CurrentFoodHealEffect.TickInterval;
 
-	UE_LOG(LogTemp, Log, TEXT("[FoodHealTick] Item=%s, TotalHeal=%.2f, TickHeal=%.2f, RemainingDuration=%.2f sec"),
+	/*UE_LOG(LogTemp, Log, TEXT("[FoodHealTick] Item=%s, TotalHeal=%.2f, TickHeal=%.2f, RemainingDuration=%.2f sec"),
 		*CurrentFoodHealEffect.ItemName,
 		CurrentFoodHealEffect.TotalHealAmount,
 		TickHealAmount,
-		RemainingDurationSeconds);
+		RemainingDurationSeconds);*/
 
 	const bool bHealed = ApplyHealAmount(TickHealAmount);
 	if (!bHealed)
@@ -957,11 +957,11 @@ void UBaseInventoryComponent::HandleDrinkManaTick()
 	const int32 RemainingTicksAfterThisTick = FMath::Max(CurrentDrinkManaEffect.RemainingTicks - 1, 0);
 	const float RemainingDurationSeconds = static_cast<float>(RemainingTicksAfterThisTick) * CurrentDrinkManaEffect.TickInterval;
 
-	UE_LOG(LogTemp, Log, TEXT("[DrinkManaTick] Item=%s, TotalMana=%.2f, TickMana=%.2f, RemainingDuration=%.2f sec"),
+	/*UE_LOG(LogTemp, Log, TEXT("[DrinkManaTick] Item=%s, TotalMana=%.2f, TickMana=%.2f, RemainingDuration=%.2f sec"),
 		*CurrentDrinkManaEffect.ItemName,
 		CurrentDrinkManaEffect.TotalManaAmount,
 		TickManaAmount,
-		RemainingDurationSeconds);
+		RemainingDurationSeconds);*/
 
 	const bool bRestored = ApplyDrinkManaAmount(TickManaAmount);
 	if (!bRestored)

@@ -87,7 +87,7 @@ void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const 
 
 void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[DEBUG-Skill] EndAbility called. bWasCancelled: %d, Skill: %s"), bWasCancelled, *GetName());
+
 	if (bWasCancelled) {
 		OnCancelAbility();
 	}
@@ -312,10 +312,7 @@ void USkillBase::ChangeSkillState(ESkillAbilityState NewState)
 	default: break;
 	}
 
-	if (CurrentState != NewState)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[DEBUG-Skill] ChangeSkillState: %d -> %d (%s)"), (int32)CurrentState, (int32)NewState, *GetName());
-	}
+
 	CurrentState = NewState;
 }
 
@@ -559,7 +556,7 @@ bool USkillBase::IsValidRelationship(AActor* Instigator, AActor* Target, ETarget
 
 void USkillBase::OnCancelAbility()
 {
-	UE_LOG(LogTemp, Warning, TEXT("[DEBUG-Skill] OnCancelAbility: Skill was explicitly cancelled! (%s)"), *GetName());
+
 }
 
 void USkillBase::OnExecuteSkill_InClient()

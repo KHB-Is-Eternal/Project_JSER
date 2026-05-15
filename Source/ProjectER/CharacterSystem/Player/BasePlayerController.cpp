@@ -1450,7 +1450,8 @@ void ABasePlayerController::Server_EndLoot_Implementation()
 			CancelTags.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Event.Interact.OpenBox")));
 			ASC->CancelAbilities(&CancelTags);
 
-			UE_LOG(LogTemp, Log, TEXT("Server_EndLoot: Cancelled OpenBox ability"));
+			// UE_LOG(LogTemp, Log, TEXT("Server_EndLoot: Cancelled OpenBox ability"));
+
 		}
 	}
 }
