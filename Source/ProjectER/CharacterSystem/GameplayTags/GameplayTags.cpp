@@ -1,4 +1,4 @@
-﻿#include "CharacterSystem/GameplayTags/GameplayTags.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 namespace ProjectER
 {
@@ -109,6 +109,7 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Return, "Event.Action.Return", "Event for Return");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Phase1, "Event.Action.Phase1", "Event for Phase1");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Phase2, "Event.Action.Phase2", "Event for Phase2");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(SkillFinished, "Event.Action.SkillFinished", "Event for Skill Finished");
 		}
 
 		namespace State

@@ -28,6 +28,7 @@
 #include "CharacterSystem/Player/BasePlayerController.h" // [김현수 추가분]
 #include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
 #include "GameFramework/GameStateBase.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 #include "GameFramework/GameState.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 
@@ -90,6 +91,15 @@ void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGame
 	if (bWasCancelled) {
 		OnCancelAbility();
 	}
+
+	if (ActorInfo && ActorInfo->OwnerActor.IsValid())
+	{
+		if (ABaseMonster* Monster = Cast<ABaseMonster>(ActorInfo->OwnerActor.Get()))
+		{
+			Monster->SendStateTreeEvent(ProjectER::Event::Action::SkillFinished);
+		}
+	}
+
 	ChangeSkillState(ESkillAbilityState::None);
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
@@ -103,21 +113,9 @@ void USkillBase::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const
 	DynamicCostGE = IsValid(CachedConfig) ? CachedConfig->CreateCostGameplayEffect(this) : nullptr;
 }
 
-bool USkillBase::ActivateSkillByTag(UAbilitySystemComponent* ASC, FGameplayTag SkillTag, const FGameplayEventData& Payload)
+bool USkillBase::ShouldAbilityRespondToEvent(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayEventData* Payload) const
 {
-	if (!IsValid(ASC) || !SkillTag.IsValid()) return false;
-
-	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
-	{
-		// 다이나믹 태그 또는 소스 태그에서 일치하는 스킬 검색
-		if (Spec.DynamicAbilityTags.HasTagExact(SkillTag) || Spec.GetDynamicSpecSourceTags().HasTagExact(SkillTag))
-		{
-			// 트리거 조건 없이 핸들을 지목하여 직접 시전 시도
-			return ASC->TriggerAbilityFromGameplayEvent(Spec.Handle, ASC->AbilityActorInfo.Get(), SkillTag, &Payload, *ASC);
-		}
-	}
-
-	return false;
+	return Super::ShouldAbilityRespondToEvent(ActorInfo, Payload);
 }
 
 

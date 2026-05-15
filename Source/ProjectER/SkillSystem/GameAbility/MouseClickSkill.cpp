@@ -24,36 +24,47 @@ void UMouseClickSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle, 
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	// 1. 이벤트 데이터 기반 사전 검증 및 즉시 실행 (Fast Track)
+	// 1. 이벤트 데이터 기반 즉시 실행 (Fast Track)
+	// ShouldAbilityRespondToEvent에서 이미 사거리 검증이 완료되었으므로 데이터 유무만 확인합니다.
 	if (TriggerEventData && TriggerEventData->TargetData.IsValid(0))
 	{
 		const FVector Location = TriggerEventData->TargetData.Get(0)->GetEndPoint();
 		
-		if (IsInRange(Location))
-		{
-			// 타겟팅 이펙트 컨텍스트 생성 및 위치 저장
-			FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
-			ContextHandle.AddOrigin(Location);
-			ContextHandle.AddSourceObject(this);
-			TargetLocationEffectContext = ContextHandle;
+		// 타겟팅 이펙트 컨텍스트 생성 및 위치 저장
+		FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
+		ContextHandle.AddOrigin(Location);
+		ContextHandle.AddSourceObject(this);
+		TargetLocationEffectContext = ContextHandle;
 
-			// 즉시 실행으로 분기 (TargetActor 생성 대기 건너뜀)
-			RotateToLocation(Location);
-			PrepareToActiveSkill();
-			return;
-		}
-		else
-		{
-			// 범위 밖일 경우: 커밋 전에 즉시 스킬 종료 (자원 소모 없음)
-			//NotifyActivationFailed(FailedOutOfRangeTag, TEXT("Target Location is out of range."));
-			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-			return;
-		}
+		// 즉시 실행으로 분기
+		RotateToLocation(Location);
+		PrepareToActiveSkill();
+		return;
 	}
 
 	// 2. 이벤트 데이터가 없는 일반 케이스 (마우스 입력 대기)
 	SetWaitExternalTargetEventTask();
 	SetWaitTargetTask();
+}
+
+bool UMouseClickSkill::ShouldAbilityRespondToEvent(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayEventData* Payload) const
+{
+	if (!Super::ShouldAbilityRespondToEvent(ActorInfo, Payload)) return false;
+
+	// 페이로드가 없거나 위치 정보가 없으면 기본 허용
+	if (!Payload || !Payload->TargetData.IsValid(0)) return true;
+
+	const FVector Location = Payload->TargetData.Get(0)->GetEndPoint();
+	if (!Location.IsZero())
+	{
+		if (!IsInRange(Location))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[MouseClickSkill] Rejected: Location out of range."));
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool UMouseClickSkill::TryGetMouseLocationInRange(FVector& OutLocation) const
@@ -85,7 +96,7 @@ bool UMouseClickSkill::IsInRange(const FVector& Location) const
 	const float DistanceSquared = FVector::DistSquaredXY(Location, InstigatorLocation);
 	const float RangeWithBuffer = Config->GetRange();
 
-	return DistanceSquared <= FMath::Square(RangeWithBuffer);
+	return DistanceSquared <= FMath::Square(RangeWithBuffer + 50.0f); // 50.0f 버퍼 적용
 }
 
 void UMouseClickSkill::RotateToLocation(const FVector& Location)

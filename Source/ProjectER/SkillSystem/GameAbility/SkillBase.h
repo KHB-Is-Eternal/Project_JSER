@@ -35,8 +35,8 @@ public:
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
 	
-	/** 태그를 통해 스펙을 직접 찾아 데이터와 함께 시전하는 헬퍼 함수 */
-	static bool ActivateSkillByTag(UAbilitySystemComponent* ASC, FGameplayTag SkillTag, const FGameplayEventData& Payload);
+	/** 엔진 시전 로직 진입 전 데이터 유효성(사거리 등)을 검증합니다. */
+	virtual bool ShouldAbilityRespondToEvent(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayEventData* Payload) const override;
 
 protected:
 	virtual void ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const;

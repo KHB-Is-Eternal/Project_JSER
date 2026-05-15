@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -19,6 +19,7 @@ public:
 	UMouseClickSkill();
 
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual bool ShouldAbilityRespondToEvent(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayEventData* Payload) const override;
 	bool TryGetMouseLocationInRange(FVector& OutLocation) const;
 	bool ConsumePendingExternalTargetLocation(FVector& OutLocation);
 	bool IsTargetLocationInRange(const FVector& InLocation) const;

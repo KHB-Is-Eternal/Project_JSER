@@ -59,10 +59,20 @@ EStateTreeRunStatus FSTT_ActivateTargetSkill::EnterState(FStateTreeExecutionCont
 	Payload.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromActor(Monster->GetTargetPlayer());
 	Payload.EventTag = InstanceData.AbilityTag;
 
-	// [Fast Track] 데이터를 직접 지목하여 즉시 시전 시도
-	if (USkillBase::ActivateSkillByTag(ASC, InstanceData.AbilityTag, Payload) == false)
+	// [Fast Track] 엔진 함수인 TriggerAbilityFromGameplayEvent를 직접 사용하여 확정적 시전 시도
+	FGameplayAbilitySpecHandle SpecHandle;
+	for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateTargetSkill::EnterState : ActivateSkillByTag Fail (Tag: %s)"), *InstanceData.AbilityTag.ToString());
+		if (Spec.DynamicAbilityTags.HasTagExact(InstanceData.AbilityTag) || Spec.GetDynamicSpecSourceTags().HasTagExact(InstanceData.AbilityTag))
+		{
+			SpecHandle = Spec.Handle;
+			break;
+		}
+	}
+
+	if (ASC->TriggerAbilityFromGameplayEvent(SpecHandle, ASC->AbilityActorInfo.Get(), InstanceData.AbilityTag, &Payload, *ASC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateTargetSkill::EnterState : TriggerAbilityFromGameplayEvent Fail (Tag: %s)"), *InstanceData.AbilityTag.ToString());
 		return EStateTreeRunStatus::Failed;
 	}
 

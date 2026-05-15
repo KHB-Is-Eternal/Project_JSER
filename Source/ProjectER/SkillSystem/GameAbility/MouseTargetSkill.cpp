@@ -28,7 +28,8 @@ void UMouseTargetSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	// 1. 이벤트 데이터 기반 사전 검증 및 즉시 실행 (Fast Track)
+	// 1. 이벤트 데이터 기반 즉시 실행 (Fast Track)
+	// ShouldAbilityRespondToEvent에서 이미 사거리/타겟 검증이 완료되었으므로 타겟 유무만 확인합니다.
 	if (TriggerEventData)
 	{
 		AActor* TargetActor = nullptr;
@@ -51,26 +52,54 @@ void UMouseTargetSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 		if (IsValid(TargetActor))
 		{
-			if (IsTargetActorInRange(TargetActor))
-			{
-				AffectedActor = TargetActor;
-				RotateToTarget(TargetActor);
-				PrepareToActiveSkill();
-				return;
-			}
-			else
-			{
-				// 범위 밖이거나 피아식별 불가 시: 커밋 전 즉시 스킬 종료 (자원 소모 없음)
-				//NotifyActivationFailed(FailedOutOfRangeTag, TEXT("Target is out of range or invalid relationship."));
-				EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-				return;
-			}
+			AffectedActor = TargetActor;
+			RotateToTarget(TargetActor);
+			PrepareToActiveSkill();
+			return;
 		}
 	}
 
 	// 2. 이벤트 데이터가 없는 일반 케이스 (마우스 입력 대기)
 	SetWaitExternalTargetEventTask();
 	SetWaitTargetTask();
+}
+
+bool UMouseTargetSkill::ShouldAbilityRespondToEvent(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayEventData* Payload) const
+{
+	if (!Super::ShouldAbilityRespondToEvent(ActorInfo, Payload)) return false;
+
+	// 페이로드가 없으면 기본 허용
+	if (!Payload) return true;
+
+	AActor* TargetActor = nullptr;
+
+	// TargetData에서 추출
+	if (Payload->TargetData.IsValid(0))
+	{
+		TArray<AActor*> TargetActors = UAbilitySystemBlueprintLibrary::GetActorsFromTargetData(Payload->TargetData, 0);
+		if (TargetActors.Num() > 0)
+		{
+			TargetActor = TargetActors[0];
+		}
+	}
+
+	// Target 필드에서 추출
+	if (!IsValid(TargetActor) && IsValid(Payload->Target))
+	{
+		TargetActor = const_cast<AActor*>(Payload->Target.Get());
+	}
+
+	// 타겟이 있는 경우 개별 검증 수행
+	if (IsValid(TargetActor))
+	{
+		if (!IsTargetActorInRange(TargetActor))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[MouseTargetSkill] Rejected: Target out of range or invalid relationship."));
+			return false;
+		}
+	}
+
+	return true;
 }
 
 void UMouseTargetSkill::ExecuteSkill()
@@ -237,7 +266,7 @@ AActor* UMouseTargetSkill::GetTargetUnderCursorInRange()
 	return nullptr;
 }
 
-bool UMouseTargetSkill::IsTargetActorInRange(AActor* InTargetActor)
+bool UMouseTargetSkill::IsTargetActorInRange(AActor* InTargetActor) const
 {
 	UMouseTargetSkillConfig* Config = Cast<UMouseTargetSkillConfig>(CachedConfig);
 	if (!Config) return false;
@@ -257,7 +286,7 @@ AActor* UMouseTargetSkill::GetTargetUnderCursor()
 	return HitResult.GetActor();
 }
 
-bool UMouseTargetSkill::IsInRange(AActor* Actor)
+bool UMouseTargetSkill::IsInRange(AActor* Actor) const
 {
 	if (!IsValid(Actor)) return false;
 
@@ -274,7 +303,7 @@ bool UMouseTargetSkill::IsInRange(AActor* Actor)
 
 	float RangeWithBuffer = Config->GetRange();
 
-	if (DistanceSquared <= FMath::Square(RangeWithBuffer))
+	if (DistanceSquared <= FMath::Square(RangeWithBuffer + 50.0f)) // SkillBase와 동일하게 50.0f 버퍼 적용
 	{
 		return true;
 	}

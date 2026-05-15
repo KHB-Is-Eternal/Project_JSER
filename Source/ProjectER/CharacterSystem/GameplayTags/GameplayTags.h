@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "NativeGameplayTags.h"
@@ -110,6 +110,7 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Return);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase1);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase2);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(SkillFinished);
 		}
 
 		namespace State
