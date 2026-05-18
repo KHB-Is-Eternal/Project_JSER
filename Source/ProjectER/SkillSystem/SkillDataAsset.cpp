@@ -17,7 +17,7 @@ FGameplayAbilitySpec USkillDataAsset::MakeSpec()
 
 	Spec.SourceObject = this;
 
-	Spec.GetDynamicSpecSourceTags().AddTag(SkillConfig->Data.InputKeyTag);
+	Spec.GetDynamicSpecSourceTags().AddTag(SkillConfig->GetInputKeyTag());
 
     return Spec;
 }
@@ -31,7 +31,6 @@ FSkillTooltipData USkillDataAsset::GetSkillTooltipData(int32 InLevel) const
 		return Result;
 	}
 
-	const FSkillDefaultData& DefaultData = SkillConfig->Data;
 	Result.SkillName = SkillName;
 	Result.ShortDescription = ShortDescription;
 	Result.DetailedDescription = DetailedDescription;
@@ -69,7 +68,7 @@ FSkillTooltipData USkillDataAsset::GetSkillTooltipData(int32 InLevel) const
 		}
 	}
 
-	Result.CooldownSeconds = DefaultData.BaseCoolTime.GetValueAtLevel(InLevel);
+	Result.CooldownSeconds = SkillConfig->GetBaseCooldownDuration(InLevel);
 	Result.CostDescription = SkillConfig->BuildCostDescription(InLevel);
 	Result.SKillIcon = SKillIcon;
 

@@ -142,7 +142,7 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 
 		if (SpecHandle.IsValid())
 		{
-			float Duration = CachedConfig->Data.BaseCoolTime.GetValueAtLevel(GetAbilityLevel());
+			float Duration = CachedConfig->GetBaseCooldownDuration(GetAbilityLevel());
 			
 			// Skill Haste (스킬 가속) 반영
 			float Haste = ASC->GetNumericAttribute(UBaseAttributeSet::GetCooldownReductionAttribute());
@@ -151,7 +151,10 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 			Duration = FMath::Max(Duration, 0.1f); // 최소 쿨타임 보장
 
 			SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Skill.Data.CoolTime")), Duration);
-			SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(CachedConfig->Data.CoolTimeTags);
+			if (const FGameplayTagContainer* CooldownTags = CachedConfig->GetCooldownTags())
+			{
+				SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(*CooldownTags);
+			}
 
 			ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, SpecHandle);
 		}
@@ -161,9 +164,9 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 const FGameplayTagContainer* USkillBase::GetCooldownTags() const
 {
 	// 데이터 에셋에 쿨타임 태그가 설정되어 있다면 그것을 우선적으로 반환합니다.
-	if (CachedConfig && CachedConfig->Data.CoolTimeTags.IsValid())
+	if (CachedConfig && CachedConfig->GetCooldownTags() && CachedConfig->GetCooldownTags()->IsValid())
 	{
-		return &CachedConfig->Data.CoolTimeTags;
+		return CachedConfig->GetCooldownTags();
 	}
 
 	return nullptr;
@@ -339,8 +342,9 @@ void USkillBase::OnMontageCompleted()
 
 void USkillBase::PlayAnimMontage()
 {
-	if (!IsValid(CachedConfig) || !IsValid(CachedConfig->Data.AnimMontage)) return;
-	UAbilityTask_PlayMontageAndWait* PlayTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(this, TEXT("SkillAnimation"), CachedConfig->Data.AnimMontage);
+	UAnimMontage* SkillMontage = CachedConfig->GetAnimMontage();
+	if (!IsValid(CachedConfig) || !IsValid(SkillMontage)) return;
+	UAbilityTask_PlayMontageAndWait* PlayTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(this, TEXT("SkillAnimation"), SkillMontage);
 	if (!IsValid(PlayTask)) return;
 
 	PlayTask->OnInterrupted.AddDynamic(this, &USkillBase::OnMontageInterrupted);
@@ -526,7 +530,7 @@ void USkillBase::CompleteFinishSkill()
 
 FGameplayTag USkillBase::GetInputTag()
 {
-	return CachedConfig ? CachedConfig->Data.InputKeyTag : FGameplayTag();
+	return CachedConfig ? CachedConfig->GetInputKeyTag() : FGameplayTag();
 }
 
 bool USkillBase::IsValidRelationship(AActor* Instigator, AActor* Target, ETargetRelationship Relationship)
