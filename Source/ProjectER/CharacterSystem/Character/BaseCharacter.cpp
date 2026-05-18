@@ -117,6 +117,8 @@ ABaseCharacter::ABaseCharacter()
 
 	/* === 기본 컴포넌트 === */
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (마우스 타겟팅 감지)
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
