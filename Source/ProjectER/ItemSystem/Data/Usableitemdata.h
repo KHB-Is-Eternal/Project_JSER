@@ -12,7 +12,8 @@ enum class EItemEffectType : uint8
 	None            UMETA(DisplayName = "None"),
 	IncreaseStat    UMETA(DisplayName = "Increase Stat"),
 	HealOverTime    UMETA(DisplayName = "Heal Over Time"),
-	ManaOverTime    UMETA(DisplayName = "Mana Over Time")
+	ManaOverTime    UMETA(DisplayName = "Mana Over Time"),
+	PlaceWard       UMETA(DisplayName = "Place Ward")
 };
 
 UENUM(BlueprintType)
@@ -64,6 +65,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Effect", meta = (EditCondition = "EffectType == EItemEffectType::IncreaseStat", EditConditionHides))
 	TSoftClassPtr<UGameplayEffect> ItemStatEffectClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Effect", meta = (EditCondition = "EffectType == EItemEffectType::PlaceWard", EditConditionHides))
+	TSubclassOf<class ABaseWardActor> WardActorClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings")
 	bool bConsumable;

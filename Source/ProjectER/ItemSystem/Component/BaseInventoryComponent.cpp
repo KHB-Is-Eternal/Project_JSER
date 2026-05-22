@@ -13,6 +13,8 @@
 #include "TimerManager.h"
 #include "ItemSystem/Actor/BaseItemActor.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
+#include "ItemSystem/Actor/BaseWardActor.h"
+#include "LineOfSight/Management/VisionPlayerStateComp.h"
 
 UBaseInventoryComponent::UBaseInventoryComponent()
 {
@@ -342,6 +344,8 @@ bool UBaseInventoryComponent::ApplyItemEffect(UUsableItemData* ItemData)
 		return EnqueueFoodHeal(ItemData);
 	case EItemEffectType::ManaOverTime:
 		return EnqueueDrinkMana(ItemData);
+	case EItemEffectType::PlaceWard:
+		return ApplyPlaceWard(ASC, ItemData);
 	default:
 		UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] ApplyItemEffect: Unknown effect type"));
 		return false;
@@ -402,6 +406,66 @@ bool UBaseInventoryComponent::ApplyStatIncrease(UAbilitySystemComponent* ASC, UU
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[BaseInventoryComponent] Applied item GE. StatTag: %s, Value: %.2f"), *StatTag.ToString(), ItemData->EffectValue);
+	return true;
+}
+
+bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsableItemData* ItemData)
+{
+	if (ASC == nullptr || ItemData == nullptr)
+	{
+		return false;
+	}
+
+	if (!ItemData->WardActorClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyPlaceWard: WardActorClass is not set for item %s"), *ItemData->ItemName.ToString());
+		return false;
+	}
+
+	AActor* const OwnerActor = GetOwner();
+	if (OwnerActor == nullptr)
+	{
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return false;
+	}
+
+	// Calculate spawn location (front of character)
+	// TODO: 추후 플레이어 컨트롤러에서 마우스 커서 위치를 받아오는 방식으로 수정 예정 (BasePlayerController 수정 필요)
+	FVector SpawnLocation = OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 150.f);
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = OwnerActor;
+	SpawnParams.Instigator = Cast<APawn>(OwnerActor);
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	AActor* SpawnedActor = World->SpawnActor<AActor>(ItemData->WardActorClass, SpawnLocation, FRotator::ZeroRotator, SpawnParams);
+	if (!SpawnedActor)
+	{
+		return false;
+	}
+
+	// Initialize team for ward
+	if (ABaseWardActor* WardActor = Cast<ABaseWardActor>(SpawnedActor))
+	{
+		uint8 TeamChannel = 0;
+		if (APawn* OwnerPawn = Cast<APawn>(OwnerActor))
+		{
+			if (APlayerState* PS = OwnerPawn->GetPlayerState())
+			{
+				if (UVisionPlayerStateComp* VisionComp = PS->GetComponentByClass<UVisionPlayerStateComp>())
+				{
+					TeamChannel = static_cast<uint8>(VisionComp->GetTeamChannel());
+				}
+			}
+		}
+		WardActor->InitializeWardTeam(TeamChannel);
+	}
+	
 	return true;
 }
 

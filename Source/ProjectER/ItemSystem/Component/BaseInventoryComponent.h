@@ -1,4 +1,4 @@
-﻿// File: 5th_6th-Team6-CH6-Project/Source/ProjectER/ItemSystem/Component/BaseInventoryComponent.h
+// File: 5th_6th-Team6-CH6-Project/Source/ProjectER/ItemSystem/Component/BaseInventoryComponent.h
 
 #pragma once
 
@@ -80,6 +80,7 @@ private:
 
 	bool ApplyItemEffect(UUsableItemData* ItemData);
 	bool ApplyStatIncrease(UAbilitySystemComponent* ASC, UUsableItemData* ItemData);
+	bool ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsableItemData* ItemData);
 	bool EnqueueFoodHeal(UUsableItemData* ItemData);
 	bool ApplyHealAmount(float HealAmount);
 	void StartNextFoodHealEffect();
