@@ -105,3 +105,4 @@ ProjectER.code-workspace
 # AI MCP Config Files
 mcp-config.json
 repomix.config.json
+.continue/*
