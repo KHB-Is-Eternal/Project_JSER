@@ -101,3 +101,8 @@ ProjectER.code-workspace
 
 # IDE Search Ignore File
 .ignore
+
+# AI MCP Config Files
+mcp-config.json
+repomix.config.json
+.continue/*

@@ -17,7 +17,7 @@ FGameplayAbilitySpec USkillDataAsset::MakeSpec()
 
 	Spec.SourceObject = this;
 
-	Spec.GetDynamicSpecSourceTags().AddTag(SkillConfig->Data.InputKeyTag);
+	Spec.GetDynamicSpecSourceTags().AddTag(SkillConfig->GetInputKeyTag());
 
     return Spec;
 }
@@ -31,25 +31,27 @@ FSkillTooltipData USkillDataAsset::GetSkillTooltipData(int32 InLevel) const
 		return Result;
 	}
 
-	const FSkillDefaultData& DefaultData = SkillConfig->Data;
 	Result.SkillName = SkillName;
 	Result.ShortDescription = ShortDescription;
 	Result.DetailedDescription = DetailedDescription;
 
 	TArray<FString> EffectDescriptions;
-	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : SkillConfig->GetExecutionEffects())
+	for (const FSkillExecutionPhase& Phase : SkillConfig->GetExecutionPhases())
 	{
-		if (!IsValid(EffectClass))
+		for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Phase.Effects)
 		{
-			continue;
-		}
+			if (!IsValid(EffectClass))
+			{
+				continue;
+			}
 
-		// TODO: Read modifiers from EffectClass and build tooltips here.
-		// const FString EffectDescription = ...;
-		// if (!EffectDescription.IsEmpty())
-		// {
-		// 	EffectDescriptions.Add(EffectDescription);
-		// }
+			// TODO: Read modifiers from EffectClass and build tooltips here.
+			// const FString EffectDescription = ...;
+			// if (!EffectDescription.IsEmpty())
+			// {
+			// 	EffectDescriptions.Add(EffectDescription);
+			// }
+		}
 	}
 
 	Result.SkillEffectDescription = FText::FromString(FString::Join(EffectDescriptions, TEXT("\n")));
@@ -66,7 +68,7 @@ FSkillTooltipData USkillDataAsset::GetSkillTooltipData(int32 InLevel) const
 		}
 	}
 
-	Result.CooldownSeconds = DefaultData.BaseCoolTime.GetValueAtLevel(InLevel);
+	Result.CooldownSeconds = SkillConfig->GetBaseCooldownDuration(InLevel);
 	Result.CostDescription = SkillConfig->BuildCostDescription(InLevel);
 	Result.SKillIcon = SKillIcon;
 

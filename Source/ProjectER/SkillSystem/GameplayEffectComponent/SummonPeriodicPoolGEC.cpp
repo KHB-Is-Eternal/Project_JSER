@@ -51,10 +51,10 @@ FTransform USummonPeriodicPoolGEC::CalculateOriginTransform(const FGameplayEffec
     return OriginTransform;
 }
 
-void USummonPeriodicPoolGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
+void USummonPeriodicPoolGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters, const FGameplayEffectSpec& ParentSpec) const
 {
     // 부모의 초기화 로직 (Effect Specs 설정 등) 실행
-    Super::InitializeRangeActor(RangeActor, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
+    Super::InitializeRangeActor(RangeActor, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters, ParentSpec);
     
     if (IsValid(RangeActor))
     {

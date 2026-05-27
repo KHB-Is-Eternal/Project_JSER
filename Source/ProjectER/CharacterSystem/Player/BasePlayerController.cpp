@@ -1450,7 +1450,8 @@ void ABasePlayerController::Server_EndLoot_Implementation()
 			CancelTags.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Event.Interact.OpenBox")));
 			ASC->CancelAbilities(&CancelTags);
 
-			UE_LOG(LogTemp, Log, TEXT("Server_EndLoot: Cancelled OpenBox ability"));
+			// UE_LOG(LogTemp, Log, TEXT("Server_EndLoot: Cancelled OpenBox ability"));
+
 		}
 	}
 }
@@ -2123,23 +2124,9 @@ void ABasePlayerController::RequestDropInventoryItemFromUI(int32 SlotIndex, cons
 		return;
 	}
 
-	const FVector PawnLocation = PlayerPawn->GetActorLocation();
-	constexpr float DropForwardDistance = 120.f;
-	constexpr float FixedDropZOffset = 30.f;
-
-	FHitResult HitResult;
-	FVector DropLocation = PawnLocation + PlayerPawn->GetActorForwardVector() * DropForwardDistance;
-	DropLocation.Z = PawnLocation.Z + FixedDropZOffset;
-
-	// XY만 참고하고, Z는 고정
-	if (GetHitResultAtScreenPosition(ScreenSpacePosition, MouseTraceChannel, true, HitResult) && HitResult.bBlockingHit)
-	{
-		DropLocation.X = HitResult.Location.X;
-		DropLocation.Y = HitResult.Location.Y;
-		DropLocation.Z = PawnLocation.Z + FixedDropZOffset;
-	}
-
-	Server_DropInventoryItem(SlotIndex, DropLocation);
+	// 기존 마우스 위치 기반 계산 무시
+	// 서버에서 자체적으로 분산 드랍 위치를 계산하므로 현재 Pawn 위치를 임시로 넘김
+	Server_DropInventoryItem(SlotIndex, PlayerPawn->GetActorLocation());
 }
 
 void ABasePlayerController::Server_DropInventoryItem_Implementation(int32 SlotIndex, FVector_NetQuantize DropLocation)
@@ -2162,18 +2149,86 @@ void ABasePlayerController::Server_DropInventoryItem_Implementation(int32 SlotIn
 	}
 
 	const FVector PawnLocation = PlayerPawn->GetActorLocation();
-	constexpr float MaxDropDistance = 250.f;
-	constexpr float FixedDropZOffset = 60.f;
+	constexpr float FixedDropZOffset = 20.f;
+	constexpr float MinimumSpacing = 120.f; // 아이템 간 최소 간격
+	constexpr float SearchRadius = 500.f;  // 주변 아이템 탐색 반경
 
-	FVector SafeDropLocation = FVector(DropLocation);
-
-	// XY 거리만 제한
-	FVector ToDrop = SafeDropLocation - PawnLocation;
-	ToDrop.Z = 0.f;
-
-	if (ToDrop.SizeSquared() > FMath::Square(MaxDropDistance))
+	// 1. 월드에 떨어져 있는 주변 기존 아이템 위치 수집
+	TArray<FVector> ExistingItemLocations;
+	TArray<AActor*> NearbyItems;
+	
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABaseItemActor::StaticClass(), NearbyItems);
+	for (AActor* Actor : NearbyItems)
 	{
-		SafeDropLocation = PawnLocation + ToDrop.GetSafeNormal() * 120.f;
+		if (IsValid(Actor) && FVector::Dist2D(PawnLocation, Actor->GetActorLocation()) < SearchRadius)
+		{
+			ExistingItemLocations.Add(Actor->GetActorLocation());
+		}
+	}
+
+	// 2. 나선형(Spiral) 알고리즘으로 빈 공간 찾기
+	FVector SafeDropLocation = PawnLocation;
+	float CurrentRadius = 0.f;
+	float AngleOffset = 0.f;
+	int32 MaxAttempts = 100;
+	
+	for (int32 i = 0; i < MaxAttempts; ++i)
+	{
+		FVector TestLocation = PawnLocation;
+		TestLocation.X += FMath::Cos(AngleOffset) * CurrentRadius;
+		TestLocation.Y += FMath::Sin(AngleOffset) * CurrentRadius;
+
+		bool bIsTooClose = false;
+		for (const FVector& Loc : ExistingItemLocations)
+		{
+			if (FVector::Dist2D(TestLocation, Loc) < MinimumSpacing)
+			{
+				bIsTooClose = true;
+				break;
+			}
+		}
+
+		if (!bIsTooClose)
+		{
+			// 벽/장애물 체크: 플레이어 위치에서 TestLocation 사이에 장애물이 있는지 확인
+			FHitResult HitResult;
+			FCollisionQueryParams QueryParams;
+			QueryParams.AddIgnoredActor(PlayerPawn);
+
+			// 캐릭터의 눈높이나 약간 위에서부터 트레이스하여 바닥에 걸리지 않도록 함
+			FVector TraceStart = PawnLocation + FVector(0.f, 0.f, 50.f);
+			FVector TraceEnd = TestLocation + FVector(0.f, 0.f, 50.f);
+
+			bool bHitObstacle = GetWorld()->LineTraceSingleByChannel(
+				HitResult,
+				TraceStart,
+				TraceEnd,
+				ECC_WorldStatic,
+				QueryParams
+			);
+
+			if (!bHitObstacle)
+			{
+				SafeDropLocation = TestLocation;
+				break; // 빈 공간 및 장애물 없는 위치 찾음!
+			}
+		}
+
+		if (CurrentRadius == 0.f)
+		{
+			CurrentRadius = MinimumSpacing;
+		}
+		else
+		{
+			float AngleStep = MinimumSpacing / CurrentRadius;
+			AngleOffset += AngleStep;
+			
+			if (AngleOffset >= 2.0f * PI)
+			{
+				AngleOffset -= 2.0f * PI;
+				CurrentRadius += MinimumSpacing;
+			}
+		}
 	}
 
 	// Z는 항상 고정

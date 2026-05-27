@@ -63,6 +63,8 @@ ABaseMonster::ABaseMonster()
 	HitBoxComp->SetupAttachment(RootComponent);
 	HitBoxComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	HitBoxComp->SetCollisionProfileName(TEXT("Spectator"));
+	HitBoxComp->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (마우스 타겟팅 감지)
+	HitBoxComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
 
 	// ASC 복제, 데이터 Minimal로 되는지 확인 필요
 	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
@@ -339,6 +341,8 @@ void ABaseMonster::InitCollision()
 	GetCapsuleComponent()->SetCollisionProfileName("MonsterObjectCollision");
 	HitBoxComp->SetBoxExtent(MonsterData->HitBoxExtent);
 	HitBoxComp->SetCollisionProfileName("MonsterTraceCollision");
+	HitBoxComp->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (마우스 타겟팅 감지)
+	HitBoxComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
 }
 
 void ABaseMonster::InitStateTree()

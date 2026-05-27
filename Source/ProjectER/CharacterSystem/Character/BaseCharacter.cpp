@@ -84,7 +84,7 @@ struct FPathfindingMetrics
 		{
 			return;
 		}
-
+/*
 		if (RequestCount > 0)
 		{
 			const double AvgMs = (TotalTimeSeconds / RequestCount) * 1000.0;
@@ -95,7 +95,7 @@ struct FPathfindingMetrics
 				TEXT("[Pathfinding Metrics] Requests/s: %d | Total: %.3fms | Avg: %.3fms | Worst: %.3fms"),
 				RequestCount, TotalMs, AvgMs, WorstMs);
 		}
-
+*/
 		RequestCount = 0;
 		TotalTimeSeconds = 0.0;
 		WorstTimeSeconds = 0.0;
@@ -117,6 +117,8 @@ ABaseCharacter::ABaseCharacter()
 
 	/* === 기본 컴포넌트 === */
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (마우스 타겟팅 감지)
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -1430,6 +1432,12 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 			
 			if (bWasActivated)
 			{
+				FGameplayEventData Payload;
+				Payload.EventTag = ProjectER::Event::Action::Attack;
+				Payload.Instigator = this;
+				Payload.Target = this;
+				UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(this, ProjectER::Event::Action::Attack, Payload);
+
 #if WITH_EDITOR
 				/*if (bShowDebug)
 				{

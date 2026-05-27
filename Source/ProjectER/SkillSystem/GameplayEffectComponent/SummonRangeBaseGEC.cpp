@@ -186,7 +186,7 @@ void USummonRangeBaseGEC::InitializeActorData(ABaseRangeOverlapEffectActor* Acto
 		Actor->SetClientActivationTime(ErContext->ClientActivationTime);
 	}
 
-	InitializeRangeActor(Actor, ContextHandle.GetInstigator(), ContextHandle, VfxParams, SfxParams);
+	InitializeRangeActor(Actor, ContextHandle.GetInstigator(), ContextHandle, VfxParams, SfxParams, GESpec);
 	Actor->SetLifeSpan(this->LifeSpan);
 }
 
@@ -250,7 +250,7 @@ FGameplayCueParameters USummonRangeBaseGEC::BuildNiagaraCueParameters(const FGam
 	return CueParams;
 }
 
-void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
+void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters, const FGameplayEffectSpec& ParentSpec) const
 {
 	if (!IsValid(RangeActor) || !IsValid(Instigator))
 	{
@@ -272,11 +272,13 @@ void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* Ran
 			continue;
 		}
 
-		InitGEHandles.Add(CauserASC->MakeOutgoingSpec(TSubclassOf<UGameplayEffect>(EffectClass), Ability->GetAbilityLevel(), Context));
+		FGameplayEffectSpecHandle Spec = CauserASC->MakeOutgoingSpec(TSubclassOf<UGameplayEffect>(EffectClass), Ability->GetAbilityLevel(), Context);
+		UBaseGEC::InheritHitTags(ParentSpec, Spec);
+		InitGEHandles.Add(Spec);
 	}
 
 	// 강화 효과(SkillProc) 확인 및 전이
-	UBaseGEC::GetSkillProcEffects(CauserASC, Ability, RangeActor, Context, InitGEHandles);
+	UBaseGEC::GetSkillProcEffects(CauserASC, Ability, RangeActor, Context, InitGEHandles, true, &ParentSpec);
 
 	RangeActor->InitializeEffectData(InitGEHandles, Instigator, this->CollisionRadius, this->bHitOncePerTarget, nullptr, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
 	RangeActor->SetLifeSpan(this->LifeSpan);

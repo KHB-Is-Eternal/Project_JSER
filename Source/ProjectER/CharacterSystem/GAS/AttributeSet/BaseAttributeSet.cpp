@@ -173,6 +173,9 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 				}
 			}
 
+			// [이벤트 발송] 적중(Hit) 이벤트 판별 및 공격자/피격자 양측 발송
+			DispatchHitEvent(Data, LocalDamage);
+
 			// [전민성] 어시스트, 사망 판정 추가
 			if (!GetWorld() || GetWorld()->GetNetMode() == NM_Client)
 				return;
@@ -374,6 +377,54 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 				}
 			}
 		}
+	}
+}
+
+void UBaseAttributeSet::DispatchHitEvent(const FGameplayEffectModCallbackData& Data, const float LocalDamage) const
+{
+	const FGameplayEffectContextHandle& Context = Data.EffectSpec.GetEffectContext();
+	AActor* AttackerActor = Context.GetEffectCauser();
+	if (AttackerActor == nullptr)
+	{
+		AttackerActor = Context.GetOriginalInstigator();
+	}
+	AActor* TargetActor = Data.Target.GetAvatarActor();
+
+	FGameplayTag HitEventTag;
+
+	// 1. 소스 태그와 동적 부여 태그를 합산하여 Hit Event 태그 탐색
+	FGameplayTagContainer CombinedTags = Data.EffectSpec.CapturedSourceTags.GetSpecTags();
+	CombinedTags.AppendTags(Data.EffectSpec.DynamicGrantedTags);
+
+	static const FGameplayTag HitBaseTag = FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit"));
+	for (const FGameplayTag& Tag : CombinedTags)
+	{
+		if (Tag.MatchesTag(HitBaseTag))
+		{
+			HitEventTag = Tag;
+			break;
+		}
+	}
+
+	if (!HitEventTag.IsValid())
+	{
+		return;
+	}
+
+	FGameplayEventData Payload;
+	Payload.EventTag = HitEventTag;
+	Payload.Instigator = AttackerActor;
+	Payload.Target = TargetActor;
+	Payload.EventMagnitude = LocalDamage;
+	Payload.ContextHandle = Context;
+
+	if (IsValid(AttackerActor))
+	{
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(AttackerActor, HitEventTag, Payload);
+	}
+	if (IsValid(TargetActor))
+	{
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, HitEventTag, Payload);
 	}
 }
 
