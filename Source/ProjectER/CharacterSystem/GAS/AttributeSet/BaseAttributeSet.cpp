@@ -421,12 +421,10 @@ void UBaseAttributeSet::DispatchHitEvent(const FGameplayEffectModCallbackData& D
 	if (IsValid(AttackerActor))
 	{
 		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(AttackerActor, HitEventTag, Payload);
-		UE_LOG(LogTemp, Log, TEXT("[UBaseAttributeSet::DispatchHitEvent] Sent Hit event to Attacker %s (Tag: %s, Magnitude: %f)"), *AttackerActor->GetName(), *HitEventTag.ToString(), LocalDamage);
 	}
 	if (IsValid(TargetActor))
 	{
 		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, HitEventTag, Payload);
-		UE_LOG(LogTemp, Log, TEXT("[UBaseAttributeSet::DispatchHitEvent] Sent Hit event to Target %s (Tag: %s, Magnitude: %f)"), *TargetActor->GetName(), *HitEventTag.ToString(), LocalDamage);
 	}
 }
 

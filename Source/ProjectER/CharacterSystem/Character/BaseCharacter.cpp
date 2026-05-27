@@ -1437,8 +1437,6 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 				Payload.Instigator = this;
 				Payload.Target = this;
 				UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(this, ProjectER::Event::Action::Attack, Payload);
-				UE_LOG(LogTemp, Log, TEXT("[ABaseCharacter::CheckCombatTarget] Sent AutoAttack event to %s (Tag: %s)"), *GetName(), *FGameplayTag(ProjectER::Event::Action::Attack).ToString());
-				
 
 #if WITH_EDITOR
 				/*if (bShowDebug)

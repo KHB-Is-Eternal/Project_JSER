@@ -62,11 +62,6 @@ void USkillBase::SetSkillTagCount(FGameplayTag Tag, int32 Count)
 
 void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
-	if (TriggerEventData)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[FastTrack] ActivateAbility Triggered by Event: %s"), *TriggerEventData->EventTag.ToString());
-	}
-
 	CurrentPhaseIndex = 0;
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
@@ -622,7 +617,6 @@ void USkillBase::SendExecuteEvent() const
 		Payload.Target = Avatar;
 
 		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
-		UE_LOG(LogTemp, Log, TEXT("[USkillBase::SendExecuteEvent] Sent Skill Execute event to Avatar %s (Tag: %s, InputTag: %s)"), *Avatar->GetName(), *EventTag.ToString(), *InputTag.ToString());
 	}
 }
 
@@ -666,7 +660,6 @@ void USkillBase::SendEndEvent() const
 		Payload.Target = Avatar;
 
 		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
-		UE_LOG(LogTemp, Log, TEXT("[USkillBase::SendEndEvent] Sent Skill End event to Avatar %s (Tag: %s, InputTag: %s)"), *Avatar->GetName(), *EventTag.ToString(), *InputTag.ToString());
 	}
 }
 
