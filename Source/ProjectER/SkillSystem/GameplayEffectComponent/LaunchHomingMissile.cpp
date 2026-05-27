@@ -241,10 +241,12 @@ void ULaunchHomingMissile::InitializeActorData(ABaseMissileActor* Actor, const F
 		{
 			if (IsValid(EffectClass))
 			{
-				EffectSpecs.Add(CauserASC->MakeOutgoingSpec(EffectClass, GESpec.GetLevel(), ContextHandle));
+				FGameplayEffectSpecHandle Spec = CauserASC->MakeOutgoingSpec(EffectClass, GESpec.GetLevel(), ContextHandle);
+				UBaseGEC::InheritHitTags(GESpec, Spec);
+				EffectSpecs.Add(Spec);
 			}
 		}
-		UBaseGEC::GetSkillProcEffects(CauserASC, Ability, Actor, ContextHandle, EffectSpecs);
+		UBaseGEC::GetSkillProcEffects(CauserASC, Ability, Actor, ContextHandle, EffectSpecs, true, &GESpec);
 	}
 
 	// 명중 효과 파라미터 구성

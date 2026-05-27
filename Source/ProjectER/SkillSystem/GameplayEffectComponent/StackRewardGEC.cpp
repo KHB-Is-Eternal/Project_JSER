@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "StackRewardGEC.h"
+#include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
@@ -57,6 +58,7 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 				{
 					FGameplayEffectContextHandle EffectContext = Effect->Spec.GetContext();
 					FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(RewardInfo.AppliedEffect, Effect->Spec.GetLevel(), EffectContext);
+					UBaseGEC::InheritHitTags(Effect->Spec, SpecHandle);
 					
 					if (SpecHandle.IsValid())
 					{

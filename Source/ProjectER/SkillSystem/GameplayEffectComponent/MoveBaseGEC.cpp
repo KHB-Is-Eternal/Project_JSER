@@ -36,7 +36,7 @@ void UMoveBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& Acti
 		return;
 	}
 
-	// 루트 모션 ?�니메이???�생 중이�??�동 무시 (?�버 ?�이??체크)
+	// 루트 모션 ?�니메이???�생 중이�??�동 무시 (?�버 ?�이??체크)
 	if (this->bIgnoreIfRootMotion && IsRootMotionActive(Instigator))
 	{
 		return;
@@ -46,23 +46,23 @@ void UMoveBaseGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& Acti
 	const float Duration = CalculateMoveDuration(GESpec, Instigator, Direction);
 
 
-	// --- ?�펙???�행 ---
+	// --- ?�펙???�행 ---
 	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Instigator))
 	{
-		// ?�작 ?�과 (Burst)
+		// ?�작 ?�과 (Burst)
 		ExecuteMoveCue(ASC, GESpec, StartVfxConfig, StartSfxConfig, PredictionKey);
 		
-		// 지???�과 (Added)
+		// 지???�과 (Added)
 		if (ShouldUseLoopEffects())
 		{
 			AddMoveCue(ASC, GESpec, LoopVfxConfig, LoopSfxConfig);
 		}
 	}
 
-	// ?�생 ?�래?��? ?�제 ?�동 방식 구현 (?�버 ?�행 ???�달받�? ?�측 ???�용)
+	// ?�생 ?�래?��? ?�제 ?�동 방식 구현 (?�버 ?�행 ???�달받�? ?�측 ???�용)
 	Execute(Instigator, Direction, GESpec, PredictionKey);
 
-	// ?�니메이???�도 ?�기??
+	// ?�니메이???�도 ?�기??
 	if (ACharacter* Character = Cast<ACharacter>(Instigator))
 	{
 		AdjustActiveMontageRate(Character, Duration);
@@ -82,7 +82,7 @@ void UMoveBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGame
 		return;
 	}
 
-	// 루트 모션 ?�니메이???�생 중이�??�동 무시 (?�라?�언???�이???�측 체크)
+	// 루트 모션 ?�니메이???�생 중이�??�동 무시 (?�라?�언???�이???�측 체크)
 	if (this->bIgnoreIfRootMotion && IsRootMotionActive(Instigator))
 	{
 		return;
@@ -92,20 +92,20 @@ void UMoveBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, const FGame
 	const float Duration = CalculateMoveDuration(GESpec, Instigator, Direction);
 
 
-	// --- ?�펙???�행 (?�측) ---
-	// ?�작 ?�과 (Burst)
+	// --- ?�펙???�행 (?�측) ---
+	// ?�작 ?�과 (Burst)
 	ExecuteMoveCue(ASC, GESpec, StartVfxConfig, StartSfxConfig, ASC->ScopedPredictionKey);
 	
-	// 지???�과 (Added)
+	// 지???�과 (Added)
 	if (ShouldUseLoopEffects())
 	{
 		AddMoveCue(ASC, GESpec, LoopVfxConfig, LoopSfxConfig);
 	}
 
-	// ?�생 ?�래?��? ?�제 ?�동 방식 구현 (?�라?�언???�측 ?�행 ??ScopedPredictionKey ?�용)
+	// ?�생 ?�래?��? ?�제 ?�동 방식 구현 (?�라?�언???�측 ?�행 ??ScopedPredictionKey ?�용)
 	Execute(Instigator, Direction, GESpec, ASC->ScopedPredictionKey);
 
-	// ?�니메이???�도 ?�기??
+	// ?�니메이???�도 ?�기??
 	if (ACharacter* Character = Cast<ACharacter>(Instigator))
 	{
 		AdjustActiveMontageRate(Character, Duration);
@@ -194,7 +194,7 @@ FVector UMoveBaseGEC::CalculateTargetLocation(const FGameplayEffectSpec& GESpec,
 	const FVector Direction = CalculateMoveDirection(GESpec, Instigator);
 	const FVector DefaultTarget = StartLoc + Direction * this->MoveDistance;
 
-	// 컨텍?�트 ?�치 ?�선 ?�용 ?�션??켜져 ?�고, TowardContext/TowardTarget 방식????체크
+	// 컨텍?�트 ?�치 ?�선 ?�용 ?�션??켜져 ?�고, TowardContext/TowardTarget 방식????체크
 	if (this->bPreferContextLocation &&
 		(this->DirectionSource == EMoveDirectionSource::TowardContext || 
 		 this->DirectionSource == EMoveDirectionSource::TowardTarget))
@@ -227,7 +227,7 @@ FVector UMoveBaseGEC::CalculateTargetLocation(const FGameplayEffectSpec& GESpec,
 
 		if (bHasValidContextLoc)
 		{
-			// 컨텍?�트 ?�치가 ?�거�?MoveDistance) ?�내?�면 ?�당 ?�치 ?�용
+			// 컨텍?�트 ?�치가 ?�거�?MoveDistance) ?�내?�면 ?�당 ?�치 ?�용
 			const float DistSq = FVector::DistSquared(StartLoc, ContextLoc);
 			if (DistSq <= FMath::Square(this->MoveDistance))
 			{
@@ -260,8 +260,9 @@ void UMoveBaseGEC::HandleWallHit(AActor* Instigator, const FHitResult& Hit, cons
 		{
 			continue;
 		}
-
+		
 		FGameplayEffectSpecHandle SpecHandle = InstigatorASC->MakeOutgoingSpec(EffectClass, GESpec.GetLevel(), ContextHandle);
+		UBaseGEC::InheritHitTags(GESpec, SpecHandle);
 		if (SpecHandle.IsValid())
 		{
 			InstigatorASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), InstigatorASC);
@@ -318,7 +319,7 @@ void UMoveBaseGEC::AdjustActiveMontageRate(ACharacter* Character, float MoveDura
 		return;
 	}
 
-	// ?�재 ?�생 ?�치�?고려?�여 ?��? ?�간 계산
+	// ?�재 ?�생 ?�치�?고려?�여 ?��? ?�간 계산
 	const float CurrentPosition = MontageInstance->GetPosition();
 	const float MontageLength = MontageInstance->Montage->GetPlayLength();
 	const float RemainingLength = MontageLength - CurrentPosition;
@@ -328,7 +329,7 @@ void UMoveBaseGEC::AdjustActiveMontageRate(ACharacter* Character, float MoveDura
 		return;
 	}
 
-	// ?�제 ?�동 ?�간??맞춰 ?�생 ?�도 계산 (?��? 길이 / ?�동 ?�간)
+	// ?�제 ?�동 ?�간??맞춰 ?�생 ?�도 계산 (?��? 길이 / ?�동 ?�간)
 	const float NewRate = FMath::Clamp(RemainingLength / MoveDuration, this->MinPlayRate, this->MaxPlayRate);
 	MontageInstance->SetPlayRate(NewRate);
 }
@@ -361,7 +362,7 @@ void UMoveBaseGEC::ExecuteMoveCue(UAbilitySystemComponent* ASC, const FGameplayE
 			Params.Location = ASC->GetAvatarActor()->GetActorLocation();
 			Params.SourceObject = const_cast<UObject*>(Config);
 
-			// [Fix] ?�측 ?��? ?�효?��? ?��? 경우(?�버?�서 ?�실??경우) 중복 ?�행??막기 ?�한 가??
+			// [Fix] ?�측 ?��? ?�효?��? ?��? 경우(?�버?�서 ?�실??경우) 중복 ?�행??막기 ?�한 가??
 			if (PK.IsValidKey() || ASC->GetOwnerActor()->HasAuthority())
 			{
 				ASC->ExecuteGameplayCue(Tag, Params);

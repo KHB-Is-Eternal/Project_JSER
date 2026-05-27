@@ -92,6 +92,12 @@ namespace ProjectER
 		{
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Duration);  // SetByCaller 예비용
 		}
+
+		namespace Source
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Skill);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attack);
+		}
 	}
 	
 	
@@ -99,7 +105,20 @@ namespace ProjectER
 	{
 		namespace Action
 		{
-			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Hit);
+			namespace Hit
+			{
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(BasicAttack);
+				
+				namespace Skill
+				{
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Q);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(W);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(E);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(R);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Passive);
+				}
+			}
+
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attack);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(BeginSearch);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(EndSearch);
@@ -110,7 +129,27 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Return);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase1);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase2);
-			UE_DECLARE_GAMEPLAY_TAG_EXTERN(SkillFinished);
+
+			namespace Skill
+			{
+				namespace Execute
+				{
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Q);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(W);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(E);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(R);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Passive);
+				}
+
+				namespace End
+				{
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Q);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(W);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(E);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(R);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Passive);
+				}
+			}
 		}
 
 		namespace State
@@ -158,6 +197,8 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(OpenBox);    // 상자 오픈
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Teleport);   // 텔레포트 상호작용
 		}
+
+
 	}
 
 	namespace GameplayCue
@@ -265,6 +306,7 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(FlyStart);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(FlyAttack);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(FlyEnd);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Skill);
 		}
 
 		namespace Buff

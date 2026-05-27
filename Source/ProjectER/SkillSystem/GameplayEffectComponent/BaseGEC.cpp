@@ -14,7 +14,23 @@ void UBaseGEC::OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& ActiveG
 }
 
 
-void UBaseGEC::GetSkillProcEffects(UAbilitySystemComponent* InstigatorASC, UGameplayAbility* InstigatorSkill, AActor* InEffectCauser, const FGameplayEffectContextHandle& CurrentContext, TArray<FGameplayEffectSpecHandle>& OutSpecs, bool bDefaultConsume)
+void UBaseGEC::InheritHitTags(const FGameplayEffectSpec& ParentSpec, FGameplayEffectSpecHandle& ChildSpecHandle)
+{
+	if (!ChildSpecHandle.IsValid()) return;
+
+	static const FGameplayTag HitBaseTag = FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit"));
+
+	// 부모 Spec의 DynamicGrantedTags에서 Event.Action.Hit 하위 태그들을 찾아 자식 Spec에 주입
+	for (const FGameplayTag& Tag : ParentSpec.DynamicGrantedTags)
+	{
+		if (Tag.MatchesTag(HitBaseTag))
+		{
+			ChildSpecHandle.Data.Get()->DynamicGrantedTags.AddTag(Tag);
+		}
+	}
+}
+
+void UBaseGEC::GetSkillProcEffects(UAbilitySystemComponent* InstigatorASC, UGameplayAbility* InstigatorSkill, AActor* InEffectCauser, const FGameplayEffectContextHandle& CurrentContext, TArray<FGameplayEffectSpecHandle>& OutSpecs, bool bDefaultConsume, const FGameplayEffectSpec* ParentSpec)
 {
 	if (!IsValid(InstigatorASC) || !IsValid(InstigatorSkill))
 	{
@@ -47,6 +63,10 @@ void UBaseGEC::GetSkillProcEffects(UAbilitySystemComponent* InstigatorASC, UGame
 					if (IsValid(EffectClass))
 					{
 						FGameplayEffectSpecHandle NewSpecHandle = InstigatorASC->MakeOutgoingSpec(EffectClass, InstigatorSkill->GetAbilityLevel(), CurrentContext);
+						if (ParentSpec)
+						{
+							InheritHitTags(*ParentSpec, NewSpecHandle);
+						}
 						OutSpecs.Add(NewSpecHandle);
 					}
 				}
