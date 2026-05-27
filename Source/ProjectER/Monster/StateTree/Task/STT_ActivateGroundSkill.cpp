@@ -67,7 +67,7 @@ EStateTreeRunStatus FSTT_ActivateGroundSkill::EnterState(FStateTreeExecutionCont
 	FGameplayAbilitySpecHandle SpecHandle;
 	for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
 	{
-		if (Spec.DynamicAbilityTags.HasTagExact(InstanceData.AbilityTag) || Spec.GetDynamicSpecSourceTags().HasTagExact(InstanceData.AbilityTag))
+		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InstanceData.AbilityTag))
 		{
 			SpecHandle = Spec.Handle;
 			break;
