@@ -2190,8 +2190,28 @@ void ABasePlayerController::Server_DropInventoryItem_Implementation(int32 SlotIn
 
 		if (!bIsTooClose)
 		{
-			SafeDropLocation = TestLocation;
-			break; // 빈 공간 찾음!
+			// 벽/장애물 체크: 플레이어 위치에서 TestLocation 사이에 장애물이 있는지 확인
+			FHitResult HitResult;
+			FCollisionQueryParams QueryParams;
+			QueryParams.AddIgnoredActor(PlayerPawn);
+
+			// 캐릭터의 눈높이나 약간 위에서부터 트레이스하여 바닥에 걸리지 않도록 함
+			FVector TraceStart = PawnLocation + FVector(0.f, 0.f, 50.f);
+			FVector TraceEnd = TestLocation + FVector(0.f, 0.f, 50.f);
+
+			bool bHitObstacle = GetWorld()->LineTraceSingleByChannel(
+				HitResult,
+				TraceStart,
+				TraceEnd,
+				ECC_WorldStatic,
+				QueryParams
+			);
+
+			if (!bHitObstacle)
+			{
+				SafeDropLocation = TestLocation;
+				break; // 빈 공간 및 장애물 없는 위치 찾음!
+			}
 		}
 
 		if (CurrentRadius == 0.f)

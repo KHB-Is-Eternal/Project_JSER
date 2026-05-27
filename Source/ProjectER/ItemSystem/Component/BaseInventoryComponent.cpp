@@ -727,7 +727,7 @@ bool UBaseInventoryComponent::DropItemFromSlot(int32 SlotIndex, const FVector& S
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = OwnerActor;
 	SpawnParams.Instigator = DropperPawn;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn; // AlwaysSpawn이 벽에 끼더라도 스폰시키는옵션임AdjustIfPossibleButAlwaysSpawn 으로 바꾸면 벽에 끼이는 현상 없어질듯
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
 	ABaseItemActor* SpawnedItem = World->SpawnActor<ABaseItemActor>(
 		SpawnClass,
