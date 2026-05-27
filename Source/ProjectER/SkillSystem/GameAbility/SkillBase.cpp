@@ -436,7 +436,7 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		ContextHandle.AddInstigator(Avatar, Avatar);
 	}
 
-	if (ContextHandle.GetInstigator() == nullptr)
+	if (ContextHandle.GetInstigator() == nullptr || ContextHandle.GetInstigator()->IsA<AER_PlayerState>())
 	{
 		ContextHandle.AddInstigator(Avatar, Avatar);
 	}
