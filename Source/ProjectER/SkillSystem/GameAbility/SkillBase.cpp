@@ -23,6 +23,7 @@
 #include "GameModeBase/State/ER_PlayerState.h"
 
 #include "AbilitySystemLog.h" // GAS 관련 로그 확인용
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 #include "AbilitySystemGlobals.h" // [김현수 추가분] 태그 체크용
 
 #include "CharacterSystem/Player/BasePlayerController.h" // [김현수 추가분]
@@ -87,16 +88,31 @@ void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const 
 
 void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
-
 	if (bWasCancelled) {
 		OnCancelAbility();
 	}
+
+	// 1. 스킬 종료(End) Gameplay Event 발송
+	SendEndEvent();
 
 	if (ActorInfo && ActorInfo->OwnerActor.IsValid())
 	{
 		if (ABaseMonster* Monster = Cast<ABaseMonster>(ActorInfo->OwnerActor.Get()))
 		{
-			Monster->SendStateTreeEvent(ProjectER::Event::Action::SkillFinished);
+			// 몬스터의 StateTree에도 스킬 입력에 매핑되는 세부 종료 태그를 전송합니다.
+			const FGameplayTag InputTag = GetInputTag();
+			FGameplayTag EndEventTag;
+
+			if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q)) EndEventTag = ProjectER::Event::Action::Skill::End::Q;
+			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W)) EndEventTag = ProjectER::Event::Action::Skill::End::W;
+			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E)) EndEventTag = ProjectER::Event::Action::Skill::End::E;
+			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R)) EndEventTag = ProjectER::Event::Action::Skill::End::R;
+			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive)) EndEventTag = ProjectER::Event::Action::Skill::End::Passive;
+
+			if (EndEventTag.IsValid())
+			{
+				Monster->SendStateTreeEvent(EndEventTag);
+			}
 		}
 	}
 
@@ -228,11 +244,7 @@ void USkillBase::ExecuteSkill()
 	}
 
 	// 1. 현재 페이즈의 자신 효과 적용
-	const TArray<FSkillExecutionPhase>& Phases = CachedConfig->GetExecutionPhases();
-	if (Phases.IsValidIndex(CurrentPhaseIndex))
-	{
-		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects);
-	}
+	ApplyExecutionEffects();
 
 	// 2. 권한 서버에서 처리할 공통 로직 (예: 이동 정지)
 	if (HasAuthority(&CurrentActivationInfo))
@@ -243,7 +255,10 @@ void USkillBase::ExecuteSkill()
 		}
 	}
 
-	// 3. 디버그 로그 및 클라이언트 전용 이벤트
+	// 3. 스킬 발동(Execute) 이벤트 발송
+	SendExecuteEvent();
+
+	// 4. 디버그 로그 및 클라이언트 전용 이벤트
 	if (ASC->IsNetMode(NM_Client))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[SkillBase] ExecuteSkill on Client. HasValidPredictionKey: %s"), 
@@ -253,6 +268,17 @@ void USkillBase::ExecuteSkill()
 	if (IsLocallyControlled())
 	{
 		OnExecuteSkill_InClient();
+	}
+}
+
+void USkillBase::ApplyExecutionEffects()
+{
+	const TArray<FSkillExecutionPhase>& Phases = CachedConfig->GetExecutionPhases();
+	if (Phases.IsValidIndex(CurrentPhaseIndex))
+	{
+		UAbilitySystemComponent* const ASC = GetASC();
+		//FGameplayEffectContextHandle ContextHandle = IsValid(ASC) ? ASC->MakeEffectContext() : FGameplayEffectContextHandle();
+		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects);
 	}
 }
 
@@ -409,12 +435,21 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 	}
 
 	// 1. 컨텍스트 초기화 및 커스텀 데이터(시각 동기화) 주입
-	if (!ContextHandle.IsValid())
+	if (ContextHandle.IsValid() == false)
 	{
 		ContextHandle = SourceASC->MakeEffectContext();
+		ContextHandle.AddInstigator(Avatar, Avatar);
 	}
-	ContextHandle.AddInstigator(Avatar, Avatar);
-	ContextHandle.SetAbility(this);
+
+	if (ContextHandle.GetInstigator() == nullptr)
+	{
+		ContextHandle.AddInstigator(Avatar, Avatar);
+	}
+
+	if (ContextHandle.GetAbility() == nullptr)
+	{
+		ContextHandle.SetAbility(this);
+	}
 
 	if(ContextHandle.HasOrigin() == false){
 		ContextHandle.AddOrigin(Avatar->GetActorLocation());
@@ -446,6 +481,20 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		
 		if (SpecHandle.IsValid())
 		{
+			// 스킬 입력키에 맞는 피격 태그 추가
+			FGameplayTag SkillHitTag;
+			const FGameplayTag InputTag = GetInputTag();
+			if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::Q;
+			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::W;
+			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::E;
+			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::R;
+			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::Passive;
+
+			if (SkillHitTag.IsValid())
+			{
+				SpecHandle.Data.Get()->DynamicGrantedTags.AddTag(SkillHitTag);
+			}
+
 			// [GEC Hook] Phase 1, 2: 좌표 보정 및 클라이언트 예측 비주얼 생성
 			if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
 			{
@@ -528,9 +577,97 @@ void USkillBase::CompleteFinishSkill()
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 }
 
-FGameplayTag USkillBase::GetInputTag()
+FGameplayTag USkillBase::GetInputTag() const
 {
 	return CachedConfig ? CachedConfig->GetInputKeyTag() : FGameplayTag();
+}
+
+void USkillBase::SendExecuteEvent() const
+{
+	AActor* const Avatar = GetAvatar();
+	if (!IsValid(Avatar))
+	{
+		return;
+	}
+
+	const FGameplayTag InputTag = GetInputTag();
+	FGameplayTag EventTag;
+
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q))
+	{
+		EventTag = ProjectER::Event::Action::Skill::Execute::Q;
+	}
+	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W))
+	{
+		EventTag = ProjectER::Event::Action::Skill::Execute::W;
+	}
+	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E))
+	{
+		EventTag = ProjectER::Event::Action::Skill::Execute::E;
+	}
+	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R))
+	{
+		EventTag = ProjectER::Event::Action::Skill::Execute::R;
+	}
+	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive))
+	{
+		EventTag = ProjectER::Event::Action::Skill::Execute::Passive;
+	}
+
+	if (EventTag.IsValid())
+	{
+		FGameplayEventData Payload;
+		Payload.EventTag = InputTag;
+		Payload.Instigator = Avatar;
+		Payload.Target = Avatar;
+
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
+		UE_LOG(LogTemp, Log, TEXT("[USkillBase::SendExecuteEvent] Sent Skill Execute event to Avatar %s (Tag: %s, InputTag: %s)"), *Avatar->GetName(), *EventTag.ToString(), *InputTag.ToString());
+	}
+}
+
+void USkillBase::SendEndEvent() const
+{
+	AActor* const Avatar = GetAvatar();
+	if (!IsValid(Avatar))
+	{
+		return;
+	}
+
+	const FGameplayTag InputTag = GetInputTag();
+	FGameplayTag EventTag;
+
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q))
+	{
+		EventTag = ProjectER::Event::Action::Skill::End::Q;
+	}
+	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W))
+	{
+		EventTag = ProjectER::Event::Action::Skill::End::W;
+	}
+	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E))
+	{
+		EventTag = ProjectER::Event::Action::Skill::End::E;
+	}
+	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R))
+	{
+		EventTag = ProjectER::Event::Action::Skill::End::R;
+	}
+	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive))
+	{
+		EventTag = ProjectER::Event::Action::Skill::End::Passive;
+	}
+
+	if (EventTag.IsValid())
+	{
+		FGameplayEventData Payload;
+		Payload.EventTag = InputTag;
+		Payload.Instigator = Avatar;
+		Payload.Target = Avatar;
+
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
+		UE_LOG(LogTemp, Log, TEXT("[USkillBase::SendEndEvent] Sent Skill End event to Avatar %s (Tag: %s, InputTag: %s)"), *Avatar->GetName(), *EventTag.ToString(), *InputTag.ToString());
+	}
 }
 
 bool USkillBase::IsValidRelationship(AActor* Instigator, AActor* Target, ETargetRelationship Relationship)

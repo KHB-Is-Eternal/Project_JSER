@@ -6,6 +6,8 @@
 #include "AbilitySystemInterface.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "AbilitySystemGlobals.h"
+#include "SkillSystem/SkillDataAsset.h"
 
 UWatchTagAbility_Base::UWatchTagAbility_Base()
 {
@@ -18,6 +20,36 @@ void UWatchTagAbility_Base::OnGiveAbility(const FGameplayAbilityActorInfo* Actor
 	Super::OnGiveAbility(ActorInfo, Spec);
 	
 	PassiveConfig = Cast<UPassiveSkillConfig>(CachedConfig);
+
+	if (ActorInfo != nullptr && IsValid(PassiveConfig) && !PassiveConfig->TriggerAbility.IsNull())
+	{
+		UAbilitySystemComponent* const MyASC = ActorInfo->AbilitySystemComponent.Get();
+		if (MyASC != nullptr)
+		{
+			USkillDataAsset* SkillAsset = PassiveConfig->TriggerAbility.LoadSynchronous();
+			if (IsValid(SkillAsset) && IsValid(SkillAsset->SkillConfig))
+			{
+				FGameplayAbilitySpec TriggerSpec = SkillAsset->MakeSpec();
+				TriggerSpec.Level = GetAbilityLevel();
+				GrantedTriggerAbilityHandle = MyASC->GiveAbility(TriggerSpec);
+			}
+		}
+	}
+}
+
+void UWatchTagAbility_Base::OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
+{
+	if (ActorInfo != nullptr && GrantedTriggerAbilityHandle.IsValid())
+	{
+		UAbilitySystemComponent* const MyASC = ActorInfo->AbilitySystemComponent.Get();
+		if (MyASC != nullptr)
+		{
+			MyASC->ClearAbility(GrantedTriggerAbilityHandle);
+		}
+		GrantedTriggerAbilityHandle = FGameplayAbilitySpecHandle();
+	}
+
+	Super::OnRemoveAbility(ActorInfo, Spec);
 }
 
 void UWatchTagAbility_Base::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
@@ -73,16 +105,18 @@ void UWatchTagAbility_Base::OnEventReceived(FGameplayEventData Payload)
 		}
 	}
 
+	// 공통 발동 대상(QueryActor)을 미리 추출
+	AActor* const QueryActor = ResolveQueryTargetActor(Payload, PassiveConfig->QueryTarget);
+
 	// 태그 쿼리 조건이 설정된 경우, 지정된 대상(QueryTarget)에게 검사를 실행합니다.
 	if (!PassiveConfig->RequiredTagQuery.IsEmpty())
 	{
-		const AActor* const QueryActor = ResolveQueryTargetActor(Payload);
 		if (QueryActor == nullptr)
 		{
 			return;
 		}
 
-		const UAbilitySystemComponent* const QueryASC = QueryActor->FindComponentByClass<UAbilitySystemComponent>();
+		const UAbilitySystemComponent* const QueryASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(QueryActor);
 		if (QueryASC == nullptr)
 		{
 			return;
@@ -97,25 +131,182 @@ void UWatchTagAbility_Base::OnEventReceived(FGameplayEventData Payload)
 		}
 	}
 
+	// 추가적인 스탯(Attribute) 발동 조건 검사
+	if (!CheckAttributeConditions(Payload))
+	{
+		return;
+	}
+
 	// 조건 달성 여부를 자식 클래스에게 위임합니다.
 	if (ProcessEventAndCheckCondition(Payload))
 	{
-		ExecuteTriggerAction(GetAvatarActorFromActorInfo());
+		ExecuteTriggerAction(QueryActor);
 	}
 }
 
-AActor* UWatchTagAbility_Base::ResolveQueryTargetActor(const FGameplayEventData& Payload) const
+AActor* UWatchTagAbility_Base::ResolveQueryTargetActor(const FGameplayEventData& Payload, EPassiveQueryTarget TargetType) const
 {
-	switch (PassiveConfig->QueryTarget)
+	switch (TargetType)
 	{
 		case EPassiveQueryTarget::Instigator:
 			return const_cast<AActor*>(Payload.Instigator.Get());
 		case EPassiveQueryTarget::Target:
-			return const_cast<AActor*>(Payload.Target.Get());
+		{
+			if (Payload.Target.Get() != nullptr)
+			{
+				return const_cast<AActor*>(Payload.Target.Get());
+			}
+			if (Payload.ContextHandle.IsValid())
+			{
+				if (const FHitResult* HitResult = Payload.ContextHandle.GetHitResult())
+				{
+					return HitResult->GetActor();
+				}
+			}
+			return nullptr;
+		}
 		case EPassiveQueryTarget::Self:
 		default:
 			return GetAvatarActorFromActorInfo();
 	}
+}
+
+bool UWatchTagAbility_Base::CheckAttributeConditions(const FGameplayEventData& Payload) const
+{
+	if (!IsValid(PassiveConfig) || PassiveConfig->RequiredAttributeConditions.IsEmpty())
+	{
+		return true;
+	}
+
+	UAbilitySystemComponent* const MyASC = GetAbilitySystemComponentFromActorInfo();
+	if (MyASC == nullptr)
+	{
+		return false;
+	}
+
+	for (const FAttributeCondition& Condition : PassiveConfig->RequiredAttributeConditions)
+	{
+		// 1. 태그 필터링 (SourceTags & TargetTags)
+		UAbilitySystemComponent* InstigatorASC = nullptr;
+		if (Payload.Instigator.Get() != nullptr)
+		{
+			InstigatorASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(const_cast<AActor*>(Payload.Instigator.Get()));
+		}
+		if (InstigatorASC != nullptr && !Condition.Modifier.SourceTags.IsEmpty())
+		{
+			FGameplayTagContainer InstigatorTags;
+			InstigatorASC->GetOwnedGameplayTags(InstigatorTags);
+			if (!Condition.Modifier.SourceTags.RequirementsMet(InstigatorTags))
+			{
+				return false;
+			}
+		}
+
+		AActor* TargetActorForTags = ResolveQueryTargetActor(Payload, EPassiveQueryTarget::Target);
+		UAbilitySystemComponent* TargetASCForTags = nullptr;
+		if (TargetActorForTags != nullptr)
+		{
+			TargetASCForTags = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(TargetActorForTags);
+		}
+		if (TargetASCForTags != nullptr && !Condition.Modifier.TargetTags.IsEmpty())
+		{
+			FGameplayTagContainer TargetTags;
+			TargetASCForTags->GetOwnedGameplayTags(TargetTags);
+			if (!Condition.Modifier.TargetTags.RequirementsMet(TargetTags))
+			{
+				return false;
+			}
+		}
+
+		// 2. 스탯 시뮬레이션 평가 (Modifier Attribute가 세팅된 경우만)
+		if (Condition.Modifier.Attribute.IsValid())
+		{
+			const AActor* const StatTargetActor = ResolveQueryTargetActor(Payload, Condition.QueryTarget);
+			if (StatTargetActor == nullptr)
+			{
+				return false;
+			}
+
+			const UAbilitySystemComponent* const StatTargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(const_cast<AActor*>(StatTargetActor));
+			if (StatTargetASC == nullptr)
+			{
+				return false;
+			}
+
+			if (!StatTargetASC->HasAttributeSetForAttribute(Condition.Modifier.Attribute))
+			{
+				return false;
+			}
+
+			// 항상 버프가 반영된 현재 스탯(Current Value)을 추출
+			const float OriginalValue = StatTargetASC->GetNumericAttribute(Condition.Modifier.Attribute);
+
+			// ModifierMagnitude 평가를 위한 임시 Spec 생성
+			const UGameplayEffect* DummyGE = GetDefault<UGameplayEffect>();
+			FGameplayEffectContextHandle Context = MyASC->MakeEffectContext();
+			AActor* Instigator = const_cast<AActor*>(Payload.Instigator.Get());
+			AActor* EffectCauser = Payload.ContextHandle.IsValid() ? Payload.ContextHandle.GetEffectCauser() : Instigator;
+			if (EffectCauser == nullptr)
+			{
+				EffectCauser = Instigator;
+			}
+			Context.AddInstigator(Instigator, EffectCauser);
+			FGameplayEffectSpec TempSpec(DummyGE, Context, GetAbilityLevel());
+
+			float EvaluatedMagnitude = 0.0f;
+			Condition.Modifier.ModifierMagnitude.AttemptCalculateMagnitude(TempSpec, EvaluatedMagnitude, false);
+
+			// ModifierOp에 따른 시뮬레이션 값 도출
+			float SimulatedValue = OriginalValue;
+			switch (Condition.Modifier.ModifierOp)
+			{
+				case EGameplayModOp::Additive:
+					SimulatedValue = OriginalValue + EvaluatedMagnitude;
+					break;
+				case EGameplayModOp::Multiplicitive:
+					SimulatedValue = OriginalValue * EvaluatedMagnitude;
+					break;
+				case EGameplayModOp::Division:
+					if (!FMath::IsNearlyZero(EvaluatedMagnitude))
+					{
+						SimulatedValue = OriginalValue / EvaluatedMagnitude;
+					}
+					break;
+				case EGameplayModOp::Override:
+					SimulatedValue = EvaluatedMagnitude;
+					break;
+			}
+
+			const float Threshold = Condition.ThresholdValue.GetValueAtLevel(GetAbilityLevel());
+
+			bool bPassed = false;
+			switch (Condition.CompareType)
+			{
+				case EAttributeCompareType::GreaterThan:
+					bPassed = (SimulatedValue > Threshold);
+					break;
+				case EAttributeCompareType::GreaterThanOrEqual:
+					bPassed = (SimulatedValue >= Threshold);
+					break;
+				case EAttributeCompareType::LessThan:
+					bPassed = (SimulatedValue < Threshold);
+					break;
+				case EAttributeCompareType::LessThanOrEqual:
+					bPassed = (SimulatedValue <= Threshold);
+					break;
+				case EAttributeCompareType::Equal:
+					bPassed = FMath::IsNearlyEqual(SimulatedValue, Threshold);
+					break;
+			}
+
+			if (!bPassed)
+			{
+				return false;
+			}
+		}
+	}
+
+	return true;
 }
 
 void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor)
@@ -134,14 +325,13 @@ void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor)
 	// 발동 시 쿨타임 적용 (USkillBase의 쿨타임 로직 재사용)
 	CommitAbilityCooldown(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, false);
 
-	// TriggerAbility가 설정된 경우 어빌리티를 발동합니다 (애니메이션, 하드 CC 처리용).
-	if (PassiveConfig->TriggerAbility != nullptr)
+	// 동적으로 부여된 TriggerAbility가 존재하면 실행
+	if (GrantedTriggerAbilityHandle.IsValid())
 	{
-		MyASC->TryActivateAbilityByClass(PassiveConfig->TriggerAbility);
-		return;
+		MyASC->TryActivateAbility(GrantedTriggerAbilityHandle);
 	}
 
-	// TriggerAbility가 없는 경우 이펙트를 직접 적용합니다.
+	// TriggerAbility 활성화 시도 후, TriggerEffects도 함께 적용
 	ApplyTriggerEffects(TargetActor);
 }
 
@@ -152,39 +342,17 @@ void UWatchTagAbility_Base::ApplyTriggerEffects(AActor* TargetActor)
 		return;
 	}
 
-	UAbilitySystemComponent* const MyASC = GetAbilitySystemComponentFromActorInfo();
-	UAbilitySystemComponent* TargetASC = nullptr;
-
-	if (const IAbilitySystemInterface* const ASCInterface = Cast<IAbilitySystemInterface>(TargetActor))
-	{
-		TargetASC = ASCInterface->GetAbilitySystemComponent();
-	}
-
+	UAbilitySystemComponent* const TargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(TargetActor);
 	if (TargetASC == nullptr)
-	{
-		TargetASC = TargetActor->FindComponentByClass<UAbilitySystemComponent>();
-	}
-
-	if (MyASC == nullptr || TargetASC == nullptr)
 	{
 		return;
 	}
 
-	FGameplayEffectContextHandle ContextHandle = MyASC->MakeEffectContext();
-	ContextHandle.AddInstigator(GetAvatarActorFromActorInfo(), TargetActor);
+	FGameplayEffectContextHandle ContextHandle = GetASC()->MakeEffectContext();
+	ContextHandle.AddInstigator(GetAvatar(), TargetActor);
 	ContextHandle.SetAbility(this);
 
-	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : PassiveConfig->TriggerEffects)
-	{
-		if (!IsValid(EffectClass))
-		{
-			continue;
-		}
-
-		const FGameplayEffectSpecHandle SpecHandle = MyASC->MakeOutgoingSpec(EffectClass, GetAbilityLevel(), ContextHandle);
-		if (SpecHandle.IsValid())
-		{
-			MyASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-		}
-	}
+	ApplyEffectToTargetInternal(TargetASC, PassiveConfig->TriggerEffects, ContextHandle);
 }
+
+

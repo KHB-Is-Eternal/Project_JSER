@@ -9,6 +9,7 @@
 #include "BaseSkillConfig.generated.h"
 
 class USkillBase;
+class USkillDataAsset;
 
 USTRUCT(BlueprintType)
 struct FSkillCostInfo
@@ -146,6 +147,45 @@ enum class EPassiveQueryTarget : uint8
 	Target      UMETA(DisplayName = "Target"),
 };
 
+/** 스탯(Attribute) 조건 비교 연산자 */
+UENUM(BlueprintType)
+enum class EAttributeCompareType : uint8
+{
+	GreaterThan			UMETA(DisplayName = "Greater Than (>)"),
+	GreaterThanOrEqual	UMETA(DisplayName = "Greater Than Or Equal (>=)"),
+	LessThan			UMETA(DisplayName = "Less Than (<)"),
+	LessThanOrEqual		UMETA(DisplayName = "Less Than Or Equal (<=)"),
+	Equal				UMETA(DisplayName = "Equal (==)")
+};
+
+/** 패시브 발동을 위한 개별 스탯(Attribute) 조건 설정 */
+USTRUCT(BlueprintType)
+struct PROJECTER_API FAttributeCondition
+{
+	GENERATED_BODY()
+
+	/** 이 스탯 조건을 검사할 대상을 지정합니다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Condition")
+	EPassiveQueryTarget QueryTarget = EPassiveQueryTarget::Self;
+
+	/** 시뮬레이션된 결과값을 어떻게 비교할지 지정합니다. (예: >, >=, <, <=, ==) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Condition")
+	EAttributeCompareType CompareType = EAttributeCompareType::GreaterThanOrEqual;
+
+	/** 
+	 * 시뮬레이션에 사용할 Modifier 정보.
+	 * SourceTags/TargetTags를 통한 태그 검사가 수행되며, 
+	 * Attribute가 설정된 경우 대상의 **현재 스탯(버프/디버프 반영)**에 
+	 * ModifierOp와 Magnitude를 연산(시뮬레이션)하여 최종 비교에 사용합니다.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Condition")
+	FGameplayModifierInfo Modifier;
+
+	/** 시뮬레이션 값과 최종 비교할 기준값 (Threshold) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Condition")
+	FScalableFloat ThresholdValue;
+};
+
 /**
  * 패시브 트리거 어빌리티(UWatchTagAbility_Base)의 공통 설정을 보관하는 추상 설정 클래스입니다.
  * 애니메이션, 입력 키 등 액티브 전용 필드들이 물리적으로 완전히 배제되어 있습니다.
@@ -170,12 +210,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Passive|Condition")
 	FGameplayTagQuery RequiredTagQuery;
 
+	/** 추가적인 스탯(Attribute) 발동 조건 목록. 지정된 모든 조건을 만족해야(AND) 발동됩니다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Passive|Condition")
+	TArray<FAttributeCondition> RequiredAttributeConditions;
+
 	/**
-	 * 조건 충족 시 발동할 어빌리티. 애니메이션이나 하드 CC 처리가 필요할 때 사용합니다.
+	 * 조건 충족 시 발동할 스킬 데이터 에셋입니다.
 	 * 설정된 경우 TriggerEffects보다 우선하여 실행됩니다.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Passive|Action")
-	TSubclassOf<UGameplayAbility> TriggerAbility;
+	TSoftObjectPtr<class USkillDataAsset> TriggerAbility;
 
 	/** 조건 충족 시 타겟에게 즉시 적용할 게임플레이 이펙트 목록. TriggerAbility가 없을 때 사용합니다. */
 	UPROPERTY(EditDefaultsOnly, Category = "Passive|Action")

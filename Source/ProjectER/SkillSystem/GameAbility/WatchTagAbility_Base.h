@@ -6,6 +6,7 @@
 #include "SkillSystem/GameAbility/SkillBase.h"
 #include "WatchTagAbility_Base.generated.h"
 
+enum class EPassiveQueryTarget : uint8;
 class UPassiveSkillConfig;
 class UBaseGameplayEffect;
 
@@ -24,6 +25,7 @@ public:
 	UWatchTagAbility_Base();
 
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
+	virtual void OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 
 protected:
@@ -37,9 +39,11 @@ protected:
 	 */
 	virtual bool ProcessEventAndCheckCondition(const FGameplayEventData& Payload) PURE_VIRTUAL(UWatchTagAbility_Base::ProcessEventAndCheckCondition, return false;);
 
-private:
-	/** 태그 쿼리 검사를 실행할 대상 액터를 PassiveConfig의 QueryTarget 설정에 따라 Payload에서 찾아 반환합니다. */
-	AActor* ResolveQueryTargetActor(const FGameplayEventData& Payload) const;
+	/** 대상 액터를 지정된 Target 타입에 따라 Payload에서 찾아 반환합니다. */
+	AActor* ResolveQueryTargetActor(const FGameplayEventData& Payload, EPassiveQueryTarget TargetType) const;
+
+	/** 지정된 모든 스탯(Attribute) 발동 조건을 만족하는지 검사합니다. */
+	bool CheckAttributeConditions(const FGameplayEventData& Payload) const;
 
 	/** 발동 조건이 충족되었을 때, TriggerAbility 실행 또는 TriggerEffects 적용을 수행합니다. */
 	void ExecuteTriggerAction(AActor* TargetActor);
@@ -50,4 +54,7 @@ private:
 protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Config")
 	TObjectPtr<const UPassiveSkillConfig> PassiveConfig;
+
+	/** 동적으로 부여된 트리거 어빌리티의 스펙 핸들 */
+	FGameplayAbilitySpecHandle GrantedTriggerAbilityHandle;
 };

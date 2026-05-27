@@ -1,4 +1,4 @@
-﻿
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -169,6 +169,10 @@ protected:
 
 #pragma endregion
 	
+protected:
+	// 적중(Hit) 이벤트 판별 및 발송을 처리하는 헬퍼 함수
+	void DispatchHitEvent(const FGameplayEffectModCallbackData& Data, const float LocalDamage) const;
+
 protected:
 	// OnRep Functions
 	UFUNCTION() 
