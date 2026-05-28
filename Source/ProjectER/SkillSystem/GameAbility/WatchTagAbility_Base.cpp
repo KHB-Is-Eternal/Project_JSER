@@ -21,18 +21,23 @@ void UWatchTagAbility_Base::OnGiveAbility(const FGameplayAbilityActorInfo* Actor
 	
 	PassiveConfig = Cast<UPassiveSkillConfig>(CachedConfig);
 
-	if (ActorInfo != nullptr && IsValid(PassiveConfig) && !PassiveConfig->TriggerAbility.IsNull())
+	if (ActorInfo != nullptr)
 	{
 		UAbilitySystemComponent* const MyASC = ActorInfo->AbilitySystemComponent.Get();
 		if (MyASC != nullptr)
 		{
-			USkillDataAsset* SkillAsset = PassiveConfig->TriggerAbility.LoadSynchronous();
-			if (IsValid(SkillAsset) && IsValid(SkillAsset->SkillConfig))
+			if (IsValid(PassiveConfig) && !PassiveConfig->TriggerAbility.IsNull())
 			{
-				FGameplayAbilitySpec TriggerSpec = SkillAsset->MakeSpec();
-				TriggerSpec.Level = GetAbilityLevel();
-				GrantedTriggerAbilityHandle = MyASC->GiveAbility(TriggerSpec);
+				USkillDataAsset* SkillAsset = PassiveConfig->TriggerAbility.LoadSynchronous();
+				if (IsValid(SkillAsset) && IsValid(SkillAsset->SkillConfig))
+				{
+					FGameplayAbilitySpec TriggerSpec = SkillAsset->MakeSpec();
+					TriggerSpec.Level = GetAbilityLevel();
+					GrantedTriggerAbilityHandle = MyASC->GiveAbility(TriggerSpec);
+				}
 			}
+
+			MyASC->TryActivateAbility(Spec.Handle);
 		}
 	}
 }

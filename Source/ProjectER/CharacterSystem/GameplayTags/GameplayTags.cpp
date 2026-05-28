@@ -107,6 +107,7 @@ namespace ProjectER
 			namespace Hit
 			{
 				UE_DEFINE_GAMEPLAY_TAG_COMMENT(BasicAttack, "Event.Action.Hit.BasicAttack", "Event for Hit BasicAttack");
+				UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damaged, "Event.Action.Hit.Damaged", "Event for Hit Damaged");
 				
 				namespace Skill
 				{
