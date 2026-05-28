@@ -1063,6 +1063,19 @@ void UUI_MainHUD::OnCooldownTagChanged(const FGameplayTag Tag, int32 NewCount, i
             if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[SkillIndex]->SkillConfig->GetCooldownTags())
             {
                 GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration);
+
+                // [Fix] 쿨타임 반환(Refund) 등에 따른 실시간 시간 갱신을 받기 위해 OnTimeChanged 델리게이트를 구독합니다.
+                FGameplayEffectQuery const Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(*CooldownTags);
+                TArray<FActiveGameplayEffectHandle> ActiveHandles = ASC->GetActiveEffects(Query);
+                for (const FActiveGameplayEffectHandle& Handle : ActiveHandles)
+                {
+                    const FActiveGameplayEffect* ActiveGE = ASC->GetActiveGameplayEffect(Handle);
+                    if (ActiveGE)
+                    {
+                        FActiveGameplayEffect* MutableGE = const_cast<FActiveGameplayEffect*>(ActiveGE);
+                        MutableGE->EventSet.OnTimeChanged.AddUObject(this, &UUI_MainHUD::OnCooldownTimeChanged, SkillIndex);
+                    }
+                }
             }
             ProcessCooldown(SkillIndex, Duration, RemainingTime);
         }
@@ -1121,6 +1134,18 @@ void UUI_MainHUD::UpdateSkillCoolDown(int32 SkillIndex)
     else
     {
         GetWorld()->GetTimerManager().ClearTimer(SkillTimerHandles[SkillIndex]);
+    }
+}
+
+void UUI_MainHUD::OnCooldownTimeChanged(FActiveGameplayEffectHandle Handle, float StartTime, float Duration, int32 SkillIndex)
+{
+    if (GetWorld() && SkillIndex >= 0 && SkillIndex < 4)
+    {
+        float CurrentTime = GetWorld()->GetTimeSeconds();
+        float RemainingTime = Duration - (CurrentTime - StartTime);
+
+        // 변경된 남은 시간으로 로컬 타이머 및 UI 텍스트 갱신
+        ProcessCooldown(SkillIndex, Duration, RemainingTime);
     }
 }
 
