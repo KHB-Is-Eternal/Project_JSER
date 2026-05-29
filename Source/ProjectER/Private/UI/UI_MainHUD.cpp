@@ -579,7 +579,7 @@ void UUI_MainHUD::OnSkill02Hovered()
 
     if (IsValid(SkillDataAssets[1]))
     {
-        FSkillTooltipData nowSkill = SkillDataAssets[1]->GetSkillTooltipData(getSkillLevel(Q_SkillTag, false));
+        FSkillTooltipData nowSkill = SkillDataAssets[1]->GetSkillTooltipData(getSkillLevel(W_SkillTag, false));
         ShowTooltip(skill_02, nowSkill.SkillName, nowSkill.ShortDescription, nowSkill.DetailedDescription, nowSkill.CostDescription, true);
     }
 }
@@ -590,7 +590,7 @@ void UUI_MainHUD::OnSkill03Hovered()
 
     if (IsValid(SkillDataAssets[2]))
     {
-        FSkillTooltipData nowSkill = SkillDataAssets[2]->GetSkillTooltipData(getSkillLevel(Q_SkillTag, false));
+        FSkillTooltipData nowSkill = SkillDataAssets[2]->GetSkillTooltipData(getSkillLevel(E_SkillTag, false));
         ShowTooltip(skill_03, nowSkill.SkillName, nowSkill.ShortDescription, nowSkill.DetailedDescription, nowSkill.CostDescription, true);
     }
 }
@@ -603,7 +603,7 @@ void UUI_MainHUD::OnSkill04Hovered()
     {
         if (ASC)
         {
-            FSkillTooltipData nowSkill = SkillDataAssets[3]->GetSkillTooltipData(getSkillLevel(Q_SkillTag, false));
+            FSkillTooltipData nowSkill = SkillDataAssets[3]->GetSkillTooltipData(getSkillLevel(R_SkillTag, false));
             ShowTooltip(skill_04, nowSkill.SkillName, nowSkill.ShortDescription, nowSkill.DetailedDescription, nowSkill.CostDescription, true);
         }
     }
