@@ -96,13 +96,13 @@ void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGame
 		{
 			// 몬스터의 StateTree에도 스킬 입력에 매핑되는 세부 종료 태그를 전송합니다.
 			const FGameplayTag InputTag = GetInputTag();
-			FGameplayTag EndEventTag;
-
-			if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q)) EndEventTag = ProjectER::Event::Action::Skill::End::Q;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W)) EndEventTag = ProjectER::Event::Action::Skill::End::W;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E)) EndEventTag = ProjectER::Event::Action::Skill::End::E;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R)) EndEventTag = ProjectER::Event::Action::Skill::End::R;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive)) EndEventTag = ProjectER::Event::Action::Skill::End::Passive;
+			const FGameplayTag EndEventTag = ResolveSkillEventTag(
+				InputTag,
+				ProjectER::Event::Action::Skill::End::Q,
+				ProjectER::Event::Action::Skill::End::W,
+				ProjectER::Event::Action::Skill::End::E,
+				ProjectER::Event::Action::Skill::End::R,
+				ProjectER::Event::Action::Skill::End::Passive);
 
 			if (EndEventTag.IsValid())
 			{
@@ -477,13 +477,13 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		if (SpecHandle.IsValid())
 		{
 			// 스킬 입력키에 맞는 피격 태그 추가
-			FGameplayTag SkillHitTag;
-			const FGameplayTag InputTag = GetInputTag();
-			if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::Q;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::W;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::E;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::R;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::Passive;
+			const FGameplayTag SkillHitTag = ResolveSkillEventTag(
+				GetInputTag(),
+				ProjectER::Event::Action::Hit::Skill::Q,
+				ProjectER::Event::Action::Hit::Skill::W,
+				ProjectER::Event::Action::Hit::Skill::E,
+				ProjectER::Event::Action::Hit::Skill::R,
+				ProjectER::Event::Action::Hit::Skill::Passive);
 
 			if (SkillHitTag.IsValid())
 			{
@@ -579,88 +579,65 @@ FGameplayTag USkillBase::GetInputTag() const
 
 void USkillBase::SendExecuteEvent() const
 {
-	AActor* const Avatar = GetAvatar();
-	if (!IsValid(Avatar))
-	{
-		return;
-	}
+	const FGameplayTag EventTag = ResolveSkillEventTag(
+		GetInputTag(),
+		ProjectER::Event::Action::Skill::Execute::Q,
+		ProjectER::Event::Action::Skill::Execute::W,
+		ProjectER::Event::Action::Skill::Execute::E,
+		ProjectER::Event::Action::Skill::Execute::R,
+		ProjectER::Event::Action::Skill::Execute::Passive);
 
-	const FGameplayTag InputTag = GetInputTag();
-	FGameplayTag EventTag;
-
-	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::Q;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::W;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::E;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::R;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::Passive;
-	}
-
-	if (EventTag.IsValid())
-	{
-		FGameplayEventData Payload;
-		Payload.EventTag = InputTag;
-		Payload.Instigator = Avatar;
-		Payload.Target = Avatar;
-
-		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
-	}
+	SendSkillEvent(EventTag);
 }
 
 void USkillBase::SendEndEvent() const
 {
+	const FGameplayTag EventTag = ResolveSkillEventTag(
+		GetInputTag(),
+		ProjectER::Event::Action::Skill::End::Q,
+		ProjectER::Event::Action::Skill::End::W,
+		ProjectER::Event::Action::Skill::End::E,
+		ProjectER::Event::Action::Skill::End::R,
+		ProjectER::Event::Action::Skill::End::Passive);
+
+	SendSkillEvent(EventTag);
+}
+
+FGameplayTag USkillBase::ResolveSkillEventTag(
+	const FGameplayTag& InputTag,
+	const FGameplayTag& QTag,
+	const FGameplayTag& WTag,
+	const FGameplayTag& ETag,
+	const FGameplayTag& RTag,
+	const FGameplayTag& PassiveTag) const
+{
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q))       return QTag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W))       return WTag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E))       return ETag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R))       return RTag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive)) return PassiveTag;
+	return FGameplayTag();
+}
+
+void USkillBase::SendSkillEvent(const FGameplayTag& EventTag) const
+{
+	if (!EventTag.IsValid())
+	{
+		return;
+	}
+
 	AActor* const Avatar = GetAvatar();
 	if (!IsValid(Avatar))
 	{
 		return;
 	}
 
-	const FGameplayTag InputTag = GetInputTag();
-	FGameplayTag EventTag;
+	FGameplayEventData Payload;
+	Payload.EventTag = GetInputTag();
+	Payload.Instigator = Avatar;
+	Payload.Target = Avatar;
 
-	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::Q;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::W;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::E;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::R;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::Passive;
-	}
-
-	if (EventTag.IsValid())
-	{
-		FGameplayEventData Payload;
-		Payload.EventTag = InputTag;
-		Payload.Instigator = Avatar;
-		Payload.Target = Avatar;
-
-		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
-	}
+	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
 }
 
 bool USkillBase::IsValidRelationship(AActor* Instigator, AActor* Target, ETargetRelationship Relationship)
