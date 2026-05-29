@@ -13,6 +13,15 @@
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnHelper.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/ShapeComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Engine/StaticMesh.h"
+#include "CharacterSystem/Interface/TargetableInterface.h"
+#include "Engine/Engine.h"
+#include "GameFramework/PlayerController.h"
 
 AGCN_SummonedActor::AGCN_SummonedActor()
 {
@@ -208,3 +217,100 @@ void AGCN_SummonedActor::OnTargetActorDestroyed(AActor* DestroyedActor)
 
 	Destroy();
 }
+
+void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionComponent, AActor* InInstigatorActor)
+{
+	if (!IsValid(InCollisionComponent) || !IsValid(InInstigatorActor))
+	{
+		return;
+	}
+
+	// 1. 로컬 플레이어 기반 아군/적군 판단 (아군 251, 적군 250)
+	int32 StencilValue = 250; // 기본 적군
+	if (APlayerController* LocalPC = GEngine ? GEngine->GetFirstLocalPlayerController(GetWorld()) : nullptr)
+	{
+		if (AActor* LocalPawn = LocalPC->GetPawn())
+		{
+			ITargetableInterface* LocalTargetable = Cast<ITargetableInterface>(LocalPawn);
+			ITargetableInterface* InstigatorTargetable = Cast<ITargetableInterface>(InInstigatorActor);
+
+			if (LocalTargetable && InstigatorTargetable)
+			{
+				if (LocalTargetable->GetTeamType() == InstigatorTargetable->GetTeamType())
+				{
+					StencilValue = 251; // 아군
+				}
+			}
+		}
+	}
+
+	// 2. 콜리전 형태에 따른 엔진 기본 메쉬 로드 및 스케일 조정
+	UStaticMesh* BaseMesh = nullptr;
+	FVector MeshScale = FVector(1.0f);
+
+	if (USphereComponent* SphereComp = Cast<USphereComponent>(InCollisionComponent))
+	{
+		BaseMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere")));
+		if (BaseMesh)
+		{
+			// 엔진 Sphere 반경은 50 (지름 100)
+			float ScaleFactor = SphereComp->GetUnscaledSphereRadius() / 50.0f;
+			MeshScale = FVector(ScaleFactor);
+		}
+	}
+	else if (UBoxComponent* BoxComp = Cast<UBoxComponent>(InCollisionComponent))
+	{
+		BaseMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
+		if (BaseMesh)
+		{
+			// 엔진 Cube Extent는 50 (크기 100x100x100)
+			MeshScale = BoxComp->GetUnscaledBoxExtent() / 50.0f;
+		}
+	}
+	else if (UCapsuleComponent* CapsuleComp = Cast<UCapsuleComponent>(InCollisionComponent))
+	{
+		BaseMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
+		if (BaseMesh)
+		{
+			// 엔진 Cylinder는 반경 50, 높이 100 (half height 50)
+			float RadiusScale = CapsuleComp->GetUnscaledCapsuleRadius() / 50.0f;
+			float HeightScale = CapsuleComp->GetUnscaledCapsuleHalfHeight() / 50.0f;
+			MeshScale = FVector(RadiusScale, RadiusScale, HeightScale);
+		}
+	}
+
+	if (!BaseMesh)
+	{
+		return;
+	}
+
+	// 3. 아웃라인용 메쉬 컴포넌트 동적 생성 혹은 재사용
+	bool bIsNewComponent = false;
+	if (!CollisionOutlineMesh)
+	{
+		CollisionOutlineMesh = NewObject<UStaticMeshComponent>(this, TEXT("CollisionOutlineMesh"));
+		if (!CollisionOutlineMesh) return;
+		bIsNewComponent = true;
+	}
+
+	CollisionOutlineMesh->SetStaticMesh(BaseMesh);
+	CollisionOutlineMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// 4. 렌더링 설정 (메인 패스 및 일반 뎁스 패스 제외, 커스텀 뎁스만 렌더링)
+	CollisionOutlineMesh->SetRenderInMainPass(false);
+	CollisionOutlineMesh->SetRenderInDepthPass(false);
+	CollisionOutlineMesh->SetRenderCustomDepth(true);
+	CollisionOutlineMesh->SetCustomDepthStencilValue(StencilValue);
+	CollisionOutlineMesh->SetCastShadow(false);
+	CollisionOutlineMesh->SetAffectDistanceFieldLighting(false);
+
+	// 5. 부착 및 트랜스폼 동기화
+	if (bIsNewComponent)
+	{
+		CollisionOutlineMesh->RegisterComponent();
+		CollisionOutlineMesh->AttachToComponent(InCollisionComponent, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+	}
+	CollisionOutlineMesh->SetWorldScale3D(MeshScale);
+	CollisionOutlineMesh->SetWorldLocationAndRotationNoPhysics(InCollisionComponent->GetComponentLocation(), InCollisionComponent->GetComponentRotation());
+}
+

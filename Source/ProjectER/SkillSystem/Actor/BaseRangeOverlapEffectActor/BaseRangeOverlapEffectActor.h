@@ -31,6 +31,9 @@ public:
   UFUNCTION()
   void OnRep_InstigatorActor();
 
+  UFUNCTION()
+  void OnRep_PendingCollisionSize();
+
   void InitializeEffectData(
       const TArray<FGameplayEffectSpecHandle> &InEffectSpecHandles,
       AActor *InInstigatorActor, const FVector &InCollisionSize,
@@ -83,11 +86,14 @@ protected:
   UPROPERTY()
   bool bHitOncePerTarget = true;
 
-  UPROPERTY()
+  UPROPERTY(ReplicatedUsing = OnRep_PendingCollisionSize)
   FVector PendingCollisionSize = FVector::ZeroVector;
 
   UPROPERTY()
   bool bHasPendingCollisionSize = false;
+
+  UPROPERTY()
+  TWeakObjectPtr<class AGCN_SummonedActor> CachedSummonedGCN;
 
   UPROPERTY()
   TSet<TObjectPtr<AActor>> HitActors;

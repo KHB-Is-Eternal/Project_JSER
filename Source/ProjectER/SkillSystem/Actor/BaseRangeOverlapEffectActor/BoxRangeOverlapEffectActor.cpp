@@ -26,10 +26,10 @@ void ABoxRangeOverlapEffectActor::BeginPlay()
 {
     Super::BeginPlay();
 
-#if WITH_EDITOR
-    if (GetWorld())
-    {
-        DrawDebugBox(GetWorld(), GetActorLocation(), PendingCollisionSize, GetActorQuat(), FColor::Magenta, false, GetLifeSpan(), 0, 2.0f);
-    }
-#endif
+// #if WITH_EDITOR
+//     if (GetWorld())
+//     {
+//         DrawDebugBox(GetWorld(), GetActorLocation(), PendingCollisionSize, GetActorQuat(), FColor::Magenta, false, GetLifeSpan(), 0, 2.0f);
+//     }
+// #endif
 }
