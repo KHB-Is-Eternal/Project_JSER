@@ -78,6 +78,10 @@ private:
 	bool bIsAlreadyInitialized = false;
 
 public:
+	/** 대상 판정 액터(장판 등)에 자신을 부착하고 비주얼/사운드 설정 및 생명주기를 연동합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	void AttachToTargetActor(AActor* InTargetActor);
+
 	/** 타겟 액터가 파괴될 때 호출되어 자신도 파괴합니다. */
 	UFUNCTION()
 	void OnTargetActorDestroyed(AActor* DestroyedActor);

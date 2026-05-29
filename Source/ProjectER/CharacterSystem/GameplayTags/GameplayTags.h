@@ -437,4 +437,18 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Airborne);
 		}
 	}
+
+	namespace Skill
+	{
+		namespace Animation
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Casting);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Active);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Backswing);
+		}
+		namespace Data
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(CoolTime);
+		}
+	}
 }

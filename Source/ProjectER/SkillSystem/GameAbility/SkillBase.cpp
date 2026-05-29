@@ -38,19 +38,19 @@ USkillBase::USkillBase()
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateYes;
-	CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
-	ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
-	BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+	CastingTag = ProjectER::Skill::Animation::Casting;
+	ActiveTag = ProjectER::Skill::Animation::Active;
+	BackswingTag = ProjectER::Skill::Animation::Backswing;
 	//FailedOutOfRangeTag = FGameplayTag::RequestGameplayTag(FName("State.Failed.OutOfRange"));
 	ActivationBlockedTags.AddTag(CastingTag);
 	ActivationBlockedTags.AddTag(ActiveTag);
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+	ActivationBlockedTags.AddTag(ProjectER::State::Life::Death);
+	ActivationBlockedTags.AddTag(ProjectER::State::Life::Down);
 	// Hard CC: 모든 스킬 차단
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Hard.Stun")));
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Hard.Airborne")));
+	ActivationBlockedTags.AddTag(ProjectER::State::Debuff::Hard::Stun);
+	ActivationBlockedTags.AddTag(ProjectER::State::Debuff::Hard::Airborne);
 	// Soft CC: 침묵은 스킬 사용 차단 (이동은 가능)
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Soft.Silence")));
+	ActivationBlockedTags.AddTag(ProjectER::State::Debuff::Soft::Silence);
 	
 	CooldownGameplayEffectClass = UGE_SharedCooldown::StaticClass();
 }
@@ -161,7 +161,7 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 			Duration /= (1.0f + (FMath::Max(Haste, 0.0f) / 100.0f));
 			Duration = FMath::Max(Duration, 0.1f); // 최소 쿨타임 보장
 
-			SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Skill.Data.CoolTime")), Duration);
+			SpecHandle.Data.Get()->SetSetByCallerMagnitude(ProjectER::Skill::Data::CoolTime, Duration);
 			if (const FGameplayTagContainer* CooldownTags = CachedConfig->GetCooldownTags())
 			{
 				SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(*CooldownTags);

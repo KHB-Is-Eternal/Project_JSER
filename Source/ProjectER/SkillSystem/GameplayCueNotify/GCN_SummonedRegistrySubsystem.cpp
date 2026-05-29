@@ -6,7 +6,7 @@ void UGCN_SummonedRegistrySubsystem::RegisterVfxActor(AActor* Instigator, float 
 	if (!VfxActor) return;
 
 	// 1. 이미 기다리고 있는 판정 액터가 있는지 확인 (Late Binding)
-	float Tolerance = 0.5f;
+	float Tolerance = DefaultHandshakeTolerance;
 	float BestDelta = Tolerance;
 	FGCN_SummonedKey BestKey;
 	AActor* BestPendingActor = nullptr;
@@ -86,6 +86,11 @@ bool UGCN_SummonedRegistrySubsystem::IsVfxActorRegistered(AActor* Instigator, fl
 
 AActor* UGCN_SummonedRegistrySubsystem::FindAndUnregisterVfxActorFuzzy(AActor* Instigator, float TargetTime, float Tolerance)
 {
+	if (Tolerance < 0.0f)
+	{
+		Tolerance = DefaultHandshakeTolerance;
+	}
+
 	// 1. 정확한 매칭 우선 시도
 	if (AActor* ExactMatch = GetAndUnregisterVfxActor(Instigator, TargetTime))
 	{

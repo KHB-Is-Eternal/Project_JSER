@@ -314,3 +314,36 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 	CollisionOutlineMesh->SetWorldLocationAndRotationNoPhysics(InCollisionComponent->GetComponentLocation(), InCollisionComponent->GetComponentRotation());
 }
 
+void AGCN_SummonedActor::AttachToTargetActor(AActor* InTargetActor)
+{
+	if (!IsValid(InTargetActor)) return;
+
+	const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(GetSourceObject());
+	if (VisualSource)
+	{
+		// VFX 이전
+		if (UNiagaraComponent* NiagaraComp = GetVfxComponent())
+		{
+			SkillNiagaraSpawnHelper::AttachNiagaraByConfig(NiagaraComp, InTargetActor->GetRootComponent(), VisualSource->GetAGCN_NiagaraConfig());
+		}
+
+		// SFX 이전
+		if (UAudioComponent* SfxComp = GetSfxComponent())
+		{
+			SkillSoundSpawnHelper::AttachSoundByConfig(SfxComp, InTargetActor->GetRootComponent(), VisualSource->GetAGCN_SoundConfig());
+		}
+	}
+
+	// 중복 바인딩 방지 (ensure 방지)
+	if (!InTargetActor->OnDestroyed.IsAlreadyBound(this, &AGCN_SummonedActor::OnTargetActorDestroyed))
+	{
+		InTargetActor->OnDestroyed.AddDynamic(this, &AGCN_SummonedActor::OnTargetActorDestroyed);
+	}
+
+	// 콜리전 메쉬의 아군/적군 테두리 렌더링 활성화
+	if (UShapeComponent* ShapeComp = InTargetActor->FindComponentByClass<UShapeComponent>())
+	{
+		SetupCollisionOutline(ShapeComp, InTargetActor->GetInstigator());
+	}
+}
+
