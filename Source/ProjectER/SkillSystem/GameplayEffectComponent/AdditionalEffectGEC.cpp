@@ -74,3 +74,19 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 
 	return bResult;
 }
+
+FSkillTooltipData UAdditionalEffectGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("추가 효과를 준비합니다."));
+
+	FString DetailStr = TEXT("추가 효과 : 버프 활성화 중 다음 적중 시 추가 효과를 적용합니다.");
+	FText BonusText = FormatAppliedEffects(Bonus, Level);
+	if (!BonusText.IsEmpty())
+	{
+		DetailStr += TEXT("\n") + BonusText.ToString();
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}

@@ -108,6 +108,7 @@ namespace ProjectER
 			namespace Hit
 			{
 				UE_DECLARE_GAMEPLAY_TAG_EXTERN(BasicAttack);
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damaged);
 				
 				namespace Skill
 				{

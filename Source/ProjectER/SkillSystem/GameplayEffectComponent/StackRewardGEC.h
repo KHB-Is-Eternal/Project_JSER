@@ -62,6 +62,8 @@ public:
 	UStackRewardGEC();
 	virtual bool OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& ActiveGEContainer, FActiveGameplayEffect& ActiveGE) const override;
 
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
+
 	// 스택 수치별 보상 설정 목록
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "StackReward|Logic")
 	TArray<FStackRewardInfo> Rewards;

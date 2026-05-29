@@ -30,15 +30,15 @@ void ACapsuleRangeOverlapEffectActor::BeginPlay()
 {
 	Super::BeginPlay();
 
-#if WITH_EDITOR
-	if (GetWorld())
-	{
-		if (IsValid(CapsuleComponent))
-		{
-			float CapsuleRadius = CapsuleComponent->GetScaledCapsuleRadius();
-			float CapsuleHalfHeight = CapsuleComponent->GetScaledCapsuleHalfHeight();
-			DrawDebugCapsule(GetWorld(), GetActorLocation(), CapsuleHalfHeight, CapsuleRadius, GetActorQuat(), FColor::Cyan, false, GetLifeSpan(), 0, 2.0f);
-		}
-	}
-#endif
+// #if WITH_EDITOR
+// 	if (GetWorld())
+// 	{
+// 		if (IsValid(CapsuleComponent))
+// 		{
+// 			float CapsuleRadius = CapsuleComponent->GetScaledCapsuleRadius();
+// 			float CapsuleHalfHeight = CapsuleComponent->GetScaledCapsuleHalfHeight();
+// 			DrawDebugCapsule(GetWorld(), GetActorLocation(), CapsuleHalfHeight, CapsuleRadius, GetActorQuat(), FColor::Cyan, false, GetLifeSpan(), 0, 2.0f);
+// 		}
+// 	}
+// #endif
 }

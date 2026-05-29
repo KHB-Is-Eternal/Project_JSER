@@ -39,6 +39,7 @@ void ABaseRangeOverlapEffectActor::GetLifetimeReplicatedProps(TArray<FLifetimePr
 
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, ClientActivationTime);
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, InstigatorActor);
+	DOREPLIFETIME(ABaseRangeOverlapEffectActor, PendingCollisionSize);
 }
 
 void ABaseRangeOverlapEffectActor::OnRep_InstigatorActor()
@@ -56,6 +57,16 @@ void ABaseRangeOverlapEffectActor::OnRep_InstigatorActor()
 				}
 			}
 		}
+	}
+}
+
+void ABaseRangeOverlapEffectActor::OnRep_PendingCollisionSize()
+{
+	ApplyCollisionSize(PendingCollisionSize);
+
+	if (CachedSummonedGCN.IsValid())
+	{
+		CachedSummonedGCN->SetupCollisionOutline(CollisionComponent, InstigatorActor);
 	}
 }
 
@@ -94,6 +105,8 @@ void ABaseRangeOverlapEffectActor::OnVfxHandshakeCompleted_Implementation(AActor
 	// [Fix] 언리얼 생명주기 싱크 맞추기 위해 OnDestroyed 델리게이트에 VFX 액터를 바인딩
 	if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
 	{
+		CachedSummonedGCN = SummonedGCN;
+
 		const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(SummonedGCN->GetSourceObject());
 
 		// [Refactor] 헬퍼를 사용하여 VFX/SFX 핸드셰이크(이전 부착) 수행
@@ -125,6 +138,9 @@ void ABaseRangeOverlapEffectActor::OnVfxHandshakeCompleted_Implementation(AActor
 			float Radius = (float)RangeGEC->CollisionRadius.X;
 			ApplyCollisionSize(FVector(Radius, Radius, 100.0f));
 		}
+
+		// [Fix] 콜리전 메쉬의 아군/적군 테두리 렌더링 활성화
+		SummonedGCN->SetupCollisionOutline(CollisionComponent, InstigatorActor);
 	}
 }
 

@@ -12,6 +12,30 @@ UStackRewardGEC::UStackRewardGEC()
 {
 }
 
+FSkillTooltipData UStackRewardGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("스택에 따라 보상을 획득합니다."));
+
+	FString DetailStr = TEXT("스택 보상 : 특정 스택 도달 시 보상 효과가 발동됩니다.");
+	for (const FStackRewardInfo& Reward : Rewards)
+	{
+		DetailStr += FString::Printf(TEXT("\n\n[%d 스택 달성 시]"), Reward.StackCount);
+		
+		TArray<TSubclassOf<UBaseGameplayEffect>> RewardEffects;
+		RewardEffects.Add(Reward.AppliedEffect);
+		
+		FText RewardText = FormatAppliedEffects(RewardEffects, Level);
+		if (!RewardText.IsEmpty())
+		{
+			DetailStr += TEXT("\n") + RewardText.ToString();
+		}
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}
+
 bool UStackRewardGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer &ActiveGEContainer, FActiveGameplayEffect &ActiveGE) const
 {
     bool bResult = Super::OnActiveGameplayEffectAdded(ActiveGEContainer, ActiveGE);

@@ -29,6 +29,7 @@ class PROJECTER_API USummonRangeBaseGEC : public UBaseGEC
 	GENERATED_BODY()
 
 public:
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
 
 
 	/** Phase 1: 준비 - 소환 위치를 계산하여 Context에 기록합니다. */

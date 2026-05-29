@@ -59,6 +59,29 @@ void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* Range
 	}
 }
 
+FSkillTooltipData ULaunchProjectile::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	if (bDestroyOnHit)
+	{
+		Data.ShortDescription = FText::FromString(TEXT("투사체를 발사합니다."));
+		Data.DetailedDescription = FText::FromString(TEXT("투사체 발사 : 전방으로 투사체를 날립니다."));
+	}
+	else
+	{
+		Data.ShortDescription = FText::FromString(TEXT("투과체를 발사합니다."));
+		Data.DetailedDescription = FText::FromString(TEXT("투과체 발사 : 전방으로 투과체를 날립니다."));
+	}
+
+	FText EffectsText = FormatAppliedEffects(Applied, Level);
+	if (!EffectsText.IsEmpty())
+	{
+		Data.DetailedDescription = FText::FromString(FString::Printf(TEXT("%s\n%s"), *Data.DetailedDescription.ToString(), *EffectsText.ToString()));
+	}
+
+	return Data;
+}
+
 FTransform ULaunchProjectile::CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const
 {
 	if (!IsValid(Instigator))

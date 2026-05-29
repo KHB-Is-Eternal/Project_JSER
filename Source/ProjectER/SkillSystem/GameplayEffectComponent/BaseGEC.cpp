@@ -3,6 +3,10 @@
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "SkillSystem/SkillDataAsset.h"
+#include "SkillSystem/GameAbility/MouseClickSkill.h"
+#include "SkillSystem/GameAbility/MouseTargetSkill.h"
+#include "SkillSystem/GameAbility/InstantSkill.h"
 
 UBaseGEC::UBaseGEC()
 {
@@ -11,6 +15,106 @@ UBaseGEC::UBaseGEC()
 void UBaseGEC::OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const
 {
 	Super::OnGameplayEffectExecuted(ActiveGEContainer, GESpec, PredictionKey);
+}
+
+FSkillTooltipData UBaseGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	return FSkillTooltipData();
+}
+
+FText UBaseGEC::FormatAppliedEffects(const TArray<TSubclassOf<class UBaseGameplayEffect>>& Effects, int32 Level)
+{
+	TArray<FString> Lines;
+
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Effects)
+	{
+		if (!EffectClass) continue;
+
+		const UBaseGameplayEffect* EffectDef = EffectClass->GetDefaultObject<UBaseGameplayEffect>();
+		if (!EffectDef) continue;
+
+		FString TargetPrefix = TEXT("효과");
+		if (EffectDef->TargetRelationship == ETargetRelationship::Enemy)
+		{
+			TargetPrefix = TEXT("효과(대상 적)");
+		}
+		else if (EffectDef->TargetRelationship == ETargetRelationship::Friend)
+		{
+			TargetPrefix = TEXT("효과(대상 아군)");
+		}
+
+		auto FormatMagnitude = [&](const FGameplayEffectModifierMagnitude& Magnitude, const FString& AttrName) -> FString
+		{
+			FString ModDesc;
+			if (Magnitude.GetMagnitudeCalculationType() == EGameplayEffectMagnitudeCalculation::ScalableFloat)
+			{
+				float Value = 0.0f;
+				if (Magnitude.GetStaticMagnitudeIfPossible(Level, Value))
+				{
+					ModDesc = FString::Printf(TEXT("%s : %.1f"), *AttrName, Value);
+				}
+			}
+			else if (Magnitude.GetMagnitudeCalculationType() == EGameplayEffectMagnitudeCalculation::AttributeBased)
+			{
+				const FAttributeBasedFloat* AttrFloatPtr = nullptr;
+				if (const FStructProperty* StructProp = CastField<FStructProperty>(FGameplayEffectModifierMagnitude::StaticStruct()->FindPropertyByName(FName("AttributeBasedMagnitude"))))
+				{
+					AttrFloatPtr = StructProp->ContainerPtrToValuePtr<FAttributeBasedFloat>(&Magnitude);
+				}
+
+				if (AttrFloatPtr)
+				{
+					float Coeff = AttrFloatPtr->Coefficient.GetValueAtLevel(Level);
+					float PreAdd = AttrFloatPtr->PreMultiplyAdditiveValue.GetValueAtLevel(Level);
+					float PostAdd = AttrFloatPtr->PostMultiplyAdditiveValue.GetValueAtLevel(Level);
+					FString BackingAttr = AttrFloatPtr->BackingAttribute.AttributeToCapture.GetName();
+
+					if (PreAdd + PostAdd == 0.f)
+					{
+						ModDesc = FString::Printf(TEXT("%s : (%.2f * %s)"), *AttrName, Coeff, *BackingAttr);
+					}
+					else
+					{
+						ModDesc = FString::Printf(TEXT("%s : %.1f + (%.2f * %s)"), *AttrName, PreAdd + PostAdd, Coeff, *BackingAttr);
+					}
+				}
+			}
+			return ModDesc;
+		};
+
+		for (const FGameplayModifierInfo& ModInfo : EffectDef->Modifiers)
+		{
+			FString ModDesc = FormatMagnitude(ModInfo.ModifierMagnitude, ModInfo.Attribute.GetName());
+			if (!ModDesc.IsEmpty())
+			{
+				Lines.Add(FString::Printf(TEXT("%s : %s"), *TargetPrefix, *ModDesc));
+			}
+		}
+
+		for (const FGameplayEffectExecutionDefinition& ExecDef : EffectDef->Executions)
+		{
+			for (const FGameplayEffectExecutionScopedModifierInfo& ScopedMod : ExecDef.CalculationModifiers)
+			{
+				FString AttrName;
+				if (ScopedMod.AggregatorType == EGameplayEffectScopedModifierAggregatorType::CapturedAttributeBacked)
+				{
+					AttrName = ScopedMod.CapturedAttribute.AttributeToCapture.GetName();
+				}
+				else
+				{
+					AttrName = ScopedMod.TransientAggregatorIdentifier.ToString();
+				}
+
+				FString ModDesc = FormatMagnitude(ScopedMod.ModifierMagnitude, AttrName);
+				if (!ModDesc.IsEmpty())
+				{
+					Lines.Add(FString::Printf(TEXT("%s : %s"), *TargetPrefix, *ModDesc));
+				}
+			}
+		}
+	}
+
+	return FText::FromString(FString::Join(Lines, TEXT("\n")));
 }
 
 

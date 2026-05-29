@@ -9,6 +9,8 @@ class UAudioComponent;
 class UProjectileMovementComponent;
 class USkillNiagaraSpawnConfig;
 class USkillSoundSpawnConfig;
+class UStaticMeshComponent;
+class UShapeComponent;
 
 /**
  * 소환물 비주얼을 담당하며 예측 키를 통해 판정 액터와 동기화되는 GCN 액터
@@ -56,9 +58,17 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Movement")
 	TObjectPtr<UProjectileMovementComponent> MovementComponent;
 
+	/** 콜리전 영역의 시각적 테두리(아웃라인)를 그려주는 메쉬 컴포넌트 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Visual")
+	TObjectPtr<UStaticMeshComponent> CollisionOutlineMesh;
+
 public:
 	/** 캐싱된 GEC 데이터를 반환합니다. */
 	const UObject* GetSourceObject() const { return CachedSourceObject.Get(); }
+
+	/** 콜리전 메쉬의 아웃라인을 아군/적군 여부에 따라 설정합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	void SetupCollisionOutline(UShapeComponent* InCollisionComponent, AActor* InInstigatorActor);
 
 private:
 	/** 비주얼/물리 설정값이 담긴 GEC 객체 */
