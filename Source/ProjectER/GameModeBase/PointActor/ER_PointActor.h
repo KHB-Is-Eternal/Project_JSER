@@ -19,22 +19,22 @@ UENUM(BlueprintType)
 enum class ERegionType : uint8
 {
 	None = 99,
-	Arrow = 0,			//양궁
-	BackStreet = 1,		//골목
-	Beach = 2,			//모사
-	Church = 3,			//성당
-	Factory = 4,		//공장
-	Forest = 5,			//숲
-	Hospital = 6,		//병원 
-	Hotel = 7,			//호텔
-	HousingDistrict = 8,//고주
-	Lab = 9,			//연구소
-	MainDistrict = 10,	//번화가
-	Pond = 11,			//연못
-	Port = 12,			//항구
-	School = 13,		//학교
-	Sematary = 14,		//묘지
-	Temple = 15,		//절
+	Arrow = 0,			//양궁	->	골목길
+	BackStreet = 1,		//골목	->	달동네
+	Beach = 2,			//모사	->	해변
+	Church = 3,			//성당	->	병원
+	Factory = 4,		//공장	->	공장
+	Forest = 5,			//숲		->	산책로
+	Hospital = 6,		//병원	->	오피스
+	Hotel = 7,			//호텔	->	리조트
+	HousingDistrict = 8,//고주	->	상업구역
+	Lab = 9,			//연구소	->	광장
+	MainDistrict = 10,	//번화가	->	구시가지
+	Pond = 11,			//연못	->	연못
+	Port = 12,			//항구	->	창고
+	School = 13,		//학교	->	학교
+	Sematary = 14,		//묘지	->	공원
+	Temple = 15,		//절		->	수변 공원
 
 };
 
