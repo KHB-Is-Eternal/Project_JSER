@@ -19,6 +19,8 @@ class PROJECTER_API UCooldownRefundGEC : public UBaseGEC
 public:
 	UCooldownRefundGEC();
 
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
+
 protected:
 	virtual void OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
 

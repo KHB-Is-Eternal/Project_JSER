@@ -53,6 +53,8 @@ public:
     UFUNCTION(BlueprintPure, Category = "Skill|UI")
     FSkillTooltipData GetSkillTooltipData(int32 InLevel = 1) const;
 
+    static FString GetTargetingStyleText(TSubclassOf<class USkillBase> AbilityClass);
+
     UFUNCTION(BlueprintPure, Category = "Skill|UI")
 	UTexture2D* GetSkillIcon() const { return SKillIcon; }
 private:

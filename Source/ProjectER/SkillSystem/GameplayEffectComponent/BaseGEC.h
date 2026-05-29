@@ -6,6 +6,7 @@
 #include "GameplayEffectComponent.h"
 #include "GameplayPrediction.h"
 #include "SkillSystem/Interfaces/SkillVisualDataProvider.h"
+#include "SkillSystem/SkillDataAsset.h"
 #include "BaseGEC.generated.h"
 
 /**
@@ -27,7 +28,9 @@ class PROJECTER_API UBaseGEC : public UGameplayEffectComponent, public ISkillVis
 public:
 	UBaseGEC();
 
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const;
 
+	static FText FormatAppliedEffects(const TArray<TSubclassOf<class UBaseGameplayEffect>>& Effects, int32 Level);
 
 protected:
 	virtual void OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;

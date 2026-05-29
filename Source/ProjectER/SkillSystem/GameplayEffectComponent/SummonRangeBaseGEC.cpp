@@ -3,6 +3,7 @@
 #include "Abilities/GameplayAbilityTypes.h"
 #include "GameplayEffectTypes.h"
 #include "AbilitySystemComponent.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemGlobals.h"
 #include "GameplayCueManager.h"
@@ -57,6 +58,23 @@ void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, cons
 	if (ASC) PredictionKey = ASC->ScopedPredictionKey;
 
 	OnExecuteVFXCue(ASC, ContextHandle, GESpec, PredictionKey);
+}
+
+FSkillTooltipData USummonRangeBaseGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("범위 소환을 사용합니다."));
+
+	FString DetailStr = TEXT("범위 소환 : 특정 범위가 소환됩니다. 닿은 대상에게 효과를 부여합니다.");
+	
+	FText EffectsText = FormatAppliedEffects(Applied, Level);
+	if (!EffectsText.IsEmpty())
+	{
+		DetailStr += TEXT("\n") + EffectsText.ToString();
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
 }
 
 void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const

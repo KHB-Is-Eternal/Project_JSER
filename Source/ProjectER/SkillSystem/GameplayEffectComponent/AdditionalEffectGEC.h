@@ -26,6 +26,7 @@ public:
 	UAdditionalEffectGEC();
 
 	virtual bool OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& ActiveGEContainer, FActiveGameplayEffect& ActiveGE) const override;
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Additional|Logic")
 	TArray<TSubclassOf<UBaseGameplayEffect>> Bonus;

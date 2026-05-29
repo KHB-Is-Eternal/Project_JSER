@@ -130,3 +130,23 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
     Duration + 0.05f,
     false);
 }
+
+FSkillTooltipData UConstantForceMoveGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("대상을 이동시킵니다."));
+
+	FString DetailStr = TEXT("이동 : 순간적으로 빠르게 이동합니다.");
+	if (bDetectWallHit && WallHitApplied.Num() > 0)
+	{
+		DetailStr += TEXT("\n\n벽과 충돌 시 추가 효과가 적용됩니다.");
+		FText WallHitText = FormatAppliedEffects(WallHitApplied, Level);
+		if (!WallHitText.IsEmpty())
+		{
+			DetailStr += TEXT("\n") + WallHitText.ToString();
+		}
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}

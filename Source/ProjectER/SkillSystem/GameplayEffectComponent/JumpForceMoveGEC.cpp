@@ -100,3 +100,23 @@ void UJumpForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction, co
 			false);
 	}
 }
+
+FSkillTooltipData UJumpForceMoveGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("공중으로 도약시킵니다."));
+
+	FString DetailStr = FString::Printf(TEXT("도약 : %.0f 높이로 공중 도약하여 대상을 이동시킵니다."), JumpHeight);
+	if (bDetectWallHit && WallHitApplied.Num() > 0)
+	{
+		DetailStr += TEXT("\n\n벽과 충돌 시 추가 효과가 적용됩니다.");
+		FText WallHitText = FormatAppliedEffects(WallHitApplied, Level);
+		if (!WallHitText.IsEmpty())
+		{
+			DetailStr += TEXT("\n") + WallHitText.ToString();
+		}
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}

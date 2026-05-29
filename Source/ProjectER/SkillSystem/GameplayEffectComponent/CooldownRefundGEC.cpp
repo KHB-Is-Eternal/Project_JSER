@@ -8,6 +8,16 @@ UCooldownRefundGEC::UCooldownRefundGEC()
 {
 }
 
+FSkillTooltipData UCooldownRefundGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("재사용 대기시간을 단축합니다."));
+
+	FString DetailStr = FString::Printf(TEXT("재사용 대기시간 단축 : 쿨다운이 %.1f초 감소합니다."), RefundAmount.GetValueAtLevel(Level));
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}
+
 void UCooldownRefundGEC::OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const
 {
 	Super::OnGameplayEffectExecuted(ActiveGEContainer, GESpec, PredictionKey);
