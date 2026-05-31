@@ -10,6 +10,7 @@
 
 class USkillBase;
 class USkillDataAsset;
+class USkillMagnitudeCalculator;
 
 USTRUCT(BlueprintType)
 struct FSkillCostInfo
@@ -24,6 +25,18 @@ public:
 	// 소모량 (FScalableFloat를 사용하여 레벨/커브 대응)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cost")
 	FScalableFloat CostValue;
+};
+
+USTRUCT(BlueprintType)
+struct FSkillMagnitudeCalculation
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Magnitude")
+	FGameplayTag SetByCallerTag;
+
+	UPROPERTY(EditAnywhere, Instanced, BlueprintReadWrite, Category = "Magnitude")
+	TObjectPtr<USkillMagnitudeCalculator> Calculator;
 };
 
 /**
@@ -72,6 +85,10 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "DefaultData|Cost")
 	TArray<FSkillCostInfo> SkillCosts;
+
+	// 스킬에 적용될 여러 SetByCaller 매그니튜드(데미지, 힐, 지속시간 등)를 설정하고 계산합니다.
+	UPROPERTY(EditDefaultsOnly, Category = "SkillMagnitudeCalculator")
+	TArray<FSkillMagnitudeCalculation> MagnitudeCalculators;
 
 	// ==========================================
 	// 다형성 가상 인터페이스 오버라이드
