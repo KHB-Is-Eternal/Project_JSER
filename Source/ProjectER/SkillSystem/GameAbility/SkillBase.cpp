@@ -14,6 +14,7 @@
 #include "SkillSystem/AbilityTask/AbilityTask_WaitGameplayEventSyn.h"
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
 #include "SkillSystem/SkillDataAsset.h"
+#include "SkillSystem/Calculator/SkillMagnitudeCalculator.h"
 #include "SkillSystem/SkillData.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "SkillSystem/GameplayEffect/GE_SharedCooldown.h"
@@ -476,6 +477,19 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		
 		if (SpecHandle.IsValid())
 		{
+			// SkillMagnitudeCalculator를 통해 연산된 수치를 SetByCaller로 주입
+			if (UActiveSkillConfig* ActiveConfig = Cast<UActiveSkillConfig>(CachedConfig))
+			{
+				for (const FSkillMagnitudeCalculation& CalcInfo : ActiveConfig->MagnitudeCalculators)
+				{
+					if (CalcInfo.Calculator && CalcInfo.SetByCallerTag.IsValid())
+					{
+						float CalcValue = CalcInfo.Calculator->CalculateValue(SourceASC, TargetASC);
+						SpecHandle.Data.Get()->SetSetByCallerMagnitude(CalcInfo.SetByCallerTag, CalcValue);
+					}
+				}
+			}
+
 			// 스킬 입력키에 맞는 피격 태그 추가
 			const FGameplayTag SkillHitTag = ResolveSkillEventTag(
 				GetInputTag(),
