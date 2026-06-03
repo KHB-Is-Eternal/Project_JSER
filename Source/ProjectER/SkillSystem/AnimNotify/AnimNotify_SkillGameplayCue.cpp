@@ -3,6 +3,9 @@
 
 #include "SkillSystem/AnimNotify/AnimNotify_SkillGameplayCue.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#if WITH_EDITOR
+#include "SkillSystem/AnimNotify/AnimNotifyCueTrackerComponent.h"
+#endif
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "GameplayCueManager.h"
@@ -66,6 +69,11 @@ void UAnimNotify_SkillGameplayCue::Notify(USkeletalMeshComponent* MeshComp, UAni
 	}
 
 #if WITH_EDITOR
+	if (UAnimNotifyCueTrackerComponent* Tracker = UAnimNotifyCueTrackerComponent::GetOrCreateTracker(OwnerActor))
+	{
+		Tracker->RegisterNiagaraCue(MeshComp, Cast<UAnimMontage>(Animation), SpawnConfig);
+	}
+
 	if (GIsEditor)
 	{
 		UGameplayCueManager::PreviewComponent = nullptr;

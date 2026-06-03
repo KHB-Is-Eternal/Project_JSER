@@ -3,6 +3,11 @@
 
 #include "SkillSystem/AnimNotify/AnimNotifyState_SkillGameplayCue.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "NiagaraSystem.h"
+#include "NiagaraComponent.h"
+#if WITH_EDITOR
+#include "SkillSystem/AnimNotify/AnimNotifyCueTrackerComponent.h"
+#endif
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Animation/AnimMontage.h"
@@ -62,6 +67,13 @@ void UAnimNotifyState_SkillGameplayCue::NotifyBegin(USkeletalMeshComponent* Mesh
 			GCM->AddGameplayCue_NonReplicated(OwnerActor, GameplayCueTag, Parameters);
 		}
 	}
+
+#if WITH_EDITOR
+	if (UAnimNotifyCueTrackerComponent* Tracker = UAnimNotifyCueTrackerComponent::GetOrCreateTracker(OwnerActor))
+	{
+		Tracker->RegisterNiagaraCue(MeshComp, Cast<UAnimMontage>(Animation), SpawnConfig);
+	}
+#endif
 
 #if WITH_EDITORONLY_DATA
 	if (UGameplayCueManager::PreviewProxyTick.IsBound())
@@ -126,6 +138,19 @@ void UAnimNotifyState_SkillGameplayCue::NotifyEnd(USkeletalMeshComponent* MeshCo
 	FGameplayCueParameters Parameters;
 	Parameters.Instigator = OwnerActor;
 	Parameters.TargetAttachComponent = MeshComp;
+
+#if WITH_EDITOR
+	if (IsValid(OwnerActor))
+	{
+		if (UAnimNotifyCueTrackerComponent* Tracker = OwnerActor->FindComponentByClass<UAnimNotifyCueTrackerComponent>())
+		{
+			if (SpawnConfig && !SpawnConfig->NiagaraSystem.IsNull())
+			{
+				Tracker->UnregisterCue(MeshComp, SpawnConfig->NiagaraSystem.LoadSynchronous());
+			}
+		}
+	}
+#endif
 
 	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(OwnerActor))
 	{
