@@ -274,7 +274,7 @@ void USkillBase::ApplyExecutionEffects()
 	{
 		UAbilitySystemComponent* const ASC = GetASC();
 		//FGameplayEffectContextHandle ContextHandle = IsValid(ASC) ? ASC->MakeEffectContext() : FGameplayEffectContextHandle();
-		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects);
+		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects, Phases[CurrentPhaseIndex].MagnitudeCalculators);
 	}
 }
 
@@ -417,10 +417,20 @@ void USkillBase::PrepareToActiveSkill()
 
 void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle)
 {
-	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, ContextHandle);
+	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, TArray<FSkillMagnitudeCalculation>(), ContextHandle);
+}
+
+void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle)
+{
+	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, Calculators, ContextHandle);
 }
 
 void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle)
+{
+	ApplyEffectToTargetInternal(TargetASC, Effects, TArray<FSkillMagnitudeCalculation>(), ContextHandle);
+}
+
+void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle)
 {
 	UAbilitySystemComponent* const SourceASC = GetASC();
 	AActor* const Avatar = GetAvatar();
@@ -477,16 +487,13 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		
 		if (SpecHandle.IsValid())
 		{
-			// SkillMagnitudeCalculator를 통해 연산된 수치를 SetByCaller로 주입
-			if (UActiveSkillConfig* ActiveConfig = Cast<UActiveSkillConfig>(CachedConfig))
+			// 페이즈의 계산기들 중 현재 이펙트와 매칭되는 대상이 있으면 SetByCaller 주입
+			for (const FSkillMagnitudeCalculation& CalcInfo : Calculators)
 			{
-				for (const FSkillMagnitudeCalculation& CalcInfo : ActiveConfig->MagnitudeCalculators)
+				if (CalcInfo.TargetGameplayEffect == EffectClass && CalcInfo.Calculator && CalcInfo.SetByCallerTag.IsValid())
 				{
-					if (CalcInfo.Calculator && CalcInfo.SetByCallerTag.IsValid())
-					{
-						float CalcValue = CalcInfo.Calculator->CalculateValue(SourceASC, TargetASC);
-						SpecHandle.Data.Get()->SetSetByCallerMagnitude(CalcInfo.SetByCallerTag, CalcValue);
-					}
+					float CalcValue = CalcInfo.Calculator->CalculateValue(SourceASC, TargetASC);
+					SpecHandle.Data.Get()->SetSetByCallerMagnitude(CalcInfo.SetByCallerTag, CalcValue);
 				}
 			}
 

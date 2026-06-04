@@ -27,18 +27,6 @@ public:
 	FScalableFloat CostValue;
 };
 
-USTRUCT(BlueprintType)
-struct FSkillMagnitudeCalculation
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Magnitude")
-	FGameplayTag SetByCallerTag;
-
-	UPROPERTY(EditAnywhere, Instanced, BlueprintReadWrite, Category = "Magnitude")
-	TObjectPtr<USkillMagnitudeCalculator> Calculator;
-};
-
 /**
  * 프로젝트 내 모든 스킬/패시브 설정의 최상위 공통 베이스 클래스입니다.
  * USkillBase 및 USkillDataAsset과의 결합도를 낮추기 위해 다형성 가상 인터페이스를 제공합니다.
@@ -85,10 +73,6 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "DefaultData|Cost")
 	TArray<FSkillCostInfo> SkillCosts;
-
-	// 스킬에 적용될 여러 SetByCaller 매그니튜드(데미지, 힐, 지속시간 등)를 설정하고 계산합니다.
-	UPROPERTY(EditDefaultsOnly, Category = "SkillMagnitudeCalculator")
-	TArray<FSkillMagnitudeCalculation> MagnitudeCalculators;
 
 	// ==========================================
 	// 다형성 가상 인터페이스 오버라이드

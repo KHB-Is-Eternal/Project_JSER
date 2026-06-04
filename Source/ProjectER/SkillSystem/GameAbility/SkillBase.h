@@ -13,6 +13,7 @@ enum class ETargetRelationship : uint8;
 class USkillDataAsset;
 class UBaseGameplayEffect;
 class UBaseSkillConfig;
+struct FSkillMagnitudeCalculation;
 
 UENUM(BlueprintType)
 enum class ESkillAbilityState : uint8
@@ -56,6 +57,7 @@ protected:
 
 	/** 스킬 효과 적용 핵심 로직 - 중복 코드 제거를 위해 통합됨 */
 	void ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
+	void ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
 
 	void SetSkillTagCount(FGameplayTag Tag, int32 Count);
 	void PlayAnimMontage();
@@ -64,6 +66,7 @@ protected:
 	
 	/** 자신에게 효과 적용 (ApplyEffectToTargetInternal 호출) */
 	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
+	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
 	bool TryExecuteSkill();
 
 	/** 스킬 발동 시 대응되는 Gameplay Event를 발송합니다. */
