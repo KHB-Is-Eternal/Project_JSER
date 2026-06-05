@@ -18,7 +18,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 	bool bResult = Super::OnActiveGameplayEffectAdded(ActiveGEContainer, ActiveGE);
 
 	UAbilitySystemComponent* TargetASC = ActiveGEContainer.Owner;
-	if (IsValid(TargetASC) && TargetASC->IsOwnerActorAuthoritative())
+	if (IsValid(TargetASC))
 	{
 		// 1. 발동 효과 실행 (Duration/Infinite GE이므로 지속성 효과로 등록)
 		TArray<FGameplayTag> OngoingTags;
@@ -195,7 +195,7 @@ void UVfxSfxGEC::OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& Activ
 	Super::OnGameplayEffectExecuted(ActiveGEContainer, GESpec, PredictionKey);
 
 	UAbilitySystemComponent* ASC = ActiveGEContainer.Owner;
-	if (IsValid(ASC) && ASC->IsOwnerActorAuthoritative())
+	if (IsValid(ASC))
 	{
 		if (GESpec.GetPeriod() > 0.0f)
 		{
@@ -224,10 +224,6 @@ void UVfxSfxGEC::ExecuteEffects(UAbilitySystemComponent* ASC, const FGameplayEff
 		CueDirection = Hit->Normal;
 	}
 
-	if (!PredictionKey.IsValidKey()) PredictionKey = ASC->ScopedPredictionKey;
-	UGameplayCueManager* CueManager = UAbilitySystemGlobals::Get().GetGameplayCueManager();
-	if (!IsValid(CueManager)) return;
-
 	// 1. VFX 실행
 	if (IsValid(VfxConfig) && VfxConfig->CueTag.IsValid())
 	{
@@ -238,7 +234,8 @@ void UVfxSfxGEC::ExecuteEffects(UAbilitySystemComponent* ASC, const FGameplayEff
 		Params.Instigator = Context.GetInstigator();
 		Params.EffectCauser = Context.GetEffectCauser();
 
-		CueManager->InvokeGameplayCueExecuted_WithParams(ASC, VfxConfig->CueTag, PredictionKey, Params);
+		FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
+		ASC->ExecuteGameplayCue(VfxConfig->CueTag, Params);
 	}
 
 	// 2. SFX 실행
@@ -251,6 +248,7 @@ void UVfxSfxGEC::ExecuteEffects(UAbilitySystemComponent* ASC, const FGameplayEff
 		Params.Instigator = Context.GetInstigator();
 		Params.EffectCauser = Context.GetEffectCauser();
 
-		CueManager->InvokeGameplayCueExecuted_WithParams(ASC, SoundConfig->CueTag, PredictionKey, Params);
+		FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
+		ASC->ExecuteGameplayCue(SoundConfig->CueTag, Params);
 	}
 }

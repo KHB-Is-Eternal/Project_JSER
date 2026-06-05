@@ -55,12 +55,17 @@ public:
 	bool IsVfxActorRegistered(AActor* Instigator, float ActivationTime) const;
 
 	/** 시전자 기준으로 허용 오차 내에서 비주얼 액터를 검색합니다. (클라이언트-서버 시간 불일치 보상용) */
-	AActor* FindAndUnregisterVfxActorFuzzy(AActor* Instigator, float TargetTime, float Tolerance = 0.5f);
+	AActor* FindAndUnregisterVfxActorFuzzy(AActor* Instigator, float TargetTime, float Tolerance = -1.0f);
 
 	/** 비주얼 액터가 아직 오지 않았을 때, 판정 액터를 대기열에 등록합니다. */
 	void RegisterPendingActorFuzzy(AActor* Instigator, float ActivationTime, AActor* PendingActor);
 
+	float GetDefaultHandshakeTolerance() const { return DefaultHandshakeTolerance; }
+
 private:
+	/** 기본 시각 효과 핸드셰이크 허용 오차 시간 (초) */
+	float DefaultHandshakeTolerance = 0.5f;
+
 	/** (시전자, 예측키) -> 비주얼 액터 매핑 */
 	TMap<FGCN_SummonedKey, TWeakObjectPtr<AActor>> VfxRegistry;
 

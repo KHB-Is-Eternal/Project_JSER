@@ -431,4 +431,18 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Airborne, "Montage.Common.Airborne", "Airborne Reaction Montage");
 		}
 	}
+
+	namespace Skill
+	{
+		namespace Animation
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Casting, "Skill.Animation.Casting", "Skill Casting State Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Active, "Skill.Animation.Active", "Skill Active (Hit) State Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Backswing, "Skill.Animation.Backswing", "Skill Backswing State Tag");
+		}
+		namespace Data
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(CoolTime, "Skill.Data.CoolTime", "Cooldown Tag for SetByCaller");
+		}
+	}
 }
