@@ -47,6 +47,7 @@ void UAnimNotify_SkillGameplayCue::Notify(USkeletalMeshComponent* MeshComp, UAni
 	Parameters.Instigator = OwnerActor;
 	Parameters.TargetAttachComponent = MeshComp;
 	Parameters.SourceObject = SpawnConfig; // 핵심 데이터 주입
+	Parameters.OriginalTag = GameplayCueTag;
 
 	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(OwnerActor))
 	{

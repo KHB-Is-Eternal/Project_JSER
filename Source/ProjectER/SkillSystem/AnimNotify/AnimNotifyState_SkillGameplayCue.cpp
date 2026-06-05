@@ -48,6 +48,7 @@ void UAnimNotifyState_SkillGameplayCue::NotifyBegin(USkeletalMeshComponent* Mesh
 	Parameters.TargetAttachComponent = MeshComp;
 	Parameters.RawMagnitude = TotalDuration;
 	Parameters.SourceObject = SpawnConfig;
+	Parameters.OriginalTag = GameplayCueTag;
 
 	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(OwnerActor))
 	{
@@ -58,13 +59,13 @@ void UAnimNotifyState_SkillGameplayCue::NotifyBegin(USkeletalMeshComponent* Mesh
 				Parameters.AbilityLevel = Ability->GetAbilityLevel();
 			}
 		}
-		ASC->AddGameplayCue(GameplayCueTag, Parameters);
+		ASC->ExecuteGameplayCue(GameplayCueTag, Parameters);
 	}
 	else
 	{
 		if (UGameplayCueManager* GCM = UAbilitySystemGlobals::Get().GetGameplayCueManager())
 		{
-			GCM->AddGameplayCue_NonReplicated(OwnerActor, GameplayCueTag, Parameters);
+			GCM->ExecuteGameplayCue_NonReplicated(OwnerActor, GameplayCueTag, Parameters);
 		}
 	}
 
@@ -138,6 +139,8 @@ void UAnimNotifyState_SkillGameplayCue::NotifyEnd(USkeletalMeshComponent* MeshCo
 	FGameplayCueParameters Parameters;
 	Parameters.Instigator = OwnerActor;
 	Parameters.TargetAttachComponent = MeshComp;
+	Parameters.SourceObject = SpawnConfig;
+	Parameters.OriginalTag = GameplayCueTag;
 
 #if WITH_EDITOR
 	if (IsValid(OwnerActor))
@@ -152,15 +155,24 @@ void UAnimNotifyState_SkillGameplayCue::NotifyEnd(USkeletalMeshComponent* MeshCo
 	}
 #endif
 
-	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(OwnerActor))
+	if (IsValid(OwnerActor))
 	{
-		ASC->RemoveGameplayCue(GameplayCueTag);
-	}
-	else
-	{
-		if (UGameplayCueManager* GCM = UAbilitySystemGlobals::Get().GetGameplayCueManager())
+		UNiagaraSystem* const LoadedSystem = SpawnConfig->NiagaraSystem.LoadSynchronous();
+		if (IsValid(LoadedSystem))
 		{
-			GCM->RemoveGameplayCue_NonReplicated(OwnerActor, GameplayCueTag, Parameters);
+			const FName UniqueTag = FName(*SpawnConfig->GetPathName());
+			TArray<UNiagaraComponent*> NCs;
+			OwnerActor->GetComponents<UNiagaraComponent>(NCs);
+			for (UNiagaraComponent* NC : NCs)
+			{
+				if (IsValid(NC) && NC->GetAsset() == LoadedSystem)
+				{
+					if (NC->ComponentTags.Contains(UniqueTag))
+					{
+						NC->Deactivate();
+					}
+				}
+			}
 		}
 	}
 

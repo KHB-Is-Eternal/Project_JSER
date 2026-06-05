@@ -204,7 +204,15 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 		SourceTransform = FTransform(FallbackRotation, Parameters.Location);
 	}
 
-	SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
+	UNiagaraComponent* const SpawnedComponent = SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
+	if (IsValid(SpawnedComponent))
+	{
+		SpawnedComponent->ComponentTags.Add(Parameters.OriginalTag.GetTagName());
+		if (IsValid(SpawnConfig))
+		{
+			SpawnedComponent->ComponentTags.Add(FName(*SpawnConfig->GetPathName()));
+		}
+	}
 	return true;
 }
 
@@ -256,14 +264,18 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnRemove_Implementation(AActor* MyTarget, c
 		return false;
 	}
 
-	// 캐릭터에서 동일한 NiagaraSystem을 가진 컴포넌트를 찾아 Deactivate
+	// 캐릭터에서 동일한 NiagaraSystem과 태그를 가진 컴포넌트를 찾아 Deactivate
+	const FName TargetCueTagName = Parameters.OriginalTag.GetTagName();
 	TArray<UNiagaraComponent*> NCs;
 	MyTarget->GetComponents<UNiagaraComponent>(NCs);
 	for (UNiagaraComponent* NC : NCs)
 	{
 		if (IsValid(NC) && NC->GetAsset() == LoadedSystem)
 		{
-			NC->Deactivate();
+			if (NC->ComponentTags.Contains(TargetCueTagName))
+			{
+				NC->Deactivate();
+			}
 		}
 	}
 
