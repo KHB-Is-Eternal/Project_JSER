@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 public class ProjectER : ModuleRules
 {
@@ -38,6 +38,7 @@ public class ProjectER : ModuleRules
             "LevelSequence",// level sequence play
             "MovieScene",
             "MovieSceneTracks",
+            "NetCore",
         });
         
         PrivateDependencyModuleNames.AddRange(new string[]

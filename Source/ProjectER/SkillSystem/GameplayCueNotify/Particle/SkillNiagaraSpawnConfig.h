@@ -29,6 +29,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Attach")
 	FName SocketOrBoneName = NAME_None;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Attach")
+	bool bOverrideDuplicate = false;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Niagara|Transform")
 	bool bUseSourceRotationForLocationOffset = true;
 

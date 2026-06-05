@@ -8,6 +8,7 @@
 #include "GameplayEffectTypes.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
+#include "CharacterSystem/GAS/ProjectERASC.h"
 
 UVfxSfxGEC::UVfxSfxGEC()
 {
@@ -21,7 +22,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 	if (IsValid(TargetASC))
 	{
 		// 1. 발동 효과 실행 (Duration/Infinite GE이므로 지속성 효과로 등록)
-		TArray<FGameplayTag> OngoingTags;
+		TArray<TPair<FGameplayTag, TWeakObjectPtr<const UObject>>> OngoingCues;
 
 		auto AddOngoing = [&](const UObject* Config, FGameplayTag Tag)
 		{
@@ -34,7 +35,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 
 				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 				TargetASC->AddGameplayCue(Tag, Params);
-				OngoingTags.Add(Tag);
+				OngoingCues.Add(TPair<FGameplayTag, TWeakObjectPtr<const UObject>>(Tag, Config));
 			}
 		};
 
@@ -73,45 +74,49 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 		}
 
 		// 2. 제거 효과 바인딩 (Ongoing 중단 + Removed 효과 실행)
-		if (OngoingTags.Num() > 0 || IsValid(RemovedVfx.Get()) || IsValid(RemovedSound.Get()) || IsValid(MaxStackVfx.Get()) || IsValid(MaxStackSound.Get()))
+		if (OngoingCues.Num() > 0 || IsValid(RemovedVfx.Get()) || IsValid(RemovedSound.Get()) || IsValid(MaxStackVfx.Get()) || IsValid(MaxStackSound.Get()))
 		{
 			TWeakObjectPtr<const UVfxSfxGEC> WeakThis(this);
 			TWeakObjectPtr<UAbilitySystemComponent> WeakASC(TargetASC);
 			FGameplayEffectSpec Spec = ActiveGE.Spec; // 복사본 저장
 
-			ActiveGE.EventSet.OnEffectRemoved.AddLambda([WeakThis, WeakASC, Spec, OngoingTags, bMaxStackCueActive](const FGameplayEffectRemovalInfo& RemovalInfo)
+			ActiveGE.EventSet.OnEffectRemoved.AddLambda([WeakThis, WeakASC, Spec, OngoingCues, bMaxStackCueActive](const FGameplayEffectRemovalInfo& RemovalInfo)
 			{
 				if (WeakASC.IsValid())
 				{
-					UAbilitySystemComponent* ASC = WeakASC.Get();
-
-					// 지속성으로 등록된 발동 효과 제거
-					for (const FGameplayTag& Tag : OngoingTags)
+					UProjectERASC* CustomASC = Cast<UProjectERASC>(WeakASC.Get());
+					ensureMsgf(CustomASC != nullptr, TEXT("OnEffectRemoved: ASC is not UProjectERASC! Check Blueprint CDO or reparent the BP."));
+					
+					if (CustomASC)
 					{
-						FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
-						ASC->RemoveGameplayCue(Tag);
-					}
+						// 지속성으로 등록된 발동 효과 제거
+						for (const auto& CuePair : OngoingCues)
+						{
+							FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+							CustomASC->RemoveGameplayCueBySource(CuePair.Key, CuePair.Value.Get());
+						}
 
-					// 최대 스택 효과 제거
-					if (*bMaxStackCueActive && WeakThis.IsValid())
-					{
-						if (WeakThis->MaxStackVfx.Get() && WeakThis->MaxStackVfx->CueTag.IsValid())
+						// 최대 스택 효과 제거
+						if (*bMaxStackCueActive && WeakThis.IsValid())
 						{
-							FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
-							ASC->RemoveGameplayCue(WeakThis->MaxStackVfx->CueTag);
+							if (WeakThis->MaxStackVfx.Get() && WeakThis->MaxStackVfx->CueTag.IsValid())
+							{
+								FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+								CustomASC->RemoveGameplayCueBySource(WeakThis->MaxStackVfx->CueTag, WeakThis->MaxStackVfx.Get());
+							}
+							if (WeakThis->MaxStackSound.Get() && WeakThis->MaxStackSound->CueTag.IsValid())
+							{
+								FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+								CustomASC->RemoveGameplayCueBySource(WeakThis->MaxStackSound->CueTag, WeakThis->MaxStackSound.Get());
+							}
+							*bMaxStackCueActive = false;
 						}
-						if (WeakThis->MaxStackSound.Get() && WeakThis->MaxStackSound->CueTag.IsValid())
-						{
-							FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
-							ASC->RemoveGameplayCue(WeakThis->MaxStackSound->CueTag);
-						}
-						*bMaxStackCueActive = false;
 					}
 
 					// 제거 시점의 효과 실행 (Burst)
 					if (WeakThis.IsValid())
 					{
-						WeakThis->ExecuteEffects(ASC, Spec, WeakThis->RemovedVfx.Get(), WeakThis->RemovedSound.Get());
+						WeakThis->ExecuteEffects(WeakASC.Get(), Spec, WeakThis->RemovedVfx.Get(), WeakThis->RemovedSound.Get());
 					}
 				}
 			});
@@ -168,15 +173,18 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 							// 스택 감소 시 최대 스택 미만으로 내려가면 이펙트 제거
 							if (LimitCount > 0 && NewStack < LimitCount && *bMaxStackCueActive)
 							{
-								if (WeakThis->MaxStackVfx.Get() && WeakThis->MaxStackVfx->CueTag.IsValid())
+								if (UProjectERASC* CustomASC = Cast<UProjectERASC>(ASC))
 								{
-									FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
-									ASC->RemoveGameplayCue(WeakThis->MaxStackVfx->CueTag);
-								}
-								if (WeakThis->MaxStackSound.Get() && WeakThis->MaxStackSound->CueTag.IsValid())
-								{
-									FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
-									ASC->RemoveGameplayCue(WeakThis->MaxStackSound->CueTag);
+									if (WeakThis->MaxStackVfx.Get() && WeakThis->MaxStackVfx->CueTag.IsValid())
+									{
+										FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+										CustomASC->RemoveGameplayCueBySource(WeakThis->MaxStackVfx->CueTag, WeakThis->MaxStackVfx.Get());
+									}
+									if (WeakThis->MaxStackSound.Get() && WeakThis->MaxStackSound->CueTag.IsValid())
+									{
+										FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+										CustomASC->RemoveGameplayCueBySource(WeakThis->MaxStackSound->CueTag, WeakThis->MaxStackSound.Get());
+									}
 								}
 								*bMaxStackCueActive = false;
 							}

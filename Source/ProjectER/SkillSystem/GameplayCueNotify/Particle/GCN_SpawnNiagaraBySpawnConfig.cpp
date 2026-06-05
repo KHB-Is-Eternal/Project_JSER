@@ -204,6 +204,30 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 		SourceTransform = FTransform(FallbackRotation, Parameters.Location);
 	}
 
+	// 3. 중복 부착 방지: 동일한 SpawnConfig를 가진 컴포넌트가 이미 부착되어 있다면 선택적으로 제거
+	if (IsValid(SpawnConfig) && SpawnConfig->bOverrideDuplicate)
+	{
+		const FName ConfigTagName = FName(*SpawnConfig->GetPathName());
+		auto CleanupExistingNC = [ConfigTagName](AActor* Actor)
+		{
+			if (IsValid(Actor))
+			{
+				TArray<UNiagaraComponent*> ExistingNCs;
+				Actor->GetComponents<UNiagaraComponent>(ExistingNCs);
+				for (UNiagaraComponent* NC : ExistingNCs)
+				{
+					if (IsValid(NC) && NC->ComponentTags.Contains(ConfigTagName))
+					{
+						NC->DestroyComponent();
+					}
+				}
+			}
+		};
+
+		CleanupExistingNC(const_cast<AActor*>(SourceActor));
+		CleanupExistingNC(MyTarget);
+	}
+
 	UNiagaraComponent* const SpawnedComponent = SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
 	if (IsValid(SpawnedComponent))
 	{
@@ -212,6 +236,9 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 		{
 			SpawnedComponent->ComponentTags.Add(FName(*SpawnConfig->GetPathName()));
 		}
+
+		// 나이아가라 시스템의 User.StackCount 파라미터에 현재 스택 카운트 전달
+		SpawnedComponent->SetVariableInt(TEXT("User.StackCount"), Parameters.GameplayEffectLevel);
 	}
 	return true;
 }
@@ -264,15 +291,15 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnRemove_Implementation(AActor* MyTarget, c
 		return false;
 	}
 
-	// 캐릭터에서 동일한 NiagaraSystem과 태그를 가진 컴포넌트를 찾아 Deactivate
-	const FName TargetCueTagName = Parameters.OriginalTag.GetTagName();
+	// 캐릭터에서 동일한 NiagaraSystem과 SpawnConfig 고유 경로 태그를 가진 컴포넌트를 찾아 Deactivate
+	const FName UniqueConfigTagName = FName(*SpawnConfig->GetPathName());
 	TArray<UNiagaraComponent*> NCs;
 	MyTarget->GetComponents<UNiagaraComponent>(NCs);
 	for (UNiagaraComponent* NC : NCs)
 	{
 		if (IsValid(NC) && NC->GetAsset() == LoadedSystem)
 		{
-			if (NC->ComponentTags.Contains(TargetCueTagName))
+			if (NC->ComponentTags.Contains(UniqueConfigTagName))
 			{
 				NC->Deactivate();
 			}

@@ -3,6 +3,7 @@
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 #include "AbilitySystemComponent.h"
+#include "CharacterSystem/GAS/ProjectERASC.h"
 #include "GameplayEffect.h"
 
 //////////////////////////////////////////////////////////////////////////
@@ -36,16 +37,19 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 				TargetASC->AddGameplayCue(this->ActiveVfxConfig->CueTag, Params);
 			}
 
-				FGameplayTag CueTag = this->ActiveVfxConfig->CueTag;
-				ActiveGE.EventSet.OnEffectRemoved.AddLambda([TargetASC, CueTag](const FGameplayEffectRemovalInfo& RemovalInfo)
+			FGameplayTag CueTag = this->ActiveVfxConfig->CueTag;
+			TWeakObjectPtr<const USkillNiagaraSpawnConfig> WeakConfig = this->ActiveVfxConfig.Get();
+			ActiveGE.EventSet.OnEffectRemoved.AddLambda([TargetASC, CueTag, WeakConfig](const FGameplayEffectRemovalInfo& RemovalInfo)
+			{
+				UProjectERASC* CustomASC = Cast<UProjectERASC>(TargetASC);
+				ensureMsgf(CustomASC != nullptr, TEXT("OnEffectRemoved: ASC is not UProjectERASC! Check Blueprint CDO."));
+				if (CustomASC)
 				{
-					if (IsValid(TargetASC))
-					{
-						FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
-						TargetASC->RemoveGameplayCue(CueTag);
-					}
-				});
-			}
+					FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+					CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+				}
+			});
+		}
 
 		// 2. Sound 처리
 		if (IsValid(this->ActiveSoundConfig.Get()) && this->ActiveSoundConfig->CueTag.IsValid())
@@ -61,14 +65,17 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 			}
 
 			FGameplayTag CueTag = this->ActiveSoundConfig->CueTag;
-				ActiveGE.EventSet.OnEffectRemoved.AddLambda([TargetASC, CueTag](const FGameplayEffectRemovalInfo& RemovalInfo)
+			TWeakObjectPtr<const USkillSoundSpawnConfig> WeakConfig = this->ActiveSoundConfig.Get();
+			ActiveGE.EventSet.OnEffectRemoved.AddLambda([TargetASC, CueTag, WeakConfig](const FGameplayEffectRemovalInfo& RemovalInfo)
+			{
+				UProjectERASC* CustomASC = Cast<UProjectERASC>(TargetASC);
+				ensureMsgf(CustomASC != nullptr, TEXT("OnEffectRemoved: ASC is not UProjectERASC! Check Blueprint CDO."));
+				if (CustomASC)
 				{
-					if (IsValid(TargetASC))
-					{
-						FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
-						TargetASC->RemoveGameplayCue(CueTag);
-					}
-				});
+					FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+					CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+				}
+			});
 		}
 	}
 
