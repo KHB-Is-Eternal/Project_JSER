@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "ItemSystem/Interface/I_ItemInteractable.h" // [김현수 추가분]
 #include "ItemSystem/Data/ItemRecipeRow.h" // [김현수 추가분]
@@ -549,6 +549,16 @@ public:
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Chat")
 	TSubclassOf<class UUI_ChatSystem> ChatWidgetClass;
+
+	// === Item Catalog UI ===
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Catalog")
+	TSubclassOf<class UItemCatalogWidget> CatalogWidgetClass;
+
+	UPROPERTY()
+	class UItemCatalogWidget* CatalogWidgetInstance;
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Catalog")
+	void ToggleCatalog();
 
 	UPROPERTY()
 	class UUI_ChatSystem* ChatWidgetInstance;

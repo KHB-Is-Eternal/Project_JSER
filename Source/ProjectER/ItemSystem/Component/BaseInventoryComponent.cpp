@@ -167,12 +167,6 @@ void UBaseInventoryComponent::UseItem(const int32 SlotIndex)
 		return;
 	}
 
-	if (!OwnerActor->HasAuthority())
-	{
-		Server_UseItem(SlotIndex);
-		return;
-	}
-
 	if (!InventoryContents.IsValidIndex(SlotIndex))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] UseItem: Invalid SlotIndex %d"), SlotIndex);
@@ -193,11 +187,34 @@ void UBaseInventoryComponent::UseItem(const int32 SlotIndex)
 		return;
 	}
 
+	// 쿨타임 체크 (클라이언트와 서버 모두에서 검사하여 RPC 스팸 방지 및 검증)
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (float* LastUseTime = LastItemUseTimes.Find(UsableItem))
+	{
+		if (CurrentTime - *LastUseTime < UsableItem->UseCooldown)
+		{
+			// 아직 쿨타임 중
+			UE_LOG(LogTemp, Verbose, TEXT("[BaseInventoryComponent] UseItem: %s is on cooldown"), *UsableItem->ItemName.ToString());
+			return;
+		}
+	}
+
+	if (!OwnerActor->HasAuthority())
+	{
+		// 클라이언트 예측: 쿨타임 시간만 먼저 갱신해서 연타 시 RPC 호출 방지
+		LastItemUseTimes.Add(UsableItem, CurrentTime);
+		Server_UseItem(SlotIndex);
+		return;
+	}
+
 	if (!CanUseItemsInCurrentLifeState())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] UseItem: blocked while Down/Death. Item='%s'"), *UsableItem->ItemName.ToString());
 		return;
 	}
+
+	// 쿨타임 적용 (서버)
+	LastItemUseTimes.Add(UsableItem, CurrentTime);
 
 	const bool bEffectApplied = ApplyItemEffect(UsableItem);
 

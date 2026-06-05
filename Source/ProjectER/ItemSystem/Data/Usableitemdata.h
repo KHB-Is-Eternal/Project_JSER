@@ -67,4 +67,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings")
 	bool bConsumable;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings", meta = (ClampMin = "0.1"))
+	float UseCooldown = 0.1f;
 };
