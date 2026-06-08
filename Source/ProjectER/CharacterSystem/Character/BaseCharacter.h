@@ -366,6 +366,13 @@ protected:
 	
 #pragma region CrowdControl
 public:
+	// Diminishing Returns 히스토리 데이터
+	struct FCCDiminishingData
+	{
+		int32 HitCount = 0;
+		float LastApplyTime = -999.0f;
+	};
+
 	// CC 태그 변경 감지 콜백 (ASC 델리게이트 바인딩)
 	void OnCCTagChanged(const FGameplayTag Tag, int32 NewCount);
 
@@ -373,9 +380,21 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "CC")
 	bool IsMovementBlocked() const;
 
+	// DR 감쇠 배율 반환 (1.0 = 감쇠 없음, 호출 시 HitCount를 증가시키지 않음)
+	float GetCCDiminishingFactor(const FGameplayTag& CCTag);
+
+	// DR 적용 기록 (HitCount 증가 + 시각 갱신)
+	void RecordCCApplication(const FGameplayTag& CCTag);
+
 protected:
 	// ASC에 CC 태그 감시 델리게이트 등록
 	void RegisterCCTagCallbacks();
+
+	// DR 히스토리 맵 (서버 전용, 복제 불필요)
+	TMap<FGameplayTag, FCCDiminishingData> CCDiminishingMap;
+
+	// DR 윈도우 (초) — 이 시간 내 반복 CC 적용 시 감쇠
+	static constexpr float CCDiminishingWindow = 3.0f;
 #pragma endregion
 
 

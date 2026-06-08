@@ -1,7 +1,8 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameplayEffectComponent.h"
+#include "GameplayTagContainer.h"
 #include "CCEffectGEC.generated.h"
 
 class UAbilitySystemComponent;
@@ -18,11 +19,11 @@ protected:
 	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
 	
 private:
-	// Tenacity 보정된 Duration을 GESpec에 재설정
-	void AdjustDurationByTenacity(FGameplayEffectSpec& GESpec, const UAbilitySystemComponent* TargetASC) const;
+	// Tenacity + DR 보정된 Duration을 GESpec에 재설정
+	void AdjustDuration(FGameplayEffectSpec& GESpec, const UAbilitySystemComponent* TargetASC, AActor* TargetActor) const;
 	
 	// CC 부가 동작 실행 (이동 중지, 어빌리티 캔슬, 에어본)
-	void ExecuteCCBehavior(AActor* TargetActor) const;
+	void ExecuteCCBehavior(AActor* TargetActor, FGameplayEffectSpec& GESpec) const;
 	
 	// Slow 중첩 체크: 기존 Slow보다 약하면 true 반환 (적용 차단용)
 	bool ShouldBlockWeakerSlow(const UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec& IncomingSpec) const;
@@ -31,11 +32,12 @@ private:
 	void RemoveWeakerSlowEffects(UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec& IncomingSpec) const;
 	
 public:
-	// 에어본 높이 (Airborne GE에서만 0 이상으로 설정)
+	// 에어본 도달 높이 (cm) — 0이면 에어본 아님
+	// LaunchCharacter 속도는 이 높이와 중력으로부터 자동 역산됨
 	UPROPERTY(EditDefaultsOnly, Category = "CC|Airborne")
-	float AirborneHeight = 0.0f;
+	float DesiredAirborneHeight = 0.0f;
 	
-	// Tenacity 적용 여부 (BlockRegen, ReduceHealing 등은 false)
+	// Tenacity 적용 여부 (Airborne은 false로 설정)
 	UPROPERTY(EditDefaultsOnly, Category = "CC")
 	bool bAffectedByTenacity = true;
 	
@@ -51,4 +53,12 @@ public:
 	// true이면 기존 Slow보다 약한 경우 적용을 차단
 	UPROPERTY(EditDefaultsOnly, Category = "CC|Slow")
 	bool bIsSlowEffect = false;
+	
+	// CC 타입 태그 (DR 추적용) — 예: State.Debuff.Hard.Stun
+	UPROPERTY(EditDefaultsOnly, Category = "CC|DR", meta = (Categories = "State.Debuff"))
+	FGameplayTag CCTypeTag;
+	
+	// Diminishing Returns 적용 여부
+	UPROPERTY(EditDefaultsOnly, Category = "CC|DR")
+	bool bApplyDiminishingReturns = true;
 };

@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "CharacterSystem/GAS/GameplayEffectComponent/CCEffectGEC.h"
@@ -26,9 +26,12 @@ void UCCEffectGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& Acti
         return;
     }
     
-    // CC 면역 체크 (ApplicationTagRequirements와 이중 확인)
+    // CC 면역 체크 (이중 안전장치 — 메인 방어선은 GE BP의 ApplicationTagRequirements)
+    // GE BP에서 MustNotHaveTags에 State.Buff.Immune.CC를 설정하면 적용 자체가 차단됨
+    // 여기까지 도달했다면 ApplicationTagRequirements를 우회한 예외 상황
     if (TargetASC->HasMatchingGameplayTag(ProjectER::State::Buff::Immune::CC))
     {
+        UE_LOG(LogTemp, Warning, TEXT("UCCEffectGEC: CC면역 대상에 CC GE가 적용됨 — GE BP의 ApplicationTagRequirements 설정을 확인하세요."));
         return;
     }
     
@@ -37,53 +40,65 @@ void UCCEffectGEC::OnGameplayEffectApplied(FActiveGameplayEffectsContainer& Acti
     {
         if (ShouldBlockWeakerSlow(TargetASC, GESpec))
         {
-            // 이번 Slow가 기존보다 약하면 → 아무것도 안 함
-            // (GE 자체는 이미 적용되었지만, 기존 강한 Slow가 있으므로
-            //  MoveSpeed Modifier가 곱연산되어 최종적으로 가장 강한 것만 실질적으로 적용됨)
-            // 그러나 "가장 강한 것만 적용" 정책이므로 약한 것을 제거해야 함
+            // 이번 Slow가 기존보다 약하면 → 아무 부가 동작도 실행하지 않음
             return;
         }
         // 이번 Slow가 더 강하면 → 기존 약한 Slow들 제거
         RemoveWeakerSlowEffects(TargetASC, GESpec);
     }
     
-    // Tenacity 기반 Duration 보정
-    if (bAffectedByTenacity)
-    {
-        AdjustDurationByTenacity(GESpec, TargetASC);
-    }
+    AActor* const TargetActor = TargetASC->GetAvatarActor();
+    
+    // Duration 보정 (Tenacity + Diminishing Returns)
+    AdjustDuration(GESpec, TargetASC, TargetActor);
     
     // CC 부가 동작 실행
-    AActor* const TargetActor = TargetASC->GetAvatarActor();
     if (IsValid(TargetActor))
     {
-        ExecuteCCBehavior(TargetActor);
+        ExecuteCCBehavior(TargetActor, GESpec);
     }
 }
 
-void UCCEffectGEC::AdjustDurationByTenacity(FGameplayEffectSpec& GESpec, const UAbilitySystemComponent* TargetASC) const
+void UCCEffectGEC::AdjustDuration(FGameplayEffectSpec& GESpec, const UAbilitySystemComponent* TargetASC, AActor* TargetActor) const
 {
     if (!IsValid(TargetASC))
     {
         return;
     }
     
-    const float Tenacity = TargetASC->GetNumericAttribute(UBaseAttributeSet::GetTenacityAttribute());
-    if (Tenacity <= 0.0f)
+    float FinalDuration = GESpec.GetDuration();
+    
+    // 1. Tenacity 보정
+    if (bAffectedByTenacity)
     {
-        return;
+        const float Tenacity = TargetASC->GetNumericAttribute(UBaseAttributeSet::GetTenacityAttribute());
+        if (Tenacity > 0.0f)
+        {
+            // 공식: Duration × (100 / (100 + Tenacity))
+            const float TenacityFactor = 100.0f / (100.0f + Tenacity);
+            FinalDuration *= TenacityFactor;
+        }
     }
     
-    // 공식: 최종 Duration = 기본 Duration × (100 / (100 + Tenacity))
-    const float OriginalDuration = GESpec.GetDuration();
-    const float ReductionFactor = 100.0f / (100.0f + Tenacity);
-    const float AdjustedDuration = OriginalDuration * ReductionFactor;
+    // 2. Diminishing Returns 보정
+    if (bApplyDiminishingReturns && CCTypeTag.IsValid() && IsValid(TargetActor))
+    {
+        ABaseCharacter* const TargetCharacter = Cast<ABaseCharacter>(TargetActor);
+        if (TargetCharacter != nullptr)
+        {
+            const float DRFactor = TargetCharacter->GetCCDiminishingFactor(CCTypeTag);
+            FinalDuration *= DRFactor;
+            
+            // DR 적용 기록
+            TargetCharacter->RecordCCApplication(CCTypeTag);
+        }
+    }
     
     // 최소 Duration 보장 (0.1초)
-    GESpec.SetDuration(FMath::Max(AdjustedDuration, 0.1f), false);
+    GESpec.SetDuration(FMath::Max(FinalDuration, 0.1f), false);
 }
 
-void UCCEffectGEC::ExecuteCCBehavior(AActor* TargetActor) const
+void UCCEffectGEC::ExecuteCCBehavior(AActor* TargetActor, FGameplayEffectSpec& GESpec) const
 {
     check(TargetActor);
     
@@ -111,14 +126,26 @@ void UCCEffectGEC::ExecuteCCBehavior(AActor* TargetActor) const
         }
     }
     
-    // 에어본: LaunchCharacter
-    if (AirborneHeight > 0.0f)
+    // 에어본: 높이에서 발사 속도를 역산하여 LaunchCharacter
+    if (DesiredAirborneHeight > 0.0f)
     {
         ACharacter* const Character = Cast<ACharacter>(TargetActor);
         if (Character != nullptr)
         {
+            const float Gravity = FMath::Abs(Character->GetCharacterMovement()->GetGravityZ());
+            
+            // v₀ = √(2gh) → 해당 높이에 도달하는 초기 속도
+            const float LaunchSpeed = FMath::Sqrt(2.0f * Gravity * DesiredAirborneHeight);
+            
+            // 체공 시간 = 2v₀/g → GE Duration을 물리 궤적에 맞게 덮어쓰기
+            if (Gravity > 0.0f)
+            {
+                const float FlightTime = (2.0f * LaunchSpeed) / Gravity;
+                GESpec.SetDuration(FMath::Max(FlightTime, 0.1f), false);
+            }
+            
             Character->LaunchCharacter(
-                FVector(0.0f, 0.0f, AirborneHeight),
+                FVector(0.0f, 0.0f, LaunchSpeed),
                 false,  // bXYOverride
                 true    // bZOverride
             );
@@ -161,7 +188,7 @@ bool UCCEffectGEC::ShouldBlockWeakerSlow(const UAbilitySystemComponent* TargetAS
         }
     }
     
-    // 기존 Slow들과 비교 - 기존이 더 강하면(값이 더 작으면) 차단
+    // 기존 Slow들과 비교 — 기존이 더 강하면(값이 더 작으면) 차단
     for (const FActiveGameplayEffectHandle& Handle : ActiveSlows)
     {
         const FActiveGameplayEffect* const ActiveGE = TargetASC->GetActiveGameplayEffect(Handle);
@@ -208,11 +235,14 @@ void UCCEffectGEC::RemoveWeakerSlowEffects(UAbilitySystemComponent* TargetASC, c
         }
     }
     
-    // 기존 Slow 중 더 약한 것들 제거
+    // 기존 Slow 중 더 약한 것들 수집
     FGameplayTagContainer SlowTag;
     SlowTag.AddTag(ProjectER::State::Debuff::Soft::Slow);
     FGameplayEffectQuery SlowQuery = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(SlowTag);
     TArray<FActiveGameplayEffectHandle> ActiveSlows = TargetASC->GetActiveEffects(SlowQuery);
+    
+    // 제거 대상을 먼저 수집 (순회 중 컨테이너 수정 방지)
+    TArray<FActiveGameplayEffectHandle> ToRemove;
     
     for (const FActiveGameplayEffectHandle& Handle : ActiveSlows)
     {
@@ -229,14 +259,20 @@ void UCCEffectGEC::RemoveWeakerSlowEffects(UAbilitySystemComponent* TargetASC, c
                 float ExistingMagnitude = 0.0f;
                 ModInfo.ModifierMagnitude.AttemptCalculateMagnitude(ActiveGE->Spec, ExistingMagnitude);
                 
-                // 기존이 더 약하면(값이 더 크면) 제거
+                // 기존이 더 약하면(값이 더 크면) 제거 대상에 추가
                 if (ExistingMagnitude > IncomingSlowMagnitude)
                 {
-                    TargetASC->RemoveActiveGameplayEffect(Handle);
+                    ToRemove.Add(Handle);
                 }
                 
                 break;
             }
         }
+    }
+    
+    // 수집 완료 후 일괄 제거
+    for (const FActiveGameplayEffectHandle& Handle : ToRemove)
+    {
+        TargetASC->RemoveActiveGameplayEffect(Handle);
     }
 }

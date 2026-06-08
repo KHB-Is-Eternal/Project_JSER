@@ -1371,6 +1371,16 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 		}
 	}
 
+	// Hard CC (Stun/Airborne) 중이면 타겟 추적 및 공격 모두 차단
+	if (AbilitySystemComponent.IsValid())
+	{
+		if (AbilitySystemComponent->HasMatchingGameplayTag(ProjectER::State::Debuff::Hard::Stun) ||
+			AbilitySystemComponent->HasMatchingGameplayTag(ProjectER::State::Debuff::Hard::Airborne))
+		{
+			return;
+		}
+	}
+
 	// Phase 3: DistSquared — sqrt 제거
 	const float DistSq = FVector::DistSquared(GetActorLocation(), TargetActor->GetActorLocation());
 	const float AttackRange = GetAttackRange();
@@ -1666,6 +1676,52 @@ void ABaseCharacter::RegisterCCTagCallbacks()
 		ProjectER::State::Debuff::Soft::Root,
 		EGameplayTagEventType::NewOrRemoved)
 		.AddUObject(this, &ABaseCharacter::OnCCTagChanged);
+}
+
+float ABaseCharacter::GetCCDiminishingFactor(const FGameplayTag& CCTag)
+{
+	if (!CCTag.IsValid())
+	{
+		return 1.0f;
+	}
+	
+	// DR 테이블: 1회차 100%, 2회차 75%, 3회차 50%, 4회차+ 25%
+	static const float DRTable[] = { 1.0f, 0.75f, 0.50f, 0.25f };
+	static constexpr int32 DRTableSize = UE_ARRAY_COUNT(DRTable);
+	
+	const float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	
+	FCCDiminishingData& Data = CCDiminishingMap.FindOrAdd(CCTag);
+	
+	// 윈도우 밖이면 카운터 리셋
+	if ((CurrentTime - Data.LastApplyTime) > CCDiminishingWindow)
+	{
+		Data.HitCount = 0;
+	}
+	
+	const int32 Index = FMath::Min(Data.HitCount, DRTableSize - 1);
+	return DRTable[Index];
+}
+
+void ABaseCharacter::RecordCCApplication(const FGameplayTag& CCTag)
+{
+	if (!CCTag.IsValid())
+	{
+		return;
+	}
+	
+	const float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	
+	FCCDiminishingData& Data = CCDiminishingMap.FindOrAdd(CCTag);
+	
+	// 윈도우 밖이면 카운터 리셋 후 시작
+	if ((CurrentTime - Data.LastApplyTime) > CCDiminishingWindow)
+	{
+		Data.HitCount = 0;
+	}
+	
+	Data.HitCount++;
+	Data.LastApplyTime = CurrentTime;
 }
 
 void ABaseCharacter::HandleDeath()
