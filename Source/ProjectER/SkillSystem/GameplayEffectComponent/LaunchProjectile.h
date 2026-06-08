@@ -7,36 +7,31 @@
 #include "LaunchProjectile.generated.h"
 
 
-UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
-class PROJECTER_API ULaunchProjectileConfig : public USummonRangeByBoneGECConfig
-{
-	GENERATED_BODY()
-public:
 
-public:
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile | Movement")
-	float InitialSpeed = 2000.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile | Movement")
-	float GravityScale = 0.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile | Collision")
-	bool bDestroyOnHit = true;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Rotation", meta = (EditCondition = "!bUseInstigatorRotation"))
-	bool bUseEffectContextDirection = true;
-};
-
-UCLASS()
+UCLASS(DontCollapseCategories)
 class PROJECTER_API ULaunchProjectile : public USummonRangeAtBone
 {
 	GENERATED_BODY()
 public:
 	ULaunchProjectile();
 
-	virtual TSubclassOf<UBaseGECConfig> GetRequiredConfigClass() const override;
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
 
 protected:
-	virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, const USummonRangeBaseConfig* Config, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const override;
+	virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters, const FGameplayEffectSpec& ParentSpec) const override;
 	virtual FTransform CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const override;
+
+public:
+	UPROPERTY(EditDefaultsOnly, Category = "Projectile|Movement")
+	float InitialSpeed = 2000.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Projectile|Movement")
+	float GravityScale = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Projectile|Collision")
+	bool bDestroyOnHit = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Rotation", meta = (EditCondition = "!bUseInstigatorRotation"))
+	bool bUseEffectContextDirection = true;
 };

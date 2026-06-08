@@ -1,4 +1,4 @@
-﻿// File: 5th_6th-Team6-CH6-Project/Source/ProjectER/ItemSystem/Component/BaseInventoryComponent.h
+// File: 5th_6th-Team6-CH6-Project/Source/ProjectER/ItemSystem/Component/BaseInventoryComponent.h
 
 #pragma once
 
@@ -145,4 +145,9 @@ public:
 	// 아이템 조합용: 특정 슬롯에 아이템 추가
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Crafting")
 	bool AddItemToSlot(int32 SlotIndex, UBaseItemData* Item);
+
+private:
+	// 각 아이템별 마지막 사용 시간을 저장하는 맵 (쿨타임 관리용)
+	UPROPERTY()
+	TMap<UUsableItemData*, float> LastItemUseTimes;
 };

@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -11,13 +11,6 @@
  * 
  */
 
-//UENUM(BlueprintType)
-//enum class ESkillFormType : uint8 {
-//    Fixed      UMETA(DisplayName = "고정 위치(소환)"),
-//    Projectile UMETA(DisplayName = "투사체(직선)"),
-//    Homing     UMETA(DisplayName = "추적(호밍)"),
-//    Attached   UMETA(DisplayName = "부착형")
-//};
 
 USTRUCT(BlueprintType)
 struct FSkillTooltipData
@@ -59,6 +52,8 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "Skill|UI")
     FSkillTooltipData GetSkillTooltipData(int32 InLevel = 1) const;
+
+    static FString GetTargetingStyleText(TSubclassOf<class USkillBase> AbilityClass);
 
     UFUNCTION(BlueprintPure, Category = "Skill|UI")
 	UTexture2D* GetSkillIcon() const { return SKillIcon; }

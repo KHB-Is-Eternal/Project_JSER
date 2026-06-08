@@ -1,4 +1,5 @@
 #include "CharacterSystem/Player/BasePlayerController.h"
+#include "ItemSystem/UI/ItemCatalogWidget.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -323,6 +324,12 @@ void ABasePlayerController::SetupInputComponent()
 		{
 			EnhancedInputComponent->BindAction(InputConfig->ChatEnterKey, ETriggerEvent::Started, this, &ABasePlayerController::OnEnterPressed);
 		}	
+
+		// 아이템 도감 토글 바인딩
+		if (InputConfig->CatalogKey)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->CatalogKey, ETriggerEvent::Started, this, &ABasePlayerController::ToggleCatalog);
+		}
 	}
 }
 
@@ -1450,7 +1457,8 @@ void ABasePlayerController::Server_EndLoot_Implementation()
 			CancelTags.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Event.Interact.OpenBox")));
 			ASC->CancelAbilities(&CancelTags);
 
-			UE_LOG(LogTemp, Log, TEXT("Server_EndLoot: Cancelled OpenBox ability"));
+			// UE_LOG(LogTemp, Log, TEXT("Server_EndLoot: Cancelled OpenBox ability"));
+
 		}
 	}
 }
@@ -2123,23 +2131,9 @@ void ABasePlayerController::RequestDropInventoryItemFromUI(int32 SlotIndex, cons
 		return;
 	}
 
-	const FVector PawnLocation = PlayerPawn->GetActorLocation();
-	constexpr float DropForwardDistance = 120.f;
-	constexpr float FixedDropZOffset = 30.f;
-
-	FHitResult HitResult;
-	FVector DropLocation = PawnLocation + PlayerPawn->GetActorForwardVector() * DropForwardDistance;
-	DropLocation.Z = PawnLocation.Z + FixedDropZOffset;
-
-	// XY만 참고하고, Z는 고정
-	if (GetHitResultAtScreenPosition(ScreenSpacePosition, MouseTraceChannel, true, HitResult) && HitResult.bBlockingHit)
-	{
-		DropLocation.X = HitResult.Location.X;
-		DropLocation.Y = HitResult.Location.Y;
-		DropLocation.Z = PawnLocation.Z + FixedDropZOffset;
-	}
-
-	Server_DropInventoryItem(SlotIndex, DropLocation);
+	// 기존 마우스 위치 기반 계산 무시
+	// 서버에서 자체적으로 분산 드랍 위치를 계산하므로 현재 Pawn 위치를 임시로 넘김
+	Server_DropInventoryItem(SlotIndex, PlayerPawn->GetActorLocation());
 }
 
 void ABasePlayerController::Server_DropInventoryItem_Implementation(int32 SlotIndex, FVector_NetQuantize DropLocation)
@@ -2162,18 +2156,86 @@ void ABasePlayerController::Server_DropInventoryItem_Implementation(int32 SlotIn
 	}
 
 	const FVector PawnLocation = PlayerPawn->GetActorLocation();
-	constexpr float MaxDropDistance = 250.f;
-	constexpr float FixedDropZOffset = 60.f;
+	constexpr float FixedDropZOffset = 20.f;
+	constexpr float MinimumSpacing = 120.f; // 아이템 간 최소 간격
+	constexpr float SearchRadius = 500.f;  // 주변 아이템 탐색 반경
 
-	FVector SafeDropLocation = FVector(DropLocation);
-
-	// XY 거리만 제한
-	FVector ToDrop = SafeDropLocation - PawnLocation;
-	ToDrop.Z = 0.f;
-
-	if (ToDrop.SizeSquared() > FMath::Square(MaxDropDistance))
+	// 1. 월드에 떨어져 있는 주변 기존 아이템 위치 수집
+	TArray<FVector> ExistingItemLocations;
+	TArray<AActor*> NearbyItems;
+	
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABaseItemActor::StaticClass(), NearbyItems);
+	for (AActor* Actor : NearbyItems)
 	{
-		SafeDropLocation = PawnLocation + ToDrop.GetSafeNormal() * 120.f;
+		if (IsValid(Actor) && FVector::Dist2D(PawnLocation, Actor->GetActorLocation()) < SearchRadius)
+		{
+			ExistingItemLocations.Add(Actor->GetActorLocation());
+		}
+	}
+
+	// 2. 나선형(Spiral) 알고리즘으로 빈 공간 찾기
+	FVector SafeDropLocation = PawnLocation;
+	float CurrentRadius = 0.f;
+	float AngleOffset = 0.f;
+	int32 MaxAttempts = 100;
+	
+	for (int32 i = 0; i < MaxAttempts; ++i)
+	{
+		FVector TestLocation = PawnLocation;
+		TestLocation.X += FMath::Cos(AngleOffset) * CurrentRadius;
+		TestLocation.Y += FMath::Sin(AngleOffset) * CurrentRadius;
+
+		bool bIsTooClose = false;
+		for (const FVector& Loc : ExistingItemLocations)
+		{
+			if (FVector::Dist2D(TestLocation, Loc) < MinimumSpacing)
+			{
+				bIsTooClose = true;
+				break;
+			}
+		}
+
+		if (!bIsTooClose)
+		{
+			// 벽/장애물 체크: 플레이어 위치에서 TestLocation 사이에 장애물이 있는지 확인
+			FHitResult HitResult;
+			FCollisionQueryParams QueryParams;
+			QueryParams.AddIgnoredActor(PlayerPawn);
+
+			// 캐릭터의 눈높이나 약간 위에서부터 트레이스하여 바닥에 걸리지 않도록 함
+			FVector TraceStart = PawnLocation + FVector(0.f, 0.f, 50.f);
+			FVector TraceEnd = TestLocation + FVector(0.f, 0.f, 50.f);
+
+			bool bHitObstacle = GetWorld()->LineTraceSingleByChannel(
+				HitResult,
+				TraceStart,
+				TraceEnd,
+				ECC_WorldStatic,
+				QueryParams
+			);
+
+			if (!bHitObstacle)
+			{
+				SafeDropLocation = TestLocation;
+				break; // 빈 공간 및 장애물 없는 위치 찾음!
+			}
+		}
+
+		if (CurrentRadius == 0.f)
+		{
+			CurrentRadius = MinimumSpacing;
+		}
+		else
+		{
+			float AngleStep = MinimumSpacing / CurrentRadius;
+			AngleOffset += AngleStep;
+			
+			if (AngleOffset >= 2.0f * PI)
+			{
+				AngleOffset -= 2.0f * PI;
+				CurrentRadius += MinimumSpacing;
+			}
+		}
 	}
 
 	// Z는 항상 고정
@@ -2289,29 +2351,57 @@ bool ABasePlayerController::HasMaterialsInInventory(const FItemRecipeRow* Recipe
 	OutMat2Index = -1;
 
 	// 인벤토리 순회
-	for (int32 i = 0; i < InvComp->MaxSlots; ++i)
+	if (Mat1 == Mat2)
 	{
-		UBaseItemData* const SlotItem = InvComp->GetItemAt(i);
-		if (SlotItem == nullptr) continue;
-
-		// 재료 1 매칭
-		if (OutMat1Index == -1 && SlotItem == Mat1)
+		// 동일한 아이템이 2개 필요한 경우
+		for (int32 i = 0; i < InvComp->MaxSlots; ++i)
 		{
-			OutMat1Index = i;
-			continue;
+			UBaseItemData* const SlotItem = InvComp->GetItemAt(i);
+			if (SlotItem == Mat1)
+			{
+				if (OutMat1Index == -1)
+				{
+					OutMat1Index = i;
+					// 한 슬롯에 2개 이상 있다면 Mat2Index도 동일하게 설정하고 즉시 종료
+					if (InvComp->GetStackCountAt(i) >= 2)
+					{
+						OutMat2Index = i;
+						return true;
+					}
+				}
+				else
+				{
+					// 다른 슬롯에서 두 번째 재료를 찾은 경우
+					OutMat2Index = i;
+					return true;
+				}
+			}
 		}
-
-		// 재료 2 매칭
-		if (OutMat2Index == -1 && SlotItem == Mat2)
+	}
+	else
+	{
+		// 서로 다른 아이템이 필요한 경우
+		for (int32 i = 0; i < InvComp->MaxSlots; ++i)
 		{
-			OutMat2Index = i;
-			continue;
-		}
+			UBaseItemData* const SlotItem = InvComp->GetItemAt(i);
+			if (SlotItem == nullptr) continue;
 
-		// 둘 다 찾으면 종료
-		if (OutMat1Index != -1 && OutMat2Index != -1)
-		{
-			break;
+			if (OutMat1Index == -1 && SlotItem == Mat1)
+			{
+				OutMat1Index = i;
+				continue;
+			}
+
+			if (OutMat2Index == -1 && SlotItem == Mat2)
+			{
+				OutMat2Index = i;
+				continue;
+			}
+
+			if (OutMat1Index != -1 && OutMat2Index != -1)
+			{
+				break;
+			}
 		}
 	}
 
@@ -2751,25 +2841,52 @@ bool ABasePlayerController::FindMaterialIndicesForRecipe(const FItemRecipeRow& R
 		return false;
 	}
 
-	for (int32 SlotIndex = 0; SlotIndex < Inventory->MaxSlots; ++SlotIndex)
+	if (Material1Data == Material2Data)
 	{
-		UBaseItemData* SlotItem = Inventory->GetItemAt(SlotIndex);
-		if (!SlotItem)
+		for (int32 SlotIndex = 0; SlotIndex < Inventory->MaxSlots; ++SlotIndex)
 		{
-			continue;
+			UBaseItemData* SlotItem = Inventory->GetItemAt(SlotIndex);
+			if (SlotItem == Material1Data)
+			{
+				if (OutMat1Index == INDEX_NONE)
+				{
+					OutMat1Index = SlotIndex;
+					if (Inventory->GetStackCountAt(SlotIndex) >= 2)
+					{
+						OutMat2Index = SlotIndex;
+						return true;
+					}
+				}
+				else
+				{
+					OutMat2Index = SlotIndex;
+					return true;
+				}
+			}
 		}
-
-		if (OutMat1Index == INDEX_NONE && SlotItem == Material1Data)
+	}
+	else
+	{
+		for (int32 SlotIndex = 0; SlotIndex < Inventory->MaxSlots; ++SlotIndex)
 		{
-			OutMat1Index = SlotIndex;
-			continue;
-		}
+			UBaseItemData* SlotItem = Inventory->GetItemAt(SlotIndex);
+			if (!SlotItem) continue;
 
-		if (OutMat2Index == INDEX_NONE && SlotItem == Material2Data)
-		{
-			if (SlotIndex != OutMat1Index)
+			if (OutMat1Index == INDEX_NONE && SlotItem == Material1Data)
+			{
+				OutMat1Index = SlotIndex;
+				continue;
+			}
+
+			if (OutMat2Index == INDEX_NONE && SlotItem == Material2Data)
 			{
 				OutMat2Index = SlotIndex;
+				continue;
+			}
+
+			if (OutMat1Index != INDEX_NONE && OutMat2Index != INDEX_NONE)
+			{
+				break;
 			}
 		}
 	}
@@ -2846,4 +2963,41 @@ TArray<FCraftableItemPreviewData> ABasePlayerController::GetCraftableItemsForUI(
 	}
 
 	return Results;
+}
+
+void ABasePlayerController::ToggleCatalog()
+{
+	if (!CatalogWidgetClass) return;
+
+	if (IsValid(CatalogWidgetInstance))
+	{
+		if (CatalogWidgetInstance->GetVisibility() == ESlateVisibility::Visible || CatalogWidgetInstance->GetVisibility() == ESlateVisibility::SelfHitTestInvisible)
+		{
+			CatalogWidgetInstance->SetVisibility(ESlateVisibility::Collapsed);
+			
+			// 카탈로그를 닫을 때 입력 모드를 게임 전용으로 되돌릴 수 있지만, 다른 UI가 열려있는지 확인해야 합니다.
+			// FInputModeGameOnly InputMode;
+			// SetInputMode(InputMode);
+			// bShowMouseCursor = false;
+		}
+		else
+		{
+			CatalogWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+			
+			// 필요 시 마우스 커서를 보여줌
+			// FInputModeGameAndUI InputMode;
+			// InputMode.SetWidgetToFocus(CatalogWidgetInstance->TakeWidget());
+			// SetInputMode(InputMode);
+			// bShowMouseCursor = true;
+		}
+	}
+	else
+	{
+		CatalogWidgetInstance = CreateWidget<UItemCatalogWidget>(this, CatalogWidgetClass);
+		if (CatalogWidgetInstance)
+		{
+			CatalogWidgetInstance->AddToViewport(50); // 다른 UI 위로 표시하기 위한 ZOrder
+			CatalogWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+		}
+	}
 }

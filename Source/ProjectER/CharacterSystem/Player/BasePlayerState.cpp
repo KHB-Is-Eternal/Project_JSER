@@ -1,4 +1,4 @@
-﻿#include "BasePlayerState.h"
+#include "BasePlayerState.h"
 #include "AbilitySystemComponent.h"
 #include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
 

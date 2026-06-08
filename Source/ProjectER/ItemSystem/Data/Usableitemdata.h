@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "ItemSystem/Data/BaseItemData.h"
@@ -23,6 +23,7 @@ enum class EItemStatType : uint8
 	AttackSpeed     UMETA(DisplayName = "Attack Speed"),
 	MoveSpeed       UMETA(DisplayName = "Move Speed"),
 	MaxHealth       UMETA(DisplayName = "Max Health"),
+	MaxMana         UMETA(DisplayName = "Max Mana"),
 	CriticalChance  UMETA(DisplayName = "CriticalChance")
 };
 
@@ -66,4 +67,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings")
 	bool bConsumable;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings", meta = (ClampMin = "0.1"))
+	float UseCooldown = 0.1f;
 };

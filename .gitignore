@@ -97,6 +97,12 @@ ProjectER.code-workspace
 .aiexclude
 .clangd
 .clang-format
+.agents
 
 # IDE Search Ignore File
 .ignore
+
+# AI MCP Config Files
+mcp-config.json
+repomix.config.json
+.continue/*

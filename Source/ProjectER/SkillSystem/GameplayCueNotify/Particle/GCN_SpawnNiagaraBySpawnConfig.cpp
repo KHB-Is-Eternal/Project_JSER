@@ -1,0 +1,281 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+
+#include "SkillSystem/GameplayCueNotify/Particle/GCN_SpawnNiagaraBySpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
+
+#include "Engine/Blueprint.h"
+#include "AbilitySystemStats.h"
+#include "AbilitySystemGlobals.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemLog.h"
+#include "GameplayCueManager.h"
+#include "NiagaraComponent.h"
+#include "NiagaraSystem.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/RootMotionSource.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+#include "CharacterSystem/Interface/TargetableInterface.h"
+
+//#include UE_INLINE_GENERATED_CPP_BY_NAME(GameplayCueNotify_Static)
+
+namespace
+{
+	/**
+	 * SourceObject에서 USkillNiagaraSpawnConfig를 직접 가져옵니다.
+	 * 기존 ResolveSettingsFromConfig를 완전히 대체합니다.
+	 */
+	const USkillNiagaraSpawnConfig* GetSpawnConfigFromParameters(const FGameplayCueParameters& Parameters)
+	{
+		return Cast<USkillNiagaraSpawnConfig>(Parameters.SourceObject.Get());
+	}
+
+	/** 공통 서버 체크 */
+	bool ShouldSkipOnServer(const AActor* MyTarget)
+	{
+		if (!IsValid(MyTarget))
+		{
+			return true;
+		}
+		return MyTarget->GetNetMode() == NM_DedicatedServer;
+	}
+
+	/** 파티클 스폰 컬링 최대 거리 (cm 단위) */
+	constexpr float MaxParticleSpawnDistanceSq = 1000.0f * 1000.0f;
+
+	/**
+	 * 원거리 파티클 컬링 판단.
+	 * 다음 조건 중 하나라도 만족하면 컬링하지 않음 (false 반환):
+	 *  1. 로컬 플레이어 캐릭터에서 1000 유닛 이내
+	 *  2. Instigator가 로컬 플레이어와 같은 팀 (아군 파티클)
+	 *  3. EffectCauser에 UProjectileMovementComponent가 있음 (투사체 파티클)
+	 * 위 조건을 모두 불만족하면 컬링함 (true 반환).
+	 */
+	bool ShouldCullParticle(const AActor* MyTarget, const FGameplayCueParameters& Parameters)
+	{
+		const UWorld* World = IsValid(MyTarget) ? MyTarget->GetWorld() : nullptr;
+		if (!IsValid(World))
+		{
+			return false;
+		}
+
+		const APlayerController* LocalPC = World->GetFirstPlayerController();
+		if (!IsValid(LocalPC))
+		{
+			return false;
+		}
+
+		const APawn* LocalPawn = LocalPC->GetPawn();
+		if (!IsValid(LocalPawn))
+		{
+			return false;
+		}
+
+		// --- 이벤트 소스 위치 결정 ---
+		FVector EffectLocation;
+		const AActor* EffectCauser = Cast<AActor>(Parameters.EffectCauser.Get());
+		if (!Parameters.Location.IsNearlyZero())
+		{
+			EffectLocation = Parameters.Location;
+		}
+		else if (IsValid(EffectCauser))
+		{
+			EffectLocation = EffectCauser->GetActorLocation();
+		}
+		else if (IsValid(MyTarget))
+		{
+			EffectLocation = MyTarget->GetActorLocation();
+		}
+		else
+		{
+			return false;
+		}
+
+		// --- 예외 1: 로컬 캐릭터 기준 1000 유닛 이내이면 무조건 표시 ---
+		if (FVector::DistSquared(LocalPawn->GetActorLocation(), EffectLocation) <= MaxParticleSpawnDistanceSq)
+		{
+			return false;
+		}
+
+		// --- 예외 2: Instigator가 아군(같은 팀)이면 무조건 표시 ---
+		const AActor* InstigatorActor = Cast<AActor>(Parameters.Instigator.Get());
+		if (IsValid(InstigatorActor))
+		{
+			const ITargetableInterface* InstigatorTeam = Cast<ITargetableInterface>(InstigatorActor);
+			const ITargetableInterface* LocalTeam = Cast<ITargetableInterface>(LocalPawn);
+			if (InstigatorTeam && LocalTeam)
+			{
+				const ETeamType InstigatorTeamType = InstigatorTeam->GetTeamType();
+				const ETeamType LocalTeamType = LocalTeam->GetTeamType();
+				if (InstigatorTeamType != ETeamType::None && InstigatorTeamType == LocalTeamType)
+				{
+					return false;
+				}
+			}
+		}
+
+		// --- 예외 3: EffectCauser에 ProjectileMovementComponent가 있으면 무조건 표시 ---
+		if (IsValid(EffectCauser) && EffectCauser->FindComponentByClass<UProjectileMovementComponent>())
+		{
+			return false;
+		}
+
+		// 모든 예외 규칙에 해당하지 않으면 컬링
+		return true;
+	}
+}
+
+bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) const
+{
+	if (ShouldSkipOnServer(MyTarget))
+	{
+		return false;
+	}
+
+	// 원거리 적 파티클 컬링 (아군/근거리/투사체 예외)
+	if (ShouldCullParticle(MyTarget, Parameters))
+	{
+		return false;
+	}
+
+	UWorld* const World = MyTarget->GetWorld();
+	if (!IsValid(World))
+	{
+		return false;
+	}
+
+	const USkillNiagaraSpawnConfig* const SpawnConfig = GetSpawnConfigFromParameters(Parameters);
+	if (!IsValid(SpawnConfig))
+	{
+		return false;
+	}
+
+	const FSkillNiagaraSpawnSettings SpawnSettings = SpawnConfig->ToSettings();
+	if (SpawnSettings.NiagaraSystem.IsNull())
+	{
+		return false;
+	}
+
+	const AActor* const EffectCauser = Cast<AActor>(Parameters.EffectCauser.Get());
+	const AActor* const Instigator = Cast<AActor>(Parameters.Instigator.Get());
+
+	// 네이티브 태그 참조
+	const FGameplayTag& TagSummoner = ProjectER::GameplayCue::Skill::Summoner;
+	const FGameplayTag& TagHitTarget = ProjectER::GameplayCue::Skill::HitTarget;
+	
+	const AActor* SourceActor = nullptr;
+	if (Parameters.OriginalTag.MatchesTag(TagSummoner))
+	{
+	    SourceActor = IsValid(Instigator) ? Instigator : MyTarget;
+	}
+	else if (Parameters.OriginalTag.MatchesTag(TagHitTarget))
+	{
+	    SourceActor = MyTarget;
+	}
+	else // 기본값 (기존 Range 로직 통합)
+	{
+	    SourceActor = EffectCauser;
+		// 발사체 또는 범위 액터가 충돌 즉시 파괴된 경우(SourceActor 무효), 시전자에게 붙지 않고 재생을 취소함.
+		if (!IsValid(SourceActor))
+		{
+			return false;
+		}
+	}
+
+	// 3. Transform 설정: SourceActor가 유효하면 그 트랜스폼을 기본으로 하되, Parameters.Location이 있으면 위치를 덮어씀
+	FTransform SourceTransform;
+	if (IsValid(SourceActor))
+	{
+		SourceTransform = SourceActor->GetActorTransform();
+		
+		// 소켓 설정이 없는 기본 상태이면서 외부에서 전달된 Location이 있다면 해당 위치를 우선함 (예: 장판 생성 위치)
+		if (SpawnConfig->SocketOrBoneName == NAME_None && !Parameters.Location.IsNearlyZero())
+		{
+			SourceTransform.SetLocation(Parameters.Location);
+		}
+	}
+	else
+	{
+		// [Fix] SourceActor가 없는 경우 MyTarget(적용 대상)의 회전이라도 사용하도록 변경 (Identity 방지)
+		FRotator FallbackRotation = IsValid(MyTarget) ? MyTarget->GetActorRotation() : FRotator::ZeroRotator;
+		SourceTransform = FTransform(FallbackRotation, Parameters.Location);
+	}
+
+	SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
+	return true;
+}
+
+bool UGCN_SpawnNiagaraBySpawnConfig::OnActive_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) const
+{
+	// 1. 시각 효과 스폰
+	OnExecute_Implementation(MyTarget, Parameters);
+
+	// 2. 클라이언트-사이드 이동 동기화 (호스트가 아닌 경우에만 로컬 RootMotionSource 적용)
+	if (IsValid(MyTarget) && !MyTarget->HasAuthority())
+	{
+		ACharacter* const Character = Cast<ACharacter>(MyTarget);
+		UCharacterMovementComponent* const CMC = IsValid(Character) ? Character->GetCharacterMovement() : nullptr;
+
+		// 방향(Normal)과 속도(RawMagnitude)가 유효한 경우에만 실행
+		if (IsValid(CMC) && !Parameters.Normal.IsNearlyZero() && Parameters.RawMagnitude > 0.0f)
+		{
+			TSharedPtr<FRootMotionSource_ConstantForce> ConstantForce = MakeShared<FRootMotionSource_ConstantForce>();
+			ConstantForce->InstanceName = FName(TEXT("ConstantForceMoveGEC_Client"));
+			ConstantForce->AccumulateMode = ERootMotionAccumulateMode::Override;
+			ConstantForce->Priority = 5;
+			ConstantForce->Force = Parameters.Normal * Parameters.RawMagnitude;
+			ConstantForce->Duration = (Parameters.NormalizedMagnitude > 0.0f) ? Parameters.NormalizedMagnitude : 5.0f;
+			ConstantForce->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::MaintainLastRootMotionVelocity;
+
+			CMC->ApplyRootMotionSource(ConstantForce);
+		}
+	}
+
+	return true;
+}
+
+bool UGCN_SpawnNiagaraBySpawnConfig::OnRemove_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) const
+{
+	if (!IsValid(MyTarget))
+	{
+		return false;
+	}
+
+	const USkillNiagaraSpawnConfig* const SpawnConfig = GetSpawnConfigFromParameters(Parameters);
+	if (!IsValid(SpawnConfig) || SpawnConfig->NiagaraSystem.IsNull())
+	{
+		return false;
+	}
+
+	UNiagaraSystem* const LoadedSystem = SpawnConfig->NiagaraSystem.LoadSynchronous();
+	if (!IsValid(LoadedSystem))
+	{
+		return false;
+	}
+
+	// 캐릭터에서 동일한 NiagaraSystem을 가진 컴포넌트를 찾아 Deactivate
+	TArray<UNiagaraComponent*> NCs;
+	MyTarget->GetComponents<UNiagaraComponent>(NCs);
+	for (UNiagaraComponent* NC : NCs)
+	{
+		if (IsValid(NC) && NC->GetAsset() == LoadedSystem)
+		{
+			NC->Deactivate();
+		}
+	}
+
+	// 2. 클라이언트-사이드 이동 종료
+	if (IsValid(MyTarget) && !MyTarget->HasAuthority())
+	{
+		ACharacter* const Character = Cast<ACharacter>(MyTarget);
+		if (UCharacterMovementComponent* const CMC = IsValid(Character) ? Character->GetCharacterMovement() : nullptr)
+		{
+			CMC->RemoveRootMotionSource(FName(TEXT("ConstantForceMoveGEC_Client")));
+		}
+	}
+
+	return true;
+}

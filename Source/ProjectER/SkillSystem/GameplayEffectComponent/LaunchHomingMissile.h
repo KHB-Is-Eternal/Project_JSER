@@ -4,12 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
-#include "SkillSystem/GameplayEffectComponent/BaseGECConfig.h"
 #include "GameplayTagContainer.h"
 #include "LaunchHomingMissile.generated.h"
 
 class ABaseMissileActor;
-class USkillEffectDataAsset;
+class UBaseGameplayEffect;
 class USkillNiagaraSpawnConfig;
 class USkillSoundSpawnConfig;
 struct FGameplayEffectSpec;
@@ -17,18 +16,51 @@ struct FGameplayEffectContextHandle;
 struct FActiveGameplayEffectsContainer;
 struct FPredictionKey;
 
+
+
 /**
- * 유도 미사일 전용 설정 클래스.
- * UBaseGECConfig를 직접 상속하여 필요한 필드만 정의합니다.
+ * 유도 미사일을 발사하는 GameplayEffectComponent.
+ * UBaseGEC를 직접 상속하여 SummonRange 계열 종속성을 제거합니다.
  */
-UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
-class PROJECTER_API ULaunchHomingMissileConfig : public UBaseGECConfig
+UCLASS(DontCollapseCategories)
+class PROJECTER_API ULaunchHomingMissile : public UBaseGEC
 {
 	GENERATED_BODY()
 
 public:
-	virtual FText BuildTooltipDescription(float InLevel) const override;
+	ULaunchHomingMissile();
 
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
+
+
+
+	/** Phase 1: 준비 - 렉 보정 및 소환 위치를 계산하여 Context에 기록합니다. */
+	virtual void PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const override;
+
+	/** Phase 2: 비주얼 실행 - 기록된 위치에서 즉시 로컬 이펙트를 실행합니다. */
+	virtual void OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const override;
+
+	/** Phase 2.5: VFX 브로드캐스트 - 서버에서 관전자들에게 VFX를 전송합니다. */
+	virtual void OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey = FPredictionKey()) const override;
+
+	/** GCN 액터 초기화 데이터 제공 */
+	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const override { return MissileVfx.Get(); }
+	virtual class USkillSoundSpawnConfig* GetAGCN_SoundConfig() const override { return MissileSound.Get(); }
+	virtual void SetupMovement(class UProjectileMovementComponent* Movement) const override;
+
+protected:
+	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
+
+	FTransform CalculateSpawnTransform(const AActor* Instigator, const AActor* TargetActor) const;
+	virtual AActor* GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const;
+
+	/** OnGameplayEffectApplied 세분화 함수들 */
+	virtual FTransform GetInitialTransform(const FGameplayEffectContextHandle& ContextHandle, FActiveGameplayEffectsContainer& ActiveGEContainer, AActor* Instigator, AActor* TargetActor) const;
+	virtual ABaseMissileActor* SpawnDeferredActor(UWorld* World, TSubclassOf<ABaseMissileActor> ActorClass, const FTransform& Transform, AActor* Instigator) const;
+	virtual void InitializeActorData(ABaseMissileActor* Actor, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, const FTransform& Transform, AActor* TargetActor) const;
+	
+
+public:
 	//--- 미사일 액터 클래스 ---
 	UPROPERTY(EditDefaultsOnly, Category = "Missile|Base")
 	TSubclassOf<ABaseMissileActor> MissileActorClass;
@@ -58,12 +90,9 @@ public:
 	FName BoneName;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Missile|Effect")
-	TArray<TObjectPtr<USkillEffectDataAsset>> Applied;
+	TArray<TSubclassOf<UBaseGameplayEffect>> Applied;
 
 	//--- Niagara VFX ---
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Niagara")
-	TObjectPtr<USkillNiagaraSpawnConfig> SummonerVfx;
-
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Niagara")
 	TObjectPtr<USkillNiagaraSpawnConfig> MissileVfx;
 
@@ -72,34 +101,8 @@ public:
 
 	//--- Sound ---
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> SummonerSound;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Sound")
 	TObjectPtr<USkillSoundSpawnConfig> MissileSound;
 
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Sound")
 	TObjectPtr<USkillSoundSpawnConfig> ImpactSound;
-};
-
-/**
- * 유도 미사일을 발사하는 GameplayEffectComponent.
- * UBaseGEC를 직접 상속하여 SummonRange 계열 종속성을 제거합니다.
- */
-UCLASS()
-class PROJECTER_API ULaunchHomingMissile : public UBaseGEC
-{
-	GENERATED_BODY()
-
-public:
-	ULaunchHomingMissile();
-
-	virtual TSubclassOf<UBaseGECConfig> GetRequiredConfigClass() const override;
-
-protected:
-	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
-
-	FTransform CalculateSpawnTransform(const ULaunchHomingMissileConfig* Config, const AActor* Instigator, const AActor* TargetActor) const;
-	AActor* GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const;
-	void ExecuteVfx(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* Instigator, ABaseMissileActor* MissileActor, const ULaunchHomingMissileConfig* Config) const;
-	void ExecuteSound(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* Instigator, ABaseMissileActor* MissileActor, const ULaunchHomingMissileConfig* Config) const;
 };

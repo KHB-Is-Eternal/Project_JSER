@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/UI_MainHUD.h"
@@ -288,9 +288,12 @@ void UUI_MainHUD::InitASCHud(UAbilitySystemComponent* _ASC)
         {
             if (SkillDataAssets[i] && SkillDataAssets[i]->SkillConfig)
             {
-                for (const FGameplayTag& Tag : SkillDataAssets[i]->SkillConfig->Data.CoolTimeTags)
+                if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[i]->SkillConfig->GetCooldownTags())
                 {
-                    ASC->RegisterGameplayTagEvent(Tag, EGameplayTagEventType::NewOrRemoved).AddUObject(this, &UUI_MainHUD::OnCooldownTagChanged, i);
+                    for (const FGameplayTag& Tag : *CooldownTags)
+                    {
+                        ASC->RegisterGameplayTagEvent(Tag, EGameplayTagEventType::NewOrRemoved).AddUObject(this, &UUI_MainHUD::OnCooldownTagChanged, i);
+                    }
                 }
             }
         }
@@ -576,7 +579,7 @@ void UUI_MainHUD::OnSkill02Hovered()
 
     if (IsValid(SkillDataAssets[1]))
     {
-        FSkillTooltipData nowSkill = SkillDataAssets[1]->GetSkillTooltipData(getSkillLevel(Q_SkillTag, false));
+        FSkillTooltipData nowSkill = SkillDataAssets[1]->GetSkillTooltipData(getSkillLevel(W_SkillTag, false));
         ShowTooltip(skill_02, nowSkill.SkillName, nowSkill.ShortDescription, nowSkill.DetailedDescription, nowSkill.CostDescription, true);
     }
 }
@@ -587,7 +590,7 @@ void UUI_MainHUD::OnSkill03Hovered()
 
     if (IsValid(SkillDataAssets[2]))
     {
-        FSkillTooltipData nowSkill = SkillDataAssets[2]->GetSkillTooltipData(getSkillLevel(Q_SkillTag, false));
+        FSkillTooltipData nowSkill = SkillDataAssets[2]->GetSkillTooltipData(getSkillLevel(E_SkillTag, false));
         ShowTooltip(skill_03, nowSkill.SkillName, nowSkill.ShortDescription, nowSkill.DetailedDescription, nowSkill.CostDescription, true);
     }
 }
@@ -600,7 +603,7 @@ void UUI_MainHUD::OnSkill04Hovered()
     {
         if (ASC)
         {
-            FSkillTooltipData nowSkill = SkillDataAssets[3]->GetSkillTooltipData(getSkillLevel(Q_SkillTag, false));
+            FSkillTooltipData nowSkill = SkillDataAssets[3]->GetSkillTooltipData(getSkillLevel(R_SkillTag, false));
             ShowTooltip(skill_04, nowSkill.SkillName, nowSkill.ShortDescription, nowSkill.DetailedDescription, nowSkill.CostDescription, true);
         }
     }
@@ -730,7 +733,7 @@ void UUI_MainHUD::initSkillDataAssets()
     {
         if (SkillAsset.IsValid() && SkillAsset->SkillConfig)
         {
-            FName TagName = SkillAsset->SkillConfig->Data.InputKeyTag.GetTagName();
+            FName TagName = SkillAsset->SkillConfig->GetInputKeyTag().GetTagName();
 
             if (TagName == Q_SkillTag.ToString()) SkillDataAssets[0] = SkillAsset.Get();
             else if (TagName == W_SkillTag.ToString()) SkillDataAssets[1] = SkillAsset.Get();
@@ -861,14 +864,14 @@ void UUI_MainHUD::SkillFirePressed(ESkillKey _Index)
     {
         if (SkillDataAssets[EnumIndex]->SkillConfig)
         {
-            FGameplayTag InputTag = SkillDataAssets[EnumIndex]->SkillConfig->Data.InputKeyTag;
+            FGameplayTag InputTag = SkillDataAssets[EnumIndex]->SkillConfig->GetInputKeyTag();
             ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
 
             if (IsValid(PC))
             {
                 PC->AbilityInputTagPressed(InputTag);
 
-                float CoolTime = SkillDataAssets[EnumIndex]->SkillConfig->Data.BaseCoolTime.GetValueAtLevel(getSkillLevel(InputTag, false));
+                float CoolTime = SkillDataAssets[EnumIndex]->SkillConfig->GetBaseCooldownDuration(getSkillLevel(InputTag, false));
             }
         }
     }
@@ -916,7 +919,7 @@ void UUI_MainHUD::SkillFireReleased(ESkillKey _Index)
 
         if (SkillAsset && SkillAsset->SkillConfig)
         {
-            FGameplayTag InputTag = SkillAsset->SkillConfig->Data.InputKeyTag;
+            FGameplayTag InputTag = SkillAsset->SkillConfig->GetInputKeyTag();
             ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
 
             if (IsValid(PC))
@@ -993,9 +996,12 @@ void UUI_MainHUD::OnAbilityActivated(UGameplayAbility* ActivatedAbility)
             {
                 float RemainingTime = 0.0f;
                 float Duration = 0.0f;
-                if (GetCooldownRemainingForTag(SkillDataAssets[SkillIndex]->SkillConfig->Data.CoolTimeTags, RemainingTime, Duration))
+                if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[SkillIndex]->SkillConfig->GetCooldownTags())
                 {
-                    ProcessCooldown(SkillIndex, Duration, RemainingTime);
+                    if (GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration))
+                    {
+                        ProcessCooldown(SkillIndex, Duration, RemainingTime);
+                    }
                 }
             }
         }
@@ -1009,7 +1015,10 @@ void UUI_MainHUD::OnActivateSkillCoolTime(ESkillKey Skill_Index)
 
     float RemainingTime = 0.0f;
     float Duration = 0.0f;
-    GetCooldownRemainingForTag(SkillDataAssets[Index]->SkillConfig->Data.CoolTimeTags, RemainingTime, Duration);
+    if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[Index]->SkillConfig->GetCooldownTags())
+    {
+        GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration);
+    }
 
     ProcessCooldown(Index, Duration, RemainingTime);
 }
@@ -1051,13 +1060,44 @@ void UUI_MainHUD::OnCooldownTagChanged(const FGameplayTag Tag, int32 NewCount, i
         {
             float RemainingTime = 0.0f;
             float Duration = 0.0f;
-            GetCooldownRemainingForTag(SkillDataAssets[SkillIndex]->SkillConfig->Data.CoolTimeTags, RemainingTime, Duration);
+            if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[SkillIndex]->SkillConfig->GetCooldownTags())
+            {
+                GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration);
+
+                // [Fix] 쿨타임 반환(Refund) 등에 따른 실시간 시간 갱신을 받기 위해 OnTimeChanged 델리게이트를 구독합니다.
+                FGameplayEffectQuery const Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(*CooldownTags);
+                TArray<FActiveGameplayEffectHandle> ActiveHandles = ASC->GetActiveEffects(Query);
+                for (const FActiveGameplayEffectHandle& Handle : ActiveHandles)
+                {
+                    const FActiveGameplayEffect* ActiveGE = ASC->GetActiveGameplayEffect(Handle);
+                    if (ActiveGE)
+                    {
+                        FActiveGameplayEffect* MutableGE = const_cast<FActiveGameplayEffect*>(ActiveGE);
+                        MutableGE->EventSet.OnTimeChanged.AddUObject(this, &UUI_MainHUD::OnCooldownTimeChanged, SkillIndex);
+                    }
+                }
+            }
             ProcessCooldown(SkillIndex, Duration, RemainingTime);
         }
     }
     else
     {
-        // Cooldown Tag Removed
+        // [Fix] 특정 태그가 제거되었을 때, 해당 스킬의 다른 쿨타임 태그가 아직 남아있는지 확인합니다.
+        // 모든 쿨타임 태그가 사라졌을 때만 UI 쿨타임을 종료합니다.
+        if (IsValid(ASC) && SkillDataAssets.IsValidIndex(SkillIndex) && SkillDataAssets[SkillIndex] && SkillDataAssets[SkillIndex]->SkillConfig)
+        {
+            float RemainingTime = 0.0f;
+            float Duration = 0.0f;
+            const FGameplayTagContainer* CooldownTags = SkillDataAssets[SkillIndex]->SkillConfig->GetCooldownTags();
+            if (CooldownTags && GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration))
+            {
+                // 아직 다른 태그에 의한 쿨타임이 남아있음 -> UI 갱신만 수행
+                ProcessCooldown(SkillIndex, Duration, RemainingTime);
+                return;
+            }
+        }
+
+        // 모든 쿨타임 태그가 제거됨 -> UI 종료
         ProcessCooldown(SkillIndex, 0.0f, 0.0f);
     }
 }
@@ -1094,6 +1134,18 @@ void UUI_MainHUD::UpdateSkillCoolDown(int32 SkillIndex)
     else
     {
         GetWorld()->GetTimerManager().ClearTimer(SkillTimerHandles[SkillIndex]);
+    }
+}
+
+void UUI_MainHUD::OnCooldownTimeChanged(FActiveGameplayEffectHandle Handle, float StartTime, float Duration, int32 SkillIndex)
+{
+    if (GetWorld() && SkillIndex >= 0 && SkillIndex < 4)
+    {
+        float CurrentTime = GetWorld()->GetTimeSeconds();
+        float RemainingTime = Duration - (CurrentTime - StartTime);
+
+        // 변경된 남은 시간으로 로컬 타이머 및 UI 텍스트 갱신
+        ProcessCooldown(SkillIndex, Duration, RemainingTime);
     }
 }
 

@@ -1,4 +1,4 @@
-﻿#include "ER_PlayerState.h"
+#include "ER_PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "AbilitySystemComponent.h"
 #include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"

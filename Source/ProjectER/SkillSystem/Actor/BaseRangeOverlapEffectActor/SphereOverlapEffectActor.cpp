@@ -29,14 +29,14 @@ void ASphereOverlapEffectActor::BeginPlay()
 {
 	Super::BeginPlay();
 
-#if WITH_EDITOR
-	if (GetWorld())
-	{
-		if (IsValid(SphereComponent))
-		{
-			const float SphereRadius = PendingCollisionSize.GetMax();
-			DrawDebugSphere(GetWorld(), GetActorLocation(), SphereRadius, 16, FColor::Red, false, GetLifeSpan(), 0, 2.0f);
-		}
-	}
-#endif
+// #if WITH_EDITOR
+// 	if (GetWorld())
+// 	{
+// 		if (IsValid(SphereComponent))
+// 		{
+// 			const float SphereRadius = PendingCollisionSize.GetMax();
+// 			DrawDebugSphere(GetWorld(), GetActorLocation(), SphereRadius, 16, FColor::Red, false, GetLifeSpan(), 0, 2.0f);
+// 		}
+// 	}
+// #endif
 }

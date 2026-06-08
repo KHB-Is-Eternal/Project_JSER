@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -11,6 +11,7 @@
  */
 
 class ATargetActor;
+class UBaseGameplayEffect;
 
 UCLASS()
 class PROJECTER_API UMouseTargetSkill : public USkillBase
@@ -20,8 +21,9 @@ public:
 	UMouseTargetSkill();
 
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual bool ShouldAbilityRespondToEvent(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayEventData* Payload) const override;
 	AActor* GetTargetUnderCursorInRange();
-	bool IsTargetActorInRange(AActor* InTargetActor);
+	bool IsTargetActorInRange(AActor* InTargetActor) const;
 protected:
 	virtual void ExecuteSkill() override;
 	virtual void CompleteFinishSkill() override;
@@ -31,9 +33,9 @@ protected:
 	void SubmitExternalTargetActor(AActor* InTargetActor);
 	bool ConsumePendingExternalTargetActor(AActor*& OutTargetActor);
 	AActor* GetTargetUnderCursor();
-	bool IsInRange(AActor* Actor);
+	bool IsInRange(AActor* Actor) const;
 	void RotateToTarget(AActor* Actor);
-	void ApplyEffectsTarget(AActor* TargetActor, const TArray<TObjectPtr<USkillEffectDataAsset>>& SkillEffectDataAssets);
+	void ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets);
 	void CleanUpSkill();
 
 	UFUNCTION()

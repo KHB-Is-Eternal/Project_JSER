@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
-#include "SkillSystem/GameplayEffectComponent/BaseGECConfig.h"
 #include "GameplayTagContainer.h"
 #include "UObject/Object.h"
 #include "SummonRangeBaseGEC.generated.h"
@@ -13,7 +12,7 @@
  * 
  */
 class ABaseRangeOverlapEffectActor;
-class USkillEffectDataAsset;
+class UBaseGameplayEffect;
 class USkillNiagaraSpawnConfig;
 class USkillSoundSpawnConfig;
 struct FGameplayTag;
@@ -23,84 +22,92 @@ struct FGameplayEffectContextHandle;
 struct FActiveGameplayEffectsContainer;
 struct FPredictionKey;
 
-UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced, Abstract)
-class PROJECTER_API USummonRangeBaseConfig : public UBaseGECConfig
+
+UCLASS(Abstract, DontCollapseCategories)
+class PROJECTER_API USummonRangeBaseGEC : public UBaseGEC
 {
 	GENERATED_BODY()
 
 public:
-	virtual FText BuildTooltipDescription(float InLevel) const override;
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
-	TSubclassOf<ABaseRangeOverlapEffectActor> RangeActorClass;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
-	float LifeSpan = 1.0f;
+	/** Phase 1: 준비 - 소환 위치를 계산하여 Context에 기록합니다. */
+	virtual void PreApplyEffect(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const override;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
-	FVector CollisionRadius = FVector(100.0f);
+	/** Phase 2: 비주얼 실행 - 기록된 위치에서 즉시 로컬 이펙트를 실행합니다. */
+	virtual void OnExecutePredictive(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec) const override;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Base")
-	FVector LocationOffset = FVector::ZeroVector;
+	/** Phase 2.5: VFX 브로드캐스트 - 서버에서 관전자들에게 VFX를 전송합니다. */
+	virtual void OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey = FPredictionKey()) const override;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Rotation")
-	FRotator RotationOffset = FRotator::ZeroRotator;
+	/** GCN 액터 초기화 데이터 제공 */
+	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const override { return RangeSpawnVfx.Get(); }
+	virtual class USkillSoundSpawnConfig* GetAGCN_SoundConfig() const override { return RangeSpawnSound.Get(); }
 
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Snap")
-	bool bSnapToGround = true;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Snap", meta = (EditCondition = "bSnapToGround"))
-	float FloatingHeight = 2.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Snap", meta = (EditCondition = "bSnapToGround"))
-	bool bUseBoxExtentOffset = true;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Snap", meta = (EditCondition = "bSnapToGround"))
-	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_Visibility;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Effect")
-	bool bHitOncePerTarget = true;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Niagara")
-	TObjectPtr<USkillNiagaraSpawnConfig> SummonerSpawnVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Niagara")
-	TObjectPtr<USkillNiagaraSpawnConfig> RangeSpawnVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Niagara")
-	TObjectPtr<USkillNiagaraSpawnConfig> HitTargetVfx;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> SummonerSpawnSound;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> RangeSpawnSound;
-
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon Settings|Sound")
-	TObjectPtr<USkillSoundSpawnConfig> HitTargetSound;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Summon Settings|Effect")
-	TArray<TObjectPtr<USkillEffectDataAsset>> Applied;
-};
-
-UCLASS()
-class PROJECTER_API USummonRangeBaseGEC : public UBaseGEC
-{
-	GENERATED_BODY()
 protected:
 	virtual void OnGameplayEffectApplied(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
-	virtual const USummonRangeBaseConfig* GetSummonConfig(const FGameplayEffectSpec& GESpec) const;
 	virtual FTransform CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const;
 	virtual FTransform CalculateOriginTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const;
-	virtual bool ShouldProcessOnInstigator(const AActor* Instigator) const;
 
-	virtual void ExecuteGameplayCues(const FGameplayEffectSpec& GESpec, const FGameplayEffectContextHandle& ContextHandle, AActor* EffectInstigator, ABaseRangeOverlapEffectActor* RangeActor, const FTransform& SpawnTransform, const FTransform& OriginTransform, const USummonRangeBaseConfig* Config) const;
+
 	virtual AActor* GetTargetActorFromContainer(FActiveGameplayEffectsContainer& ActiveGEContainer) const;
 
-	FGameplayCueParameters BuildNiagaraCueParameters(const FGameplayEffectSpec& GESpec, const FGameplayTag& OriginalTag, const FGameplayEffectContextHandle& EffectContext, AActor* EffectCauser, const FVector& CueLocation, const UObject* SourceObject, const FVector& CueNormal = FVector::UpVector) const;
-	virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, const USummonRangeBaseConfig* Config, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const;
-	virtual void SnapLocationToGround(FVector& InOutLocation, const USummonRangeBaseConfig* Config, const AActor* Instigator) const;
-	virtual void ApplyCommonSpawnOptions(FVector& InOutLocation, FRotator& InOutRotation, const USummonRangeBaseConfig* Config, const AActor* Instigator) const;
-	virtual FTransform ApplyCommonSpawnOptionsToTransform(const FTransform& InOriginTransform, const USummonRangeBaseConfig* Config, const AActor* Instigator) const;
-};
+	/** OnGameplayEffectApplied 세분화 함수들 */
+	virtual FTransform GetInitialTransform(const FGameplayEffectContextHandle& ContextHandle, FActiveGameplayEffectsContainer& ActiveGEContainer, const FGameplayEffectSpec& GESpec, AActor* Instigator) const;
+	virtual ABaseRangeOverlapEffectActor* SpawnDeferredActor(UWorld* World, TSubclassOf<ABaseRangeOverlapEffectActor> ActorClass, const FTransform& Transform, AActor* Instigator) const;
+	virtual void InitializeActorData(ABaseRangeOverlapEffectActor* Actor, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, const FTransform& Transform) const;
+	virtual void ApplyLagCompensation(ABaseRangeOverlapEffectActor* Actor, const FGameplayEffectContextHandle& ContextHandle) const;
 
+	FGameplayCueParameters BuildNiagaraCueParameters(const FGameplayEffectSpec& GESpec, const FGameplayTag& OriginalTag, const FGameplayEffectContextHandle& EffectContext, AActor* EffectCauser, const FVector& CueLocation, const UObject* SourceObject, const FVector& CueNormal = FVector::UpVector) const;
+	virtual void InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters, const FGameplayEffectSpec& ParentSpec) const;
+	virtual void SnapLocationToGround(FVector& InOutLocation, const AActor* Instigator) const;
+	virtual void ApplyCommonSpawnOptions(FVector& InOutLocation, FRotator& InOutRotation, const AActor* Instigator) const;
+	virtual FTransform ApplyCommonSpawnOptionsToTransform(const FTransform& InOriginTransform, const AActor* Instigator) const;
+
+public:
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Base")
+	TSubclassOf<ABaseRangeOverlapEffectActor> RangeActorClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Base")
+	float LifeSpan = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Base")
+	FVector CollisionRadius = FVector(100.0f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Base")
+	FVector LocationOffset = FVector::ZeroVector;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Rotation")
+	FRotator RotationOffset = FRotator::ZeroRotator;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Snap")
+	bool bSnapToGround = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Snap", meta = (EditCondition = "bSnapToGround"))
+	float FloatingHeight = 2.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Snap", meta = (EditCondition = "bSnapToGround"))
+	bool bUseBoxExtentOffset = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Snap", meta = (EditCondition = "bSnapToGround"))
+	TEnumAsByte<ECollisionChannel> GroundTraceChannel = ECC_GameTraceChannel9;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Effect")
+	bool bHitOncePerTarget = true;
+
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|VFX")
+	TObjectPtr<USkillNiagaraSpawnConfig> RangeSpawnVfx;
+
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|VFX")
+	TObjectPtr<USkillNiagaraSpawnConfig> HitTargetVfx;
+
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|SFX")
+	TObjectPtr<USkillSoundSpawnConfig> RangeSpawnSound;
+
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Summon|SFX")
+	TObjectPtr<USkillSoundSpawnConfig> HitTargetSound;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Summon|Effect")
+	TArray<TSubclassOf<UBaseGameplayEffect>> Applied;
+};
