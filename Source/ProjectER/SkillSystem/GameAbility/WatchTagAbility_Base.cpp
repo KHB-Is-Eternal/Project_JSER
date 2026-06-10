@@ -143,9 +143,10 @@ void UWatchTagAbility_Base::OnEventReceived(FGameplayEventData Payload)
 	}
 
 	// 조건 달성 여부를 자식 클래스에게 위임합니다.
-	if (ProcessEventAndCheckCondition(Payload))
+	float FinalMagnitude = 0.0f;
+	if (ProcessEventAndCheckCondition(Payload, FinalMagnitude))
 	{
-		ExecuteTriggerAction(QueryActor);
+		ExecuteTriggerAction(QueryActor, FinalMagnitude);
 	}
 }
 
@@ -314,7 +315,7 @@ bool UWatchTagAbility_Base::CheckAttributeConditions(const FGameplayEventData& P
 	return true;
 }
 
-void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor)
+void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor, float EventMagnitude)
 {
 	if (!IsValid(PassiveConfig))
 	{
@@ -337,12 +338,12 @@ void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor)
 	}
 
 	// TriggerAbility 활성화 시도 후, TriggerEffects도 함께 적용
-	ApplyTriggerEffects(TargetActor);
+	ApplyTriggerEffects(TargetActor, EventMagnitude);
 }
 
-void UWatchTagAbility_Base::ApplyTriggerEffects(AActor* TargetActor)
+void UWatchTagAbility_Base::ApplyTriggerEffects(AActor* TargetActor, float EventMagnitude)
 {
-	if (PassiveConfig->TriggerEffects.IsEmpty() || TargetActor == nullptr)
+	if (PassiveConfig->Effects.IsEmpty() || TargetActor == nullptr)
 	{
 		return;
 	}
@@ -353,11 +354,20 @@ void UWatchTagAbility_Base::ApplyTriggerEffects(AActor* TargetActor)
 		return;
 	}
 
-	FGameplayEffectContextHandle ContextHandle = GetASC()->MakeEffectContext();
-	ContextHandle.AddInstigator(GetAvatar(), TargetActor);
-	ContextHandle.SetAbility(this);
+	// 훅에서 쓸 수 있도록 캐싱
+	CurrentEventMagnitude = EventMagnitude;
 
-	ApplyEffectToTargetInternal(TargetASC, PassiveConfig->TriggerEffects, ContextHandle);
+	// 부모의 함수를 원터치로 호출 (파라미터 추가 없음!)
+	// ContextHandle은 빈 값을 넘기면 내부에서 알아서 생성합니다.
+	ApplyEffectToTargetInternal(TargetASC, PassiveConfig->Effects, PassiveConfig->MagnitudeCalculators);
+}
+
+void UWatchTagAbility_Base::OnEffectSpecCreated(FGameplayEffectSpecHandle& SpecHandle) const
+{
+	if (IsValid(PassiveConfig) && PassiveConfig->SetByCallerTag.IsValid())
+	{
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(PassiveConfig->SetByCallerTag, CurrentEventMagnitude);
+	}
 }
 
 

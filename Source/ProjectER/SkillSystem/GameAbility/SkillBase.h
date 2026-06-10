@@ -55,9 +55,19 @@ protected:
 	/** 스킬 활성화 실패 시 로그 출력 및 태그 브로드캐스팅 */
 	//void NotifyActivationFailed(const FGameplayTag& ReasonTag, const FString& DebugMessage);
 
+	// --- 생명주기 훅 (Lifecycle Hooks) ---
+	/** 1. 컨텍스트가 막 생성되고 Instigator 설정이 끝난 직후 호출 */
+	virtual void OnEffectContextCreated(FGameplayEffectContextHandle& ContextHandle) const {}
+	
+	/** 2. 개별 이펙트의 Spec이 막 생성된 직후 호출 (계산기 적용 전) */
+	virtual void OnEffectSpecCreated(FGameplayEffectSpecHandle& SpecHandle) const {}
+	
+	/** 3. 모든 처리가 끝나고 타겟에게 최종 적용되기 직전 호출 */
+	virtual void OnPreApplyEffectSpec(FGameplayEffectSpecHandle& SpecHandle, UAbilitySystemComponent* TargetASC) const {}
+
 	/** 스킬 효과 적용 핵심 로직 - 중복 코드 제거를 위해 통합됨 */
-	void ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
-	void ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
+	void ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, const TArray<FSkillMagnitudeCalculation>& Calculators = TArray<FSkillMagnitudeCalculation>(), FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
+	void ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle);
 
 	void SetSkillTagCount(FGameplayTag Tag, int32 Count);
 	void PlayAnimMontage();
@@ -65,8 +75,8 @@ protected:
 	void PrepareToActiveSkill();
 	
 	/** 자신에게 효과 적용 (ApplyEffectToTargetInternal 호출) */
-	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
-	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
+	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators = TArray<FSkillMagnitudeCalculation>(), FGameplayEffectContextHandle ContextHandle = FGameplayEffectContextHandle());
+	void ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle);
 	bool TryExecuteSkill();
 
 	/** 스킬 발동 시 대응되는 Gameplay Event를 발송합니다. */

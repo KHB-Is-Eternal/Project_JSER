@@ -19,7 +19,7 @@ class PROJECTER_API UWatchTagAbility_Accumulate : public UWatchTagAbility_Base
 
 protected:
 	/** 이벤트를 누적하고 임계치 달성 여부를 반환합니다. */
-	virtual bool ProcessEventAndCheckCondition(const FGameplayEventData& Payload) override;
+	virtual bool ProcessEventAndCheckCondition(const FGameplayEventData& Payload, float& OutEventMagnitude) override;
 
 private:
 	/** 누적치를 0으로 초기화하고 만료 타이머를 정지합니다. */

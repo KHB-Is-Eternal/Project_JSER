@@ -366,7 +366,8 @@ void USkillBase::PlayAnimMontage()
 {
 	UAnimMontage* SkillMontage = CachedConfig->GetAnimMontage();
 	if (!IsValid(CachedConfig) || !IsValid(SkillMontage)) return;
-	UAbilityTask_PlayMontageAndWait* PlayTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(this, TEXT("SkillAnimation"), SkillMontage);
+	FName TaskName = FName(*SkillMontage->GetName());
+    UAbilityTask_PlayMontageAndWait* PlayTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(this, TaskName, SkillMontage, 1.f, NAME_None, true, 1.f, 0.f, true);
 	if (!IsValid(PlayTask)) return;
 
 	PlayTask->OnInterrupted.AddDynamic(this, &USkillBase::OnMontageInterrupted);
@@ -476,6 +477,9 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		}
 	}
 
+	// [Hook 1] 컨텍스트가 막 생성되고 Instigator 및 동기화 설정이 끝난 직후 호출
+	OnEffectContextCreated(ContextHandle);
+
 	// 2. 각 이팩트 순회하며 적용
 	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Effects)
 	{
@@ -487,6 +491,9 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		
 		if (SpecHandle.IsValid())
 		{
+			// [Hook 2] 개별 이펙트의 Spec이 MakeOutgoingSpec으로 막 생성된 직후 호출
+			OnEffectSpecCreated(SpecHandle);
+
 			// 페이즈의 계산기들 중 현재 이펙트와 매칭되는 대상이 있으면 SetByCaller 주입
 			for (const FSkillMagnitudeCalculation& CalcInfo : Calculators)
 			{
@@ -532,6 +539,9 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 			}
 
 			// Phase 3: 최종 적용
+			// [Hook 3] 모든 처리(태그, 예측 등)가 끝나고 타겟에게 최종 적용되기 직전 호출
+			OnPreApplyEffectSpec(SpecHandle, TargetASC);
+
 			// [Fix] 서버에서 Target에게 예측 키를 강제로 전파하여 GEC까지 전달되도록 합니다.
 			// ScopedPK가 유실된 경우 Ability의 ActivationPK를 백업으로 사용하여 랜덤성을 해결합니다.
 			FPredictionKey BestPK = SourceASC->ScopedPredictionKey;

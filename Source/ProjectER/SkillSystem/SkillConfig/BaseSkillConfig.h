@@ -224,7 +224,15 @@ public:
 
 	/** 조건 충족 시 타겟에게 즉시 적용할 게임플레이 이펙트 목록. TriggerAbility가 없을 때 사용합니다. */
 	UPROPERTY(EditDefaultsOnly, Category = "Passive|Action")
-	TArray<TSubclassOf<class UBaseGameplayEffect>> TriggerEffects;
+	TArray<TSubclassOf<class UBaseGameplayEffect>> Effects;
+
+	/** 이 패시브 효과들에 적용할 SetByCaller 매그니튜드 설정 목록 */
+	UPROPERTY(EditDefaultsOnly, Category = "Passive|Action")
+	TArray<FSkillMagnitudeCalculation> MagnitudeCalculators;
+
+	/** 이벤트 매그니튜드를 이펙트로 전달할 때 사용할 고정 SetByCaller 태그 */
+	UPROPERTY(EditDefaultsOnly, Category = "Passive|Action")
+	FGameplayTag SetByCallerTag;
 
 	/** 패시브 발동 재사용 대기 시간(초) */
 	UPROPERTY(EditDefaultsOnly, Category = "Passive|Cooldown")
@@ -253,6 +261,17 @@ public:
 	UPassiveInstantSkillConfig();
 };
 
+/** 패시브 발동 시 GE로 넘겨줄 매그니튜드의 기준을 정의합니다. */
+UENUM(BlueprintType)
+enum class EAccumulateMagnitudeType : uint8
+{
+	/** 그동안 쌓인 누적 총합을 전달합니다. (예: 누적 피해량 폭발) */
+	TotalAccumulatedValue UMETA(DisplayName = "Total Accumulated Value"),
+
+	/** 임계치를 달성시킨 마지막 이벤트의 값을 전달합니다. (예: 10번째 타격의 데미지 비례 반사) */
+	LastTriggerValue UMETA(DisplayName = "Last Trigger Value")
+};
+
 /**
  * 누적형 패시브 설정 클래스입니다.
  */
@@ -279,4 +298,8 @@ public:
 	/** 마지막 이벤트 수신 후 이 시간(초)이 경과하면 누적치를 초기화합니다. 0이면 영구 유지합니다. */
 	UPROPERTY(EditDefaultsOnly, Category = "Passive|Accumulator", meta = (ClampMin = "0.0"))
 	float ExpirationTime = 0.0f;
+
+	/** 발동 시, GE의 SetByCaller 매그니튜드로 어떤 값을 넘겨줄지 결정합니다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Passive|Accumulator")
+	EAccumulateMagnitudeType MagnitudeType = EAccumulateMagnitudeType::TotalAccumulatedValue;
 };

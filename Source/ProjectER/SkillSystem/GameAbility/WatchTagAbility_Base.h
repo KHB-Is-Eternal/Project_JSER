@@ -37,7 +37,7 @@ protected:
 	 * [Pure Virtual] 자식 클래스에서 구현. 이벤트를 처리하고 발동 조건이 충족되면 true를 반환합니다.
 	 * 즉발형은 항상 true, 누적형은 누적치가 임계치에 도달했을 때 true를 반환합니다.
 	 */
-	virtual bool ProcessEventAndCheckCondition(const FGameplayEventData& Payload) PURE_VIRTUAL(UWatchTagAbility_Base::ProcessEventAndCheckCondition, return false;);
+	virtual bool ProcessEventAndCheckCondition(const FGameplayEventData& Payload, float& OutEventMagnitude) PURE_VIRTUAL(UWatchTagAbility_Base::ProcessEventAndCheckCondition, return false;);
 
 	/** 대상 액터를 지정된 Target 타입에 따라 Payload에서 찾아 반환합니다. */
 	AActor* ResolveQueryTargetActor(const FGameplayEventData& Payload, EPassiveQueryTarget TargetType) const;
@@ -46,10 +46,13 @@ protected:
 	bool CheckAttributeConditions(const FGameplayEventData& Payload) const;
 
 	/** 발동 조건이 충족되었을 때, TriggerAbility 실행 또는 TriggerEffects 적용을 수행합니다. */
-	void ExecuteTriggerAction(AActor* TargetActor);
+	void ExecuteTriggerAction(AActor* TargetActor, float EventMagnitude);
 
 	/** TargetActor의 ASC에 TriggerEffects를 적용합니다. */
-	void ApplyTriggerEffects(AActor* TargetActor);
+	void ApplyTriggerEffects(AActor* TargetActor, float EventMagnitude);
+
+	// --- Lifecycle Hook ---
+	virtual void OnEffectSpecCreated(FGameplayEffectSpecHandle& SpecHandle) const override;
 
 protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Config")
@@ -57,4 +60,7 @@ protected:
 
 	/** 동적으로 부여된 트리거 어빌리티의 스펙 핸들 */
 	FGameplayAbilitySpecHandle GrantedTriggerAbilityHandle;
+
+	/** 훅(Hook)을 통해 스펙에 주입하기 위해 보관하는 이벤트 매그니튜드 값 */
+	mutable float CurrentEventMagnitude = 0.0f;
 };
