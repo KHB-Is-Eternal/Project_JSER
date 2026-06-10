@@ -236,9 +236,26 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 		{
 			SpawnedComponent->ComponentTags.Add(FName(*SpawnConfig->GetPathName()));
 		}
-
 		// 나이아가라 시스템의 User.StackCount 파라미터에 현재 스택 카운트 전달
-		SpawnedComponent->SetVariableInt(TEXT("User.StackCount"), Parameters.GameplayEffectLevel);
+		int32 StackCount = 1;
+		if (IsValid(MyTarget) && Parameters.EffectContext.IsValid())
+		{
+			if (UAbilitySystemComponent* TargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(MyTarget))
+			{
+				FGameplayEffectQuery Query;
+				TArray<FActiveGameplayEffectHandle> ActiveHandles = TargetASC->GetActiveEffects(Query);
+				for (const FActiveGameplayEffectHandle& ActiveHandle : ActiveHandles)
+				{
+					const FActiveGameplayEffect* ActiveGE = TargetASC->GetActiveGameplayEffect(ActiveHandle);
+					if (ActiveGE && ActiveGE->Spec.GetContext().Get() == Parameters.EffectContext.Get())
+					{
+						StackCount = ActiveGE->Spec.GetStackCount();
+						break;
+					}
+				}
+			}
+		}
+		SpawnedComponent->SetVariableInt(TEXT("User.StackCount"), StackCount);
 	}
 	return true;
 }

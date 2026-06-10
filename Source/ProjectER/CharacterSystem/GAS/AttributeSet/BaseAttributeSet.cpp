@@ -429,7 +429,7 @@ void UBaseAttributeSet::DispatchHitEvent(const FGameplayEffectModCallbackData& D
 		TargetActorPayload.Target = TargetActor;
 		TargetActorPayload.EventMagnitude = LocalDamage;
 		TargetActorPayload.ContextHandle = Context;
-		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, HitEventTag, TargetActorPayload);
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, TargetActorPayload.EventTag, TargetActorPayload);
 	}
 }
 
