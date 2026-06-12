@@ -5,11 +5,16 @@
 
 float USkillMagnitudeCalculator::CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC) const
 {
+	return CalculateValue(SourceASC, TargetASC, nullptr);
+}
+
+float USkillMagnitudeCalculator::CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec* Spec) const
+{
 	float Result = InitialValue;
 
 	for (const FCalcStep& Step : FormulaSteps)
 	{
-		float OperandValue = GetOperandValue(Step, SourceASC, TargetASC);
+		float OperandValue = GetOperandValue(Step, SourceASC, TargetASC, Spec);
 
 		switch (Step.Operator)
 		{
@@ -38,7 +43,7 @@ float USkillMagnitudeCalculator::CalculateValue(UAbilitySystemComponent* SourceA
 	return Result;
 }
 
-float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC) const
+float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec* Spec) const
 {
 	switch (Step.OperandType)
 	{
@@ -66,16 +71,16 @@ float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbility
 		break;
 
 	case ECalcOperandType::SourceTagStack:
-		if (SourceASC && Step.StackTag.IsValid())
+		if (SourceASC && Step.Tag.IsValid())
 		{
-			return static_cast<float>(SourceASC->GetTagCount(Step.StackTag));
+			return static_cast<float>(SourceASC->GetTagCount(Step.Tag));
 		}
 		break;
 
 	case ECalcOperandType::TargetTagStack:
-		if (TargetASC && Step.StackTag.IsValid())
+		if (TargetASC && Step.Tag.IsValid())
 		{
-			return static_cast<float>(TargetASC->GetTagCount(Step.StackTag));
+			return static_cast<float>(TargetASC->GetTagCount(Step.Tag));
 		}
 		else if (!TargetASC)
 		{
@@ -86,11 +91,21 @@ float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbility
 	case ECalcOperandType::SubFormula:
 		if (Step.SubFormula)
 		{
-			return Step.SubFormula->CalculateValue(SourceASC, TargetASC);
+			return Step.SubFormula->CalculateValue(SourceASC, TargetASC, Spec);
 		}
 		else
 		{
 			UE_LOG(LogTemp, Warning, TEXT("USkillMagnitudeCalculator: SubFormula가 nullptr입니다. 0을 반환합니다."));
+		}
+		break;
+
+	case ECalcOperandType::SetByCaller:
+		if (Spec && Step.Tag.IsValid())
+		{
+			if (Spec->SetByCallerTagMagnitudes.Contains(Step.Tag))
+			{
+				return Spec->SetByCallerTagMagnitudes.FindRef(Step.Tag);
+			}
 		}
 		break;
 	}

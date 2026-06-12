@@ -102,6 +102,11 @@ namespace ProjectER
 	
 	namespace Event
 	{
+		namespace Data
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damage, "Event.Data.Damage", "Event data for local damage amount");
+		}
+
 		namespace Action
 		{
 			namespace Hit

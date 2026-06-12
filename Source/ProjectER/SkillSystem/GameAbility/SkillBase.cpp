@@ -499,7 +499,7 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 			{
 				if (CalcInfo.TargetGameplayEffect == EffectClass && CalcInfo.Calculator && CalcInfo.SetByCallerTag.IsValid())
 				{
-					float CalcValue = CalcInfo.Calculator->CalculateValue(SourceASC, TargetASC);
+					float CalcValue = CalcInfo.Calculator->CalculateValue(SourceASC, TargetASC, SpecHandle.Data.Get());
 					SpecHandle.Data.Get()->SetSetByCallerMagnitude(CalcInfo.SetByCallerTag, CalcValue);
 				}
 			}

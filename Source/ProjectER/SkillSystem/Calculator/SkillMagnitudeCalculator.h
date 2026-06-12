@@ -18,7 +18,8 @@ enum class ECalcOperandType : uint8
 	TargetStat			UMETA(DisplayName = "타겟 스탯 (Target Stat)"),
 	SourceTagStack		UMETA(DisplayName = "시전자 태그 스택 (Source Tag Stack)"),
 	TargetTagStack		UMETA(DisplayName = "타겟 태그 스택 (Target Tag Stack)"),
-	SubFormula			UMETA(DisplayName = "하위 수식 (Sub Formula / 괄호)")
+	SubFormula			UMETA(DisplayName = "하위 수식 (Sub Formula / 괄호)"),
+	SetByCaller			UMETA(DisplayName = "SetByCaller 값 (SetByCaller)")
 };
 
 /** 연산자 타입 */
@@ -54,9 +55,9 @@ struct PROJECTER_API FCalcStep
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Calculation", meta=(EditCondition="OperandType==ECalcOperandType::SourceStat || OperandType==ECalcOperandType::TargetStat", EditConditionHides))
 	FGameplayAttribute StatAttribute;
 
-	// ECalcOperandType::SourceTagStack 또는 TargetTagStack 일 때 사용
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Calculation", meta=(EditCondition="OperandType==ECalcOperandType::SourceTagStack || OperandType==ECalcOperandType::TargetTagStack", EditConditionHides))
-	FGameplayTag StackTag;
+	// ECalcOperandType::SourceTagStack, TargetTagStack, SetByCaller 일 때 사용
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Calculation", meta=(EditCondition="OperandType==ECalcOperandType::SourceTagStack || OperandType==ECalcOperandType::TargetTagStack || OperandType==ECalcOperandType::SetByCaller", EditConditionHides))
+	FGameplayTag Tag;
 
 	// ECalcOperandType::SubFormula 일 때 사용
 	UPROPERTY(EditAnywhere, Instanced, BlueprintReadWrite, Category = "Calculation", meta=(EditCondition="OperandType==ECalcOperandType::SubFormula", EditConditionHides))
@@ -88,6 +89,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Calculation")
 	float CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC) const;
 
+	// C++ 전용 오버로드 (UFUNCTION 없음, FGameplayEffectSpec 포인터 전달 가능)
+	float CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const struct FGameplayEffectSpec* Spec) const;
+
 protected:
-	float GetOperandValue(const FCalcStep& Step, UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC) const;
+	float GetOperandValue(const FCalcStep& Step, UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const struct FGameplayEffectSpec* Spec) const;
 };
