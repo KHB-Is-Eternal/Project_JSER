@@ -7,26 +7,36 @@ UGroundIndicatorComponent::UGroundIndicatorComponent()
 	// 30FPS 수준으로 실시간 바닥 추적을 수행하도록 Tick 간격 설정 (퍼포먼스 최적화)
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.TickInterval = 0.033f;
-	
-	// 기본 데칼용 메쉬 로드 (언리얼 내장 Plane)
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> PlaneMeshFinder(TEXT("/Engine/BasicShapes/Plane"));
-	if (PlaneMeshFinder.Succeeded())
-	{
-		SetStaticMesh(PlaneMeshFinder.Object);
-	}
 
-	// 렌더링 전용 컴포넌트이므로 콜리전 관련 최적화
-	SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
-	SetGenerateOverlapEvents(false);
-	CanCharacterStepUpOn = ECB_No;
+	// 스프링암 회전 억제 및 본 추적 최적화 설정
+	TargetArmLength = 0.0f;
+	bDoCollisionTest = false;
+	bInheritPitch = false;
+	bInheritRoll = false;
+	bInheritYaw = true;
 }
 
 void UGroundIndicatorComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	// 지연 생성을 보장하여 설정값 유실 방지
+	EnsureIndicatorMeshCompExists();
+
+	// 렌더링 씬에 하위 컴포넌트 강제 등록
+	if (IndicatorMeshComp && !IndicatorMeshComp->IsRegistered())
+	{
+		IndicatorMeshComp->RegisterComponent();
+	}
+
 	// 소켓 부착 여부에 관계없이 생성 시 1회는 무조건 지면을 찾아갑니다.
 	UpdateGroundPosition();
+
+	// 부모의 틱이 끝난 후 본 컴포넌트의 틱이 돌도록 설정하여, Absolute Rotation 사용 시 발생하는 1프레임 회전 지터링을 방지합니다.
+	if (USceneComponent* ParentComp = GetAttachParent())
+	{
+		PrimaryComponentTick.AddPrerequisite(ParentComp, ParentComp->PrimaryComponentTick);
+	}
 }
 
 void UGroundIndicatorComponent::UpdateGroundPosition()
@@ -69,10 +79,57 @@ void UGroundIndicatorComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 		return;
 	}
 
-	// 1. Z축 위치 보정
-	// 사용자가 설정한 본 부착 모드(bAttachToBone)일 때만 매 틱마다 트레이스를 쏴서 뼈다귀의 흔들림을 상쇄합니다.
 	if (bIsTrackingDynamicGround)
 	{
+		// 실시간으로 Z축 높이를 지형에 맞게 추적합니다.
 		UpdateGroundPosition();
+	}
+}
+
+void UGroundIndicatorComponent::EnsureIndicatorMeshCompExists()
+{
+	if (!IndicatorMeshComp)
+	{
+		IndicatorMeshComp = NewObject<UStaticMeshComponent>(this, TEXT("IndicatorMeshComp"));
+		if (IndicatorMeshComp)
+		{
+			IndicatorMeshComp->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+			
+			// 기본 데칼용 메쉬 로드 및 설정 (생성자 외부이므로 LoadObject 사용)
+			static UStaticMesh* PlaneMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
+			if (PlaneMesh)
+			{
+				IndicatorMeshComp->SetStaticMesh(PlaneMesh);
+			}
+
+			// 렌더링 전용 컴포넌트이므로 콜리전 관련 최적화
+			IndicatorMeshComp->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
+			IndicatorMeshComp->SetGenerateOverlapEvents(false);
+			IndicatorMeshComp->CanCharacterStepUpOn = ECB_No;
+
+			// 만약 이 컴포넌트(스프링암) 자체가 이미 등록(Registered)된 상태라면, 자식 메쉬도 즉시 씬에 등록해 주어야 렌더링됩니다.
+			if (IsRegistered())
+			{
+				IndicatorMeshComp->RegisterComponent();
+			}
+		}
+	}
+}
+
+void UGroundIndicatorComponent::SetIndicatorMaterial(int32 ElementIndex, UMaterialInterface* Material)
+{
+	EnsureIndicatorMeshCompExists();
+	if (IndicatorMeshComp)
+	{
+		IndicatorMeshComp->SetMaterial(ElementIndex, Material);
+	}
+}
+
+void UGroundIndicatorComponent::SetIndicatorScale(const FVector& NewScale)
+{
+	EnsureIndicatorMeshCompExists();
+	if (IndicatorMeshComp)
+	{
+		IndicatorMeshComp->SetWorldScale3D(NewScale);
 	}
 }

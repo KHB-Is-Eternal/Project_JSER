@@ -342,14 +342,14 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 
 	// 5. 스케일 세팅 (Plane 기본 100x100 크기 기준)
 	// CanvasExtent(반지름) 기준 50으로 나누어 스케일을 맞춥니다.
-	CollisionIndicatorComp->SetWorldScale3D(FVector(CanvasExtent.X / 50.0f, CanvasExtent.Y / 50.0f, 1.0f));
+	CollisionIndicatorComp->SetIndicatorScale(FVector(CanvasExtent.X / 50.0f, CanvasExtent.Y / 50.0f, 1.0f));
 
 	// 6. 동적 머터리얼 세팅 (강제 덮어쓰기 방식)
 	static UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KHB/M_RangeDecal.M_RangeDecal"));
 	if (BaseMaterial)
 	{
 		UMaterialInstanceDynamic* DynMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
-		CollisionIndicatorComp->SetMaterial(0, DynMaterial);
+		CollisionIndicatorComp->SetIndicatorMaterial(0, DynMaterial);
 
 		DynMaterial->SetVectorParameterValue(TEXT("Color"), TargetColor);
 		DynMaterial->SetScalarParameterValue(TEXT("ShapeType"), static_cast<float>(ShapeType));
@@ -370,6 +370,7 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 		}
 		CollisionIndicatorComp->SetTrackingDynamicGround(bIsBoneAttached);
 
+		// UGroundIndicatorComponent 자체에 스프링암 상속 규칙이 내재되어 있으므로 단순 부착만 수행합니다.
 		CollisionIndicatorComp->AttachToComponent(InCollisionComponent, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		CollisionIndicatorComp->RegisterComponent();
 	}
