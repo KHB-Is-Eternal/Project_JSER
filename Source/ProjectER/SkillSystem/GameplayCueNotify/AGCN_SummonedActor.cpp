@@ -1,6 +1,8 @@
 #include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
+#include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 #include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
 #include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
+#include "SkillSystem/GameplayEffectComponent/SummonRangeAtBone.h"
 #include "SkillSystem/GameplayEffectComponent/LaunchProjectile.h"
 #include "SkillSystem/GameplayEffectComponent/LaunchHomingMissile.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
@@ -13,15 +15,17 @@
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnHelper.h"
 #include "GameFramework/ProjectileMovementComponent.h"
-#include "Components/StaticMeshComponent.h"
 #include "Components/ShapeComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "Engine/StaticMesh.h"
 #include "CharacterSystem/Interface/TargetableInterface.h"
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
+#include "Components/StaticMeshComponent.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "Engine/Texture2D.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 AGCN_SummonedActor::AGCN_SummonedActor()
 {
@@ -123,9 +127,7 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 {
 	if (!SourceObject) return;
 	
-	CachedSourceObject = const_cast<UObject*>(SourceObject);
-
-
+	CachedSourceObject = SourceObject;
 
 	// [Refactor] 특정 GEC 클래스나 부모 GEC에 의존하지 않고 인터페이스(ISkillVisualDataProvider)를 사용합니다.
 	if (const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(SourceObject))
@@ -137,7 +139,7 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 		SetupSfxComponent(VisualSource->GetAGCN_SoundConfig());
 
 		// 3. 이동(Movement) 초기화 - GEC인 경우에만 추가 설정 수행
-		if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(VisualSource))
+		if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(SourceObject))
 		{
 			if (MovementComponent)
 			{
@@ -218,6 +220,7 @@ void AGCN_SummonedActor::OnTargetActorDestroyed(AActor* DestroyedActor)
 	Destroy();
 }
 
+
 void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionComponent, AActor* InInstigatorActor)
 {
 	if (!IsValid(InCollisionComponent) || !IsValid(InInstigatorActor))
@@ -225,93 +228,151 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 		return;
 	}
 
-	// 1. 로컬 플레이어 기반 아군/적군 판단 (아군 251, 적군 250)
-	int32 StencilValue = 250; // 기본 적군
-	if (APlayerController* LocalPC = GEngine ? GEngine->GetFirstLocalPlayerController(GetWorld()) : nullptr)
+	// 1. 아군/적군 색상 판단
+	FLinearColor TargetColor = FLinearColor::Red; // 적군 기본
+	if (const UWorld* World = GetWorld())
 	{
-		if (AActor* LocalPawn = LocalPC->GetPawn())
+		if (const APlayerController* LocalPC = World->GetFirstPlayerController())
 		{
-			ITargetableInterface* LocalTargetable = Cast<ITargetableInterface>(LocalPawn);
-			ITargetableInterface* InstigatorTargetable = Cast<ITargetableInterface>(InInstigatorActor);
-
-			if (LocalTargetable && InstigatorTargetable)
+			if (const AActor* LocalPawn = LocalPC->GetPawn())
 			{
-				if (LocalTargetable->GetTeamType() == InstigatorTargetable->GetTeamType())
+				const ITargetableInterface* LocalTargetable = Cast<ITargetableInterface>(LocalPawn);
+				const ITargetableInterface* InstigatorTargetable = Cast<ITargetableInterface>(InInstigatorActor);
+
+				if (LocalTargetable && InstigatorTargetable)
 				{
-					StencilValue = 251; // 아군
+					if (LocalTargetable->GetTeamType() == InstigatorTargetable->GetTeamType())
+					{
+						TargetColor = FLinearColor::Green; // 아군
+					}
 				}
 			}
 		}
 	}
 
-	// 2. 콜리전 형태에 따른 엔진 기본 메쉬 로드 및 스케일 조정
-	UStaticMesh* BaseMesh = nullptr;
-	FVector MeshScale = FVector(1.0f);
+	// 2. 데칼 크기 및 형태 판별
+	// 데칼의 투영 깊이(절반 크기). 기존 500은 총 1000(10미터)의 깊이를 가져 천장에 닿았습니다.
+	// 이를 150(총 깊이 300)으로 줄여 바닥 근처의 요철만 덮도록 수정합니다.
+	const float DecalDepth = 30; 
+	FVector DecalSize = FVector(DecalDepth, 100.f, 100.f);
+	int32 ShapeType = 0; 
+	FVector2D OutlineExtent = FVector2D(100.f, 100.f);
 
-	if (USphereComponent* SphereComp = Cast<USphereComponent>(InCollisionComponent))
+	// [수직 그림자 투영 계산 공통 로직]
+	// 데칼이 바라보는 방향(-90도) 기준으로, 컴포넌트의 로컬 축들이 바닥 평면에 투영되는 길이를 구합니다.
+	FRotator CompRot = InCollisionComponent->GetComponentRotation();
+	
+	// 나이아가라 설정(SpawnConfig)에 설정된 상대 회전값(RotationOffset)이 있다면
+	// 파티클이 실제로 기울어지는 각도를 그림자 계산에도 완벽히 동기화합니다.
+	if (const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(CachedSourceObject.Get()))
 	{
-		BaseMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere")));
-		if (BaseMesh)
+		if (const USkillNiagaraSpawnConfig* Config = VisualSource->GetAGCN_NiagaraConfig())
 		{
-			// 엔진 Sphere 반경은 50 (지름 100)
-			float ScaleFactor = SphereComp->GetUnscaledSphereRadius() / 50.0f;
-			MeshScale = FVector(ScaleFactor);
-		}
-	}
-	else if (UBoxComponent* BoxComp = Cast<UBoxComponent>(InCollisionComponent))
-	{
-		BaseMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
-		if (BaseMesh)
-		{
-			// 엔진 Cube Extent는 50 (크기 100x100x100)
-			MeshScale = BoxComp->GetUnscaledBoxExtent() / 50.0f;
-		}
-	}
-	else if (UCapsuleComponent* CapsuleComp = Cast<UCapsuleComponent>(InCollisionComponent))
-	{
-		BaseMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
-		if (BaseMesh)
-		{
-			// 엔진 Cylinder는 반경 50, 높이 100 (half height 50)
-			float RadiusScale = CapsuleComp->GetUnscaledCapsuleRadius() / 50.0f;
-			float HeightScale = CapsuleComp->GetUnscaledCapsuleHalfHeight() / 50.0f;
-			MeshScale = FVector(RadiusScale, RadiusScale, HeightScale);
+			if (!Config->RotationOffset.IsZero())
+			{
+				const FTransform CompTransform = InCollisionComponent->GetComponentTransform();
+				const FTransform OffsetTransform = FTransform(Config->RotationOffset);
+				// 추가 회전이 적용된 최종 실제 회전값 산출
+				CompRot = (OffsetTransform * CompTransform).Rotator();
+			}
 		}
 	}
 
-	if (!BaseMesh)
+	const FRotator DecalRot = FRotator(-90.f, CompRot.Yaw, 0.f);
+	const FVector DecalWorldY = FRotationMatrix(DecalRot).GetScaledAxis(EAxis::Y);
+	const FVector DecalWorldZ = FRotationMatrix(DecalRot).GetScaledAxis(EAxis::Z);
+	
+	// FTransform의 전체 복사 생성 및 InverseTransformVectorNoScale 오버헤드를 제거하고
+	// 쿼터니언을 통해 필요한 축에 대해서만 직접 unrotation을 수행합니다.
+	const FQuat CompQuat = CompRot.Quaternion();
+	const FVector DecalLocalY = CompQuat.UnrotateVector(DecalWorldY);
+	const FVector DecalLocalZ = CompQuat.UnrotateVector(DecalWorldZ);
+
+	FVector Shape3DExtent = FVector::ZeroVector;
+	FVector2D CanvasExtent = FVector2D(100.f, 100.f);
+
+	if (const USphereComponent* SphereComp = Cast<USphereComponent>(InCollisionComponent))
 	{
-		return;
+		const float Radius = SphereComp->GetScaledSphereRadius();
+		DecalSize = FVector(DecalDepth, Radius, Radius);
+		Shape3DExtent = FVector(Radius, 0.f, 0.f);
+		CanvasExtent = FVector2D(Radius, Radius);
+		ShapeType = 0; 
+	}
+	else if (const UBoxComponent* BoxComp = Cast<UBoxComponent>(InCollisionComponent))
+	{
+		const FVector BoxExtent = BoxComp->GetScaledBoxExtent();
+		
+		const float ProjectedExtentY = BoxExtent.X * FMath::Abs(DecalLocalY.X) + BoxExtent.Y * FMath::Abs(DecalLocalY.Y) + BoxExtent.Z * FMath::Abs(DecalLocalY.Z);
+		const float ProjectedExtentZ = BoxExtent.X * FMath::Abs(DecalLocalZ.X) + BoxExtent.Y * FMath::Abs(DecalLocalZ.Y) + BoxExtent.Z * FMath::Abs(DecalLocalZ.Z);
+
+		// 데칼이 짤리지 않게 가장 넓은 투영 바운드를 캔버스 크기로 잡습니다.
+		const float MaxExtent = FMath::Max(ProjectedExtentY, ProjectedExtentZ);
+		DecalSize = FVector(DecalDepth, MaxExtent, MaxExtent);
+		
+		Shape3DExtent = BoxExtent;
+		CanvasExtent = FVector2D(MaxExtent, MaxExtent);
+		ShapeType = 1; 
+	}
+	else if (const UCapsuleComponent* CapsuleComp = Cast<UCapsuleComponent>(InCollisionComponent))
+	{
+		const float Radius = CapsuleComp->GetScaledCapsuleRadius();
+		const float HalfHeight = CapsuleComp->GetScaledCapsuleHalfHeight();
+		
+		const FVector CapExtent(Radius, Radius, HalfHeight);
+		const float ProjectedExtentY = CapExtent.X * FMath::Abs(DecalLocalY.X) + CapExtent.Y * FMath::Abs(DecalLocalY.Y) + CapExtent.Z * FMath::Abs(DecalLocalY.Z);
+		const float ProjectedExtentZ = CapExtent.X * FMath::Abs(DecalLocalZ.X) + CapExtent.Y * FMath::Abs(DecalLocalZ.Y) + CapExtent.Z * FMath::Abs(DecalLocalZ.Z);
+
+		const float MaxExtent = FMath::Max(ProjectedExtentY, ProjectedExtentZ);
+		DecalSize = FVector(DecalDepth, MaxExtent, MaxExtent);
+		
+		Shape3DExtent = FVector(Radius, HalfHeight, 0.f);
+		CanvasExtent = FVector2D(MaxExtent, MaxExtent);
+		ShapeType = 2;
 	}
 
-	// 3. 아웃라인용 메쉬 컴포넌트 동적 생성 혹은 재사용
+	// 4. 컴포넌트 생성/재사용
 	bool bIsNewComponent = false;
-	if (!CollisionOutlineMesh)
+	if (!CollisionIndicatorComp)
 	{
-		CollisionOutlineMesh = NewObject<UStaticMeshComponent>(this, TEXT("CollisionOutlineMesh"));
-		if (!CollisionOutlineMesh) return;
+		CollisionIndicatorComp = NewObject<UGroundIndicatorComponent>(this, TEXT("CollisionIndicatorComp"));
+		if (!CollisionIndicatorComp) return;
 		bIsNewComponent = true;
 	}
 
-	CollisionOutlineMesh->SetStaticMesh(BaseMesh);
-	CollisionOutlineMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// 5. 스케일 세팅 (Plane 기본 100x100 크기 기준)
+	// CanvasExtent(반지름) 기준 50으로 나누어 스케일을 맞춥니다.
+	CollisionIndicatorComp->SetWorldScale3D(FVector(CanvasExtent.X / 50.0f, CanvasExtent.Y / 50.0f, 1.0f));
 
-	// 4. 렌더링 설정 (메인 패스 및 일반 뎁스 패스 제외, 커스텀 뎁스만 렌더링)
-	CollisionOutlineMesh->SetRenderInMainPass(false);
-	CollisionOutlineMesh->SetRenderInDepthPass(false);
-	CollisionOutlineMesh->SetRenderCustomDepth(true);
-	CollisionOutlineMesh->SetCustomDepthStencilValue(StencilValue);
-	CollisionOutlineMesh->SetCastShadow(false);
-	CollisionOutlineMesh->SetAffectDistanceFieldLighting(false);
-
-	// 5. 부착 및 트랜스폼 동기화
-	if (bIsNewComponent)
+	// 6. 동적 머터리얼 세팅 (강제 덮어쓰기 방식)
+	static UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KHB/M_RangeDecal.M_RangeDecal"));
+	if (BaseMaterial)
 	{
-		CollisionOutlineMesh->RegisterComponent();
-		CollisionOutlineMesh->AttachToComponent(InCollisionComponent, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		UMaterialInstanceDynamic* DynMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+		CollisionIndicatorComp->SetMaterial(0, DynMaterial);
+
+		DynMaterial->SetVectorParameterValue(TEXT("Color"), TargetColor);
+		DynMaterial->SetScalarParameterValue(TEXT("ShapeType"), static_cast<float>(ShapeType));
+		DynMaterial->SetVectorParameterValue(TEXT("ShapeExtent"), FLinearColor(Shape3DExtent.X, Shape3DExtent.Y, Shape3DExtent.Z, 0.0f));
+		DynMaterial->SetVectorParameterValue(TEXT("CanvasExtent"), FLinearColor(CanvasExtent.X, CanvasExtent.Y, 0.0f, 0.0f));
+		DynMaterial->SetVectorParameterValue(TEXT("DecalLocalY"), FLinearColor(DecalLocalY.X, DecalLocalY.Y, DecalLocalY.Z, 0.0f));
+		DynMaterial->SetVectorParameterValue(TEXT("DecalLocalZ"), FLinearColor(DecalLocalZ.X, DecalLocalZ.Y, DecalLocalZ.Z, 0.0f));
 	}
-	CollisionOutlineMesh->SetWorldScale3D(MeshScale);
-	CollisionOutlineMesh->SetWorldLocationAndRotationNoPhysics(InCollisionComponent->GetComponentLocation(), InCollisionComponent->GetComponentRotation());
+
+	// 7. 부착 및 렌더링 활성화
+	if (bIsNewComponent && CollisionIndicatorComp)
+	{
+		// GEC 옵션을 확인하여 인디케이터가 뼈 움직임(상하 흔들림)을 실시간 추적해야 하는지 설정합니다.
+		bool bIsBoneAttached = false;
+		if (const USummonRangeAtBone* BoneGEC = Cast<USummonRangeAtBone>(GetSourceObject()))
+		{
+			bIsBoneAttached = BoneGEC->bAttachToBone;
+		}
+		CollisionIndicatorComp->SetTrackingDynamicGround(bIsBoneAttached);
+
+		CollisionIndicatorComp->AttachToComponent(InCollisionComponent, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		CollisionIndicatorComp->RegisterComponent();
+	}
 }
 
 void AGCN_SummonedActor::AttachToTargetActor(AActor* InTargetActor)
