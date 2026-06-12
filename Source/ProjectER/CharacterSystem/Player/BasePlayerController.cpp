@@ -1,4 +1,5 @@
 #include "CharacterSystem/Player/BasePlayerController.h"
+#include "ItemSystem/UI/ItemCatalogWidget.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -323,6 +324,12 @@ void ABasePlayerController::SetupInputComponent()
 		{
 			EnhancedInputComponent->BindAction(InputConfig->ChatEnterKey, ETriggerEvent::Started, this, &ABasePlayerController::OnEnterPressed);
 		}	
+
+		// 아이템 도감 토글 바인딩
+		if (InputConfig->CatalogKey)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->CatalogKey, ETriggerEvent::Started, this, &ABasePlayerController::ToggleCatalog);
+		}
 	}
 }
 
@@ -2956,4 +2963,41 @@ TArray<FCraftableItemPreviewData> ABasePlayerController::GetCraftableItemsForUI(
 	}
 
 	return Results;
+}
+
+void ABasePlayerController::ToggleCatalog()
+{
+	if (!CatalogWidgetClass) return;
+
+	if (IsValid(CatalogWidgetInstance))
+	{
+		if (CatalogWidgetInstance->GetVisibility() == ESlateVisibility::Visible || CatalogWidgetInstance->GetVisibility() == ESlateVisibility::SelfHitTestInvisible)
+		{
+			CatalogWidgetInstance->SetVisibility(ESlateVisibility::Collapsed);
+			
+			// 카탈로그를 닫을 때 입력 모드를 게임 전용으로 되돌릴 수 있지만, 다른 UI가 열려있는지 확인해야 합니다.
+			// FInputModeGameOnly InputMode;
+			// SetInputMode(InputMode);
+			// bShowMouseCursor = false;
+		}
+		else
+		{
+			CatalogWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+			
+			// 필요 시 마우스 커서를 보여줌
+			// FInputModeGameAndUI InputMode;
+			// InputMode.SetWidgetToFocus(CatalogWidgetInstance->TakeWidget());
+			// SetInputMode(InputMode);
+			// bShowMouseCursor = true;
+		}
+	}
+	else
+	{
+		CatalogWidgetInstance = CreateWidget<UItemCatalogWidget>(this, CatalogWidgetClass);
+		if (CatalogWidgetInstance)
+		{
+			CatalogWidgetInstance->AddToViewport(50); // 다른 UI 위로 표시하기 위한 ZOrder
+			CatalogWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+		}
+	}
 }
