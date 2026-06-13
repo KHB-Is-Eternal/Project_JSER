@@ -99,10 +99,18 @@ void UAnimNotifyCueTrackerComponent::TickComponent(float DeltaTime, ELevelTick T
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 #if WITH_EDITOR
-	// Dedicated Server에서는 렌더링/사운드 처리를 하지 않으므로 틱 생략
+	// Dedicated Server 또는 실제 게임 플레이 월드(PIE, Standalone)인 경우 에디터용 트래킹 틱 생략
 	if (GetNetMode() == NM_DedicatedServer)
 	{
 		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (World->IsGameWorld())
+		{
+			return;
+		}
 	}
 
 	AActor* Owner = GetOwner();
@@ -258,6 +266,15 @@ UAnimNotifyCueTrackerComponent* UAnimNotifyCueTrackerComponent::GetOrCreateTrack
 		return nullptr;
 	}
 
+	// 실제 게임 월드(PIE, Standalone)일 때는 트래킹 컴포넌트를 아예 생성하지 않습니다.
+	if (UWorld* World = Owner->GetWorld())
+	{
+		if (World->IsGameWorld())
+		{
+			return nullptr;
+		}
+	}
+
 	UAnimNotifyCueTrackerComponent* Tracker = Owner->FindComponentByClass<UAnimNotifyCueTrackerComponent>();
 	if (!Tracker)
 	{
@@ -272,6 +289,14 @@ UAnimNotifyCueTrackerComponent* UAnimNotifyCueTrackerComponent::GetOrCreateTrack
 
 void UAnimNotifyCueTrackerComponent::RegisterNiagaraCue(USkeletalMeshComponent* MeshComp, UAnimMontage* Montage, USkillNiagaraSpawnConfig* SpawnConfig)
 {
+	if (UWorld* World = GetWorld())
+	{
+		if (World->IsGameWorld())
+		{
+			return;
+		}
+	}
+
 	if (!IsValid(MeshComp) || !IsValid(Montage) || !IsValid(SpawnConfig) || SpawnConfig->NiagaraSystem.IsNull())
 	{
 		return;
@@ -349,6 +374,14 @@ void UAnimNotifyCueTrackerComponent::RegisterNiagaraCue(USkeletalMeshComponent* 
 
 void UAnimNotifyCueTrackerComponent::RegisterSoundCue(USkeletalMeshComponent* MeshComp, UAnimMontage* Montage, USkillSoundSpawnConfig* SpawnConfig)
 {
+	if (UWorld* World = GetWorld())
+	{
+		if (World->IsGameWorld())
+		{
+			return;
+		}
+	}
+
 	if (!IsValid(MeshComp) || !IsValid(Montage) || !IsValid(SpawnConfig) || SpawnConfig->Sound.IsNull())
 	{
 		return;
@@ -425,6 +458,14 @@ void UAnimNotifyCueTrackerComponent::RegisterSoundCue(USkeletalMeshComponent* Me
 
 void UAnimNotifyCueTrackerComponent::UnregisterCue(USkeletalMeshComponent* MeshComp, UObject* TargetAsset)
 {
+	if (UWorld* World = GetWorld())
+	{
+		if (World->IsGameWorld())
+		{
+			return;
+		}
+	}
+
 	if (!IsValid(MeshComp) || !IsValid(TargetAsset))
 	{
 		return;
