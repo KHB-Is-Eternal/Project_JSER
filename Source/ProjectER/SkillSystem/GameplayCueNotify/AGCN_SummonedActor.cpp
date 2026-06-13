@@ -228,7 +228,7 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 		return;
 	}
 
-	// 1. 아군/적군 색상 판단
+	// 1. 아군/적군/몬스터 색상 판단
 	FLinearColor TargetColor = FLinearColor::Red; // 적군 기본
 	if (const UWorld* World = GetWorld())
 	{
@@ -241,6 +241,10 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 
 				if (LocalTargetable && InstigatorTargetable)
 				{
+					// if (InstigatorTargetable->GetTeamType() == ETeamType::Neutral)
+					// {
+					// 	TargetColor = FLinearColor::White; // 몬스터 / 중립
+					// }
 					if (LocalTargetable->GetTeamType() == InstigatorTargetable->GetTeamType())
 					{
 						TargetColor = FLinearColor::Green; // 아군
@@ -357,6 +361,27 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 		DynMaterial->SetVectorParameterValue(TEXT("CanvasExtent"), FLinearColor(CanvasExtent.X, CanvasExtent.Y, 0.0f, 0.0f));
 		DynMaterial->SetVectorParameterValue(TEXT("DecalLocalY"), FLinearColor(DecalLocalY.X, DecalLocalY.Y, DecalLocalY.Z, 0.0f));
 		DynMaterial->SetVectorParameterValue(TEXT("DecalLocalZ"), FLinearColor(DecalLocalZ.X, DecalLocalZ.Y, DecalLocalZ.Z, 0.0f));
+		DynMaterial->SetScalarParameterValue(TEXT("SpawnTime"), GetWorld()->GetTimeSeconds());
+
+		float FadeDuration = 2.0f;
+		if (const USummonRangeBaseGEC* SummonGEC = Cast<USummonRangeBaseGEC>(GetSourceObject()))
+		{
+			FadeDuration = SummonGEC->LifeSpan;
+		}
+		else
+		{
+			float Lifespan = GetLifeSpan();
+			if (Lifespan > 0.0f)
+			{
+				FadeDuration = Lifespan;
+			}
+		}
+
+		if (FadeDuration <= 0.0f)
+		{
+			FadeDuration = 10.0f;
+		}
+		DynMaterial->SetScalarParameterValue(TEXT("FadeDuration"), FadeDuration);
 	}
 
 	// 7. 부착 및 렌더링 활성화
