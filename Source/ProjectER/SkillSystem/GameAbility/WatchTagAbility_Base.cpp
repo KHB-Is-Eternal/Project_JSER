@@ -8,6 +8,7 @@
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "AbilitySystemGlobals.h"
 #include "SkillSystem/SkillDataAsset.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 UWatchTagAbility_Base::UWatchTagAbility_Base()
 {
@@ -37,6 +38,10 @@ void UWatchTagAbility_Base::OnGiveAbility(const FGameplayAbilityActorInfo* Actor
 				}
 			}
 
+			// 사망 태그 감지 델리게이트 등록 (부활 시 재활성화를 위함)
+			MyASC->RegisterGameplayTagEvent(ProjectER::State::Life::Death, EGameplayTagEventType::NewOrRemoved)
+				.AddUObject(this, &UWatchTagAbility_Base::OnDeathTagChanged, Spec.Handle);
+
 			MyASC->TryActivateAbility(Spec.Handle);
 		}
 	}
@@ -44,14 +49,21 @@ void UWatchTagAbility_Base::OnGiveAbility(const FGameplayAbilityActorInfo* Actor
 
 void UWatchTagAbility_Base::OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
 {
-	if (ActorInfo != nullptr && GrantedTriggerAbilityHandle.IsValid())
+	if (ActorInfo != nullptr)
 	{
 		UAbilitySystemComponent* const MyASC = ActorInfo->AbilitySystemComponent.Get();
 		if (MyASC != nullptr)
 		{
-			MyASC->ClearAbility(GrantedTriggerAbilityHandle);
+			// 사망 태그 감시 델리게이트 등록 해제
+			MyASC->RegisterGameplayTagEvent(ProjectER::State::Life::Death, EGameplayTagEventType::NewOrRemoved)
+				.RemoveAll(this);
+
+			if (GrantedTriggerAbilityHandle.IsValid())
+			{
+				MyASC->ClearAbility(GrantedTriggerAbilityHandle);
+				GrantedTriggerAbilityHandle = FGameplayAbilitySpecHandle();
+			}
 		}
-		GrantedTriggerAbilityHandle = FGameplayAbilitySpecHandle();
 	}
 
 	Super::OnRemoveAbility(ActorInfo, Spec);
@@ -367,6 +379,19 @@ void UWatchTagAbility_Base::OnEffectSpecCreated(FGameplayEffectSpecHandle& SpecH
 	if (IsValid(PassiveConfig) && PassiveConfig->SetByCallerTag.IsValid())
 	{
 		SpecHandle.Data.Get()->SetSetByCallerMagnitude(PassiveConfig->SetByCallerTag, CurrentEventMagnitude);
+	}
+}
+
+void UWatchTagAbility_Base::OnDeathTagChanged(const FGameplayTag Tag, int32 NewCount, FGameplayAbilitySpecHandle SpecHandle)
+{
+	// 사망 태그가 제거되었고(부활함), 현재 패시브가 비활성화 상태인 경우 재활성화
+	if (NewCount == 0 && !IsActive())
+	{
+		UAbilitySystemComponent* const MyASC = GetAbilitySystemComponentFromActorInfo();
+		if (MyASC != nullptr)
+		{
+			MyASC->TryActivateAbility(SpecHandle);
+		}
 	}
 }
 

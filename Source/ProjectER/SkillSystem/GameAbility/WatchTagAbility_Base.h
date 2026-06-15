@@ -51,6 +51,10 @@ protected:
 	/** TargetActor의 ASC에 TriggerEffects를 적용합니다. */
 	void ApplyTriggerEffects(AActor* TargetActor, float EventMagnitude);
 
+	/** 사망 태그 변경 감지 콜백 (부활 시 패시브 재활성화를 위함) */
+	UFUNCTION()
+	void OnDeathTagChanged(const FGameplayTag Tag, int32 NewCount, FGameplayAbilitySpecHandle SpecHandle);
+
 	// --- Lifecycle Hook ---
 	virtual void OnEffectSpecCreated(FGameplayEffectSpecHandle& SpecHandle) const override;
 
