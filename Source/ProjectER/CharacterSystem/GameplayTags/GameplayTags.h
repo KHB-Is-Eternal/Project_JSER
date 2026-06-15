@@ -103,6 +103,11 @@ namespace ProjectER
 	
 	namespace Event
 	{
+		namespace Data
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage);
+		}
+
 		namespace Action
 		{
 			namespace Hit

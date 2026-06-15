@@ -13,6 +13,7 @@
 #include "GameplayCueManager.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
+#include "CharacterSystem/GAS/ProjectERASC.h"
 
 UMoveBaseGEC::UMoveBaseGEC()
 {
@@ -399,9 +400,18 @@ void UMoveBaseGEC::AddMoveCue(UAbilitySystemComponent* ASC, const FGameplayEffec
 
 void UMoveBaseGEC::RemoveMoveCue(UAbilitySystemComponent* ASC, const USkillNiagaraSpawnConfig* Vfx, const USkillSoundSpawnConfig* Sfx) const
 {
-	if (!IsValid(ASC)) return;
-
-	if (Vfx && Vfx->CueTag.IsValid()) ASC->RemoveGameplayCue(Vfx->CueTag);
-	if (Sfx && Sfx->CueTag.IsValid()) ASC->RemoveGameplayCue(Sfx->CueTag);
+	UProjectERASC* CustomASC = Cast<UProjectERASC>(ASC);
+	ensureMsgf(CustomASC != nullptr, TEXT("RemoveMoveCue: ASC is not UProjectERASC! Check Blueprint CDO."));
+	
+	if (CustomASC)
+	{
+		if (Vfx && Vfx->CueTag.IsValid()) CustomASC->RemoveGameplayCueBySource(Vfx->CueTag, Vfx);
+		if (Sfx && Sfx->CueTag.IsValid()) CustomASC->RemoveGameplayCueBySource(Sfx->CueTag, Sfx);
+	}
+	else if (IsValid(ASC))
+	{
+		if (Vfx && Vfx->CueTag.IsValid()) ASC->RemoveGameplayCue(Vfx->CueTag);
+		if (Sfx && Sfx->CueTag.IsValid()) ASC->RemoveGameplayCue(Sfx->CueTag);
+	}
 }
 
