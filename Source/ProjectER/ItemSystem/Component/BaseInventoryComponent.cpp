@@ -412,6 +412,14 @@ bool UBaseInventoryComponent::ApplyStatIncrease(UAbilitySystemComponent* ASC, UU
 	SpecHandle.Data->SetSetByCallerMagnitude(StatTag, ItemData->EffectValue);
 
 	const FActiveGameplayEffectHandle ActiveHandle = ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	
+	// Instant GE는 ActiveHandle이 생성되지 않으므로, DurationPolicy가 Instant이면 성공으로 간주합니다.
+	if (ItemEffectClass && ItemEffectClass->GetDefaultObject<UGameplayEffect>()->DurationPolicy == EGameplayEffectDurationType::Instant)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[BaseInventoryComponent] Applied Instant item GE successfully. StatTag: %s, Value: %.2f"), *StatTag.ToString(), ItemData->EffectValue);
+		return true;
+	}
+
 	if (!ActiveHandle.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyStatIncrease: Failed to apply GE"));
