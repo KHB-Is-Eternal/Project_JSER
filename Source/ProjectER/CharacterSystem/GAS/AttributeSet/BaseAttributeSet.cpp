@@ -370,7 +370,7 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 					{
 						if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(AvatarActor))
 						{
-							TargetChar->HandleLevelUp(); 
+							TargetChar->HandleLevelUp(CurrentLevel - LevelUpCount, CurrentLevel); 
 							TargetChar->OnLevelChanged();
 						}
 					}
