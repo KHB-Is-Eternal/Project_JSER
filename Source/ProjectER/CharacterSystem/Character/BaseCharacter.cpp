@@ -1755,6 +1755,7 @@ void ABaseCharacter::HandleDeath()
 		if (UBaseInventoryComponent* InvComp = FindComponentByClass<UBaseInventoryComponent>())
 		{
 			InvComp->ClearFoodHealEffects();
+			InvComp->ClearDrinkManaEffects();
 		}
 
 		if (AbilitySystemComponent.IsValid()) // 중복 사망 방지
@@ -1911,6 +1912,7 @@ void ABaseCharacter::HandleDown()
 		if (UBaseInventoryComponent* InvComp = FindComponentByClass<UBaseInventoryComponent>())
 		{
 			InvComp->ClearFoodHealEffects();
+			InvComp->ClearDrinkManaEffects();
 		}
 
 		if (AbilitySystemComponent.IsValid())
