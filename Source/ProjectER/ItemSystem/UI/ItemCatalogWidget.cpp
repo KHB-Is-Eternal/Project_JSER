@@ -3,8 +3,10 @@
 #include "ItemSystem/UI/ItemCatalogWidget.h"
 #include "ItemSystem/UI/ItemCatalogSlotWidget.h"
 #include "ItemSystem/Data/BaseItemData.h"
+#include "ItemSystem/Data/Usableitemdata.h"
 #include "Components/UniformGridPanel.h"
 #include "Components/UniformGridSlot.h"
+#include "Components/Button.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/UObjectIterator.h"
 
@@ -12,10 +14,29 @@ void UItemCatalogWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	LoadAllItems();
+	if (Btn_FilterAll)
+		Btn_FilterAll->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickFilterAll);
+	if (Btn_FilterConsumable)
+		Btn_FilterConsumable->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickFilterConsumable);
+	if (Btn_FilterRecovery)
+		Btn_FilterRecovery->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickFilterRecovery);
+	if (Btn_FilterMaterial)
+		Btn_FilterMaterial->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickFilterMaterial);
+
+	FilterItems(ECatalogFilter::All);
 }
 
-void UItemCatalogWidget::LoadAllItems()
+void UItemCatalogWidget::FilterItems(ECatalogFilter FilterType)
+{
+	LoadAllItems(FilterType);
+}
+
+void UItemCatalogWidget::OnClickFilterAll() { FilterItems(ECatalogFilter::All); }
+void UItemCatalogWidget::OnClickFilterConsumable() { FilterItems(ECatalogFilter::Consumable); }
+void UItemCatalogWidget::OnClickFilterRecovery() { FilterItems(ECatalogFilter::Recovery); }
+void UItemCatalogWidget::OnClickFilterMaterial() { FilterItems(ECatalogFilter::Material); }
+
+void UItemCatalogWidget::LoadAllItems(ECatalogFilter FilterType)
 {
 	if (!ItemGridContainer || !SlotWidgetClass)
 	{
@@ -33,6 +54,46 @@ void UItemCatalogWidget::LoadAllItems()
 
 	AssetRegistryModule.Get().GetAssets(Filter, AssetDataList);
 
+	// 카테고리 필터링 적용
+	TArray<UBaseItemData*> FilteredItems;
+	for (const FAssetData& AssetData : AssetDataList)
+	{
+		UBaseItemData* ItemData = Cast<UBaseItemData>(AssetData.GetAsset());
+		if (!ItemData) continue;
+
+		bool bPassFilter = false;
+		switch (FilterType)
+		{
+		case ECatalogFilter::All:
+			bPassFilter = true;
+			break;
+		case ECatalogFilter::Consumable:
+			if (ItemData->ItemCategory == EItemCategory::Consumable)
+				bPassFilter = true;
+			break;
+		case ECatalogFilter::Recovery:
+			// 회복 아이템은 소비 아이템 중에서도 Heal/Mana 효과가 있는 것
+			if (ItemData->ItemCategory == EItemCategory::Consumable)
+			{
+				UUsableItemData* UsableData = Cast<UUsableItemData>(ItemData);
+				if (UsableData && (UsableData->EffectType == EItemEffectType::HealOverTime || UsableData->EffectType == EItemEffectType::ManaOverTime))
+				{
+					bPassFilter = true;
+				}
+			}
+			break;
+		case ECatalogFilter::Material:
+			if (ItemData->ItemCategory == EItemCategory::Material)
+				bPassFilter = true;
+			break;
+		}
+
+		if (bPassFilter)
+		{
+			FilteredItems.Add(ItemData);
+		}
+	}
+
 	int32 ItemCount = 0;
 	const int32 MaxItemsPerPage = 24; // 4x6 = 24
 	const int32 Columns = 4;
@@ -40,9 +101,9 @@ void UItemCatalogWidget::LoadAllItems()
 	for (int32 i = 0; i < MaxItemsPerPage; ++i)
 	{
 		UBaseItemData* ItemData = nullptr;
-		if (i < AssetDataList.Num())
+		if (i < FilteredItems.Num())
 		{
-			ItemData = Cast<UBaseItemData>(AssetDataList[i].GetAsset());
+			ItemData = FilteredItems[i];
 		}
 
 		UItemCatalogSlotWidget* SlotWidget = CreateWidget<UItemCatalogSlotWidget>(this, SlotWidgetClass);
