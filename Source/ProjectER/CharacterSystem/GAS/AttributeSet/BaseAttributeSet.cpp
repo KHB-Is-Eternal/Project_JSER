@@ -12,6 +12,7 @@
 #include "GameplayEffectExtension.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
 #include "Net/UnrealNetwork.h"
+#include "ItemSystem/Component/BaseInventoryComponent.h"
 
 UBaseAttributeSet::UBaseAttributeSet()
 {
@@ -123,6 +124,7 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 				}
 			}
 		}
+		HandleItemRecoveryText(Data);
 	}
 	else if (Data.EvaluatedData.Attribute == GetStaminaAttribute())
 	{
@@ -137,6 +139,7 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 				}
 			}
 		}
+		HandleItemRecoveryText(Data);
 	}
 	
 	// 데미지(Damage : Data.Amount.Damage) 처리
@@ -466,6 +469,48 @@ void UBaseAttributeSet::DispatchHitEvent(const FGameplayEffectModCallbackData& D
 		TargetActorPayload.ContextHandle = Context;
 		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, TargetActorPayload.EventTag, TargetActorPayload);
 	}
+}
+
+void UBaseAttributeSet::HandleItemRecoveryText(const FGameplayEffectModCallbackData& Data) const
+{
+	if (Data.EvaluatedData.ModifierOp != EGameplayModOp::Additive || Data.EvaluatedData.Magnitude <= 0.0f)
+	{
+		return;
+	}
+
+	const UObject* SourceObject = Data.EffectSpec.GetEffectContext().GetSourceObject();
+	if (SourceObject == nullptr || !SourceObject->IsA(UBaseInventoryComponent::StaticClass()))
+	{
+		return;
+	}
+
+	AActor* AvatarActor = GetOwningAbilitySystemComponent()->GetAvatarActor();
+	UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent();
+	if (AvatarActor == nullptr || ASC == nullptr || !AvatarActor->HasAuthority())
+	{
+		return;
+	}
+
+	FGameplayCueParameters CueParams;
+	CueParams.Location = AvatarActor->GetActorLocation();
+	CueParams.RawMagnitude = Data.EvaluatedData.Magnitude;
+	CueParams.NormalizedMagnitude = 1.0f;
+	CueParams.EffectContext = Data.EffectSpec.GetEffectContext();
+
+	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
+	{
+		CueParams.Normal = FVector(0.0f, 1.0f, 0.0f); // Green
+	}
+	else if (Data.EvaluatedData.Attribute == GetStaminaAttribute())
+	{
+		CueParams.Normal = FVector(0.0f, 0.0f, 1.0f); // Blue / Cyan
+	}
+	else
+	{
+		return;
+	}
+
+	ASC->ExecuteGameplayCue(ProjectER::GameplayCue::Combat::RecoveryText, CueParams);
 }
 
 void UBaseAttributeSet::SetMaxXPCurve(UCurveTable* InTable, FName InRowName)

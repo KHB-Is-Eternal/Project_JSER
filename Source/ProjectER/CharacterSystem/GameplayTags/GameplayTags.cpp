@@ -280,6 +280,7 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(LevelUp, "GameplayCue.Combat.LevelUp", "Cue for Level Up");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Death, "GameplayCue.Combat.Death", "Cue for Death");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(DamageText, "GameplayCue.Combat.DamageText", "Cue for Spawn Damage Floating Text");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(RecoveryText, "GameplayCue.Combat.RecoveryText", "Cue for Spawn Recovery Floating Text");
 		}
 
 		namespace Skill

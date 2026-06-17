@@ -173,6 +173,9 @@ protected:
 	// 적중(Hit) 이벤트 판별 및 발송을 처리하는 헬퍼 함수
 	void DispatchHitEvent(const FGameplayEffectModCallbackData& Data, const float LocalDamage) const;
 
+	// 아이템 회복 이벤트 판별 및 GameplayCue 발송을 처리하는 헬퍼 함수
+	void HandleItemRecoveryText(const FGameplayEffectModCallbackData& Data) const;
+
 protected:
 	// OnRep Functions
 	UFUNCTION() 
