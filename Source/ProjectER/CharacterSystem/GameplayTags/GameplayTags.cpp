@@ -111,7 +111,10 @@ namespace ProjectER
 		{
 			namespace Hit
 			{
-				UE_DEFINE_GAMEPLAY_TAG_COMMENT(BasicAttack, "Event.Action.Hit.BasicAttack", "Event for Hit BasicAttack");
+				namespace BasicAttack
+				{
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(Critical, "Event.Action.Hit.BasicAttack.Critical", "Event for Hit BasicAttack Critical");
+				}
 				UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damaged, "Event.Action.Hit.Damaged", "Event for Hit Damaged");
 				
 				namespace Skill
@@ -276,6 +279,7 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(TryRevive, "GameplayCue.Combat.TryRevive", "Cue for Try Revive Ally");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(LevelUp, "GameplayCue.Combat.LevelUp", "Cue for Level Up");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Death, "GameplayCue.Combat.Death", "Cue for Death");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(DamageText, "GameplayCue.Combat.DamageText", "Cue for Spawn Damage Floating Text");
 		}
 
 		namespace Skill
