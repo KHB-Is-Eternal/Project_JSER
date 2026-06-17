@@ -166,9 +166,44 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 			{
 				if (AvatarActor->HasAuthority())
 				{
+					// 1. 캐릭터 UI 갱신 (캐스팅 최소화)
 					if (ABaseCharacter* HitChar = Cast<ABaseCharacter>(AvatarActor))
 					{
 						HitChar->OnHealthChanged();
+					}
+
+					// 2. 체력 비례 크기(Size) 계산
+					const float MaxHealthVal = GetMaxHealth();
+					const float DamagePercent = (LocalDamage / FMath::Max(1.f, MaxHealthVal)) * 100.f;
+					const float TextSize = FMath::GetMappedRangeValueClamped(FVector2D(1.f, 33.f), FVector2D(1.f, 2.f), DamagePercent);
+
+					// 3. 데미지 종류 및 색상 판정
+					FGameplayTagContainer CombinedTags = Data.EffectSpec.CapturedSourceTags.GetSpecTags();
+					CombinedTags.AppendTags(Data.EffectSpec.DynamicGrantedTags);
+
+					const bool bIsCritical = CombinedTags.HasTagExact(ProjectER::Event::Action::Hit::BasicAttack::Critical);
+					const bool bIsBasicAttack = CombinedTags.HasTag(FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit.BasicAttack"))) || 
+												CombinedTags.HasTag(ProjectER::Ability::Action::AutoAttack);
+
+					FLinearColor TextColor = FLinearColor(0.f, 1.f, 1.f, 1.f); // 스킬 데미지 (청록색, 빨간색의 보색)
+					if (bIsBasicAttack)
+					{
+						TextColor = bIsCritical ? FLinearColor::Red : FLinearColor::Yellow;
+					}
+
+					// 4. GameplayCue를 통한 데미지 텍스트 요청
+					UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent();
+					if (ASC)
+					{
+						FGameplayCueParameters CueParams;
+						CueParams.Location = AvatarActor->GetActorLocation();
+						CueParams.RawMagnitude = LocalDamage;
+						CueParams.NormalizedMagnitude = TextSize;
+						// 색상 값을 FVector(X, Y, Z)에 각각 R, G, B로 매핑하여 인코딩 전송
+						CueParams.Normal = FVector(TextColor.R, TextColor.G, TextColor.B);
+						CueParams.EffectContext = Data.EffectSpec.GetEffectContext();
+
+						ASC->ExecuteGameplayCue(ProjectER::GameplayCue::Combat::DamageText, CueParams);
 					}
 				}
 			}
