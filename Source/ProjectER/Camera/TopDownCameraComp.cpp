@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "TopDownCameraComp.h"
 
@@ -243,14 +243,23 @@ void UTopDownCameraComp::InitializeCompRequirements()
 
 void UTopDownCameraComp::DrawUpdates(float DeltaSecond)// delta second not sued for now, but just in case
 {
-	if (MainVisionRTManager)//draw vision
-	{
-		MainVisionRTManager->UpdateCameraLOS();
-	}
+	TimeSinceLastVisionUpdate += DeltaSecond;
 
-	if (OcclusionPainter)// draw occlusion
+	// Limit rendering to 30 FPS to save GPU
+	if (TimeSinceLastVisionUpdate >= VisionUpdateInterval)
 	{
-		OcclusionPainter->UpdateOcclusionRT();
+		if (MainVisionRTManager)//draw vision
+		{
+			MainVisionRTManager->UpdateCameraLOS();
+		}
+
+		if (OcclusionPainter)// draw occlusion
+		{
+			OcclusionPainter->UpdateOcclusionRT();
+		}
+
+		// Subtract the interval rather than reset to 0 to prevent drift
+		TimeSinceLastVisionUpdate -= VisionUpdateInterval;
 	}
 }
 

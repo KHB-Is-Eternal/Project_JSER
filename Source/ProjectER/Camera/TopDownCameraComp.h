@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -164,4 +164,8 @@ private:
 	FVector2D PendingKeyInput = FVector2D::ZeroVector;
 	FVector FreeCamPivotLocation = FVector::ZeroVector;
 	FVector SmoothedFollowLocation = FVector::ZeroVector;
+
+	// For limiting Vision updates to 30 FPS
+	float TimeSinceLastVisionUpdate = 0.f;
+	const float VisionUpdateInterval = 1.0f / 30.0f; // 30 FPS Limit
 };

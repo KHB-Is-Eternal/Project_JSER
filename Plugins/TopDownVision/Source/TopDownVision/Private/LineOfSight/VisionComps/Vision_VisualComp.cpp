@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "TopDownVision/Public/LineOfSight/VisionComps/Vision_VisualComp.h"
 
@@ -26,6 +26,8 @@ UVision_VisualComp::UVision_VisualComp()
     StampDrawer    = CreateDefaultSubobject<ULOSStampDrawerComp>(TEXT("StampDrawer"));
     VisibilityMesh = CreateDefaultSubobject<UVisibilityMeshComp>(TEXT("VisibilityMesh"));
     ShapeComp      = CreateDefaultSubobject<UTopDown2DShapeComp>(TEXT("2DShapeComp"));
+
+    bIsVisionProvider = true;
 }
 
 void UVision_VisualComp::BeginPlay()
@@ -84,7 +86,19 @@ void UVision_VisualComp::Initialize()
         MaxVisionRange = IndicatorRange;
     }
 
-    if (bUseResourcePool)
+    if (!bIsVisionProvider)
+    {
+        // If not a vision provider, skip allocating rendering resources (Obstacle / Stamp)
+        // and only initialize visibility fading mesh.
+        if (VisibilityMesh)
+        {
+            VisibilityMesh->Initialize();
+        }
+
+        UE_LOG(LOSVision, Log,
+            TEXT("[%s] Initialize >> Lightweight mode (Not a Vision Provider)"), *GetOwner()->GetName());
+    }
+    else if (bUseResourcePool)
     {
         // ObstacleRT + StampMID deferred to OnPoolSlotAcquired
         if (ObstacleDrawer)
@@ -186,6 +200,7 @@ void UVision_VisualComp::OnPoolSlotReleased()
 void UVision_VisualComp::UpdateVision()
 {
     if (!ShouldRunClientLogic()) return;
+    if (!bIsVisionProvider) return; // Skip updating obstacle/stamp rendering if not a vision provider
     if (bUseResourcePool && !bHasActivePoolSlot) return;
 
     if (ObstacleDrawer)
@@ -212,6 +227,7 @@ void UVision_VisualComp::ToggleLOSStampUpdate(bool bIsOn)
 
 bool UVision_VisualComp::IsUpdating() const
 {
+    if (!bIsVisionProvider) return false;
     return StampDrawer ? StampDrawer->IsUpdating() : false;
 }
 

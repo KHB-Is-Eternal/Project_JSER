@@ -1,4 +1,4 @@
-﻿#include "LineOfSight/MainVisionRTManager.h"
+#include "LineOfSight/MainVisionRTManager.h"
 
 #include "RenderGraphUtils.h"
 #include "Engine/World.h"
@@ -89,6 +89,8 @@ void UMainVisionRTManager::InitializeMainVisionRTComp()
         if (FeatherMID)
         {
             FeatherMID->SetTextureParameterValue(TEXT("InputTexture"), CameraLocalRT);
+            FeatherMID->SetScalarParameterValue(TEXT("BlurRadiusPercent"), BlurRadiusPercent);
+            FeatherMID->SetScalarParameterValue(TEXT("BlurNumSamples"), BlurNumSamples);
         }
         else
         {

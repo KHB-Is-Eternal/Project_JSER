@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -165,6 +165,9 @@ private:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Pool", meta=(AllowPrivateAccess="true"))
     bool bUseResourcePool = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision", meta=(AllowPrivateAccess="true"))
+    bool bIsVisionProvider = true;
 
     bool bHasActivePoolSlot = false;
 
