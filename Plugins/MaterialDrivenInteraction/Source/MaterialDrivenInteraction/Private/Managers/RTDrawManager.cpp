@@ -60,12 +60,21 @@ void URTDrawManager::Update(float DeltaTime)
 {
     if (!PoolManager || !GetWorld()) { return; }
 
-    const TArray<TTuple<UFoliageRTInvokerComponent*, int32>> AssignedInvokers =
-        PoolManager->EvaluateAndAssignSlots();
+    TimeSinceLastUpdate += DeltaTime;
 
-    ProcessPendingClears();
-    DrawAllInvokers(AssignedInvokers);
-    PoolManager->ReclaimExpiredSlots();
+    // Limit rendering to 30 FPS to save GPU
+    if (TimeSinceLastUpdate >= UpdateInterval)
+    {
+        const TArray<TTuple<UFoliageRTInvokerComponent*, int32>> AssignedInvokers =
+            PoolManager->EvaluateAndAssignSlots();
+
+        ProcessPendingClears();
+        DrawAllInvokers(AssignedInvokers);
+        PoolManager->ReclaimExpiredSlots();
+
+        // Subtract the interval rather than reset to 0 to prevent drift
+        TimeSinceLastUpdate -= UpdateInterval;
+    }
 }
 
 void URTDrawManager::DrawAllInvokers(
