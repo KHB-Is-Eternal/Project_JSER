@@ -246,7 +246,7 @@ void UTopDownCameraComp::DrawUpdates(float DeltaSecond)// delta second not sued 
 	TimeSinceLastVisionUpdate += DeltaSecond;
 
 	// Limit rendering to 30 FPS to save GPU
-	if (TimeSinceLastVisionUpdate >= VisionUpdateInterval)
+	if (VisionUpdateInterval <= 0.0f || TimeSinceLastVisionUpdate >= VisionUpdateInterval)
 	{
 		if (MainVisionRTManager)//draw vision
 		{
@@ -259,7 +259,14 @@ void UTopDownCameraComp::DrawUpdates(float DeltaSecond)// delta second not sued 
 		}
 
 		// Subtract the interval rather than reset to 0 to prevent drift
-		TimeSinceLastVisionUpdate -= VisionUpdateInterval;
+		if (VisionUpdateInterval > 0.0f)
+		{
+			TimeSinceLastVisionUpdate -= VisionUpdateInterval;
+		}
+		else
+		{
+			TimeSinceLastVisionUpdate = 0.0f;
+		}
 	}
 }
 

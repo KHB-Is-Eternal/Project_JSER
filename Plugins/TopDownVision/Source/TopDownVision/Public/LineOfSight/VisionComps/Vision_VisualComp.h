@@ -95,21 +95,7 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category="Vision")
     EVisionChannel GetLocalPlayerVisionChannel() const;
 
-    // ── Pool ─────────────────────────────────────────────────────────
 
-    UFUNCTION(BlueprintCallable, Category="Vision|Pool")
-    void OnRevealed_EnterPool();
-
-    UFUNCTION(BlueprintCallable, Category="Vision|Pool")
-    void OnHidden_ExitPool();
-
-    void OnPoolSlotAcquired(const FLOSStampPoolSlot& Slot);
-    void OnPoolSlotReleased();
-
-    bool UsesResourcePool() const { return bUseResourcePool; }
-    bool HasPoolSlot()      const { return bHasActivePoolSlot; }
-
-public:
 
     UPROPERTY(BlueprintAssignable, Category="Occlusion Tracer")
     FOcclusionTracerEvent OnTargetRevealed;
@@ -165,13 +151,8 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision", meta=(AllowPrivateAccess="true"))
     float IndicatorRange = 0.f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Pool", meta=(AllowPrivateAccess="true"))
-    bool bUseResourcePool = true;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision", meta=(AllowPrivateAccess="true"))
     bool bIsVisionProvider = true;
-
-    bool bHasActivePoolSlot = false;
 
 private:
     UPROPERTY(Transient)
@@ -182,5 +163,4 @@ private:
 private:
     bool ShouldRunClientLogic() const;
     void UpdateVisibilityFade(float DeltaTime);
-    bool IsGridVisionEnabled() const;
 };

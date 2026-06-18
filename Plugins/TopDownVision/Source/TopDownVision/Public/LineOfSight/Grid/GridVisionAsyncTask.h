@@ -39,8 +39,10 @@ public:
 		RETURN_QUICK_DECLARE_CYCLE_STAT(FGridVisionAsyncTask, STATGROUP_ThreadPoolAsyncTasks);
 	}
 
+	const FVector2D& GetWorldCenter() const { return WorldCenter; }
+
 private:
-	UGridVisionMap* GridMap;
+	UGridVisionMap* GridMap = nullptr;
 	FVector2D WorldCenter;
 	TArray<FGridVisionProvider> Providers;
 };

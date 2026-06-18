@@ -30,6 +30,8 @@ class TOPDOWNVISION_API UMainVisionRTManager : public UActorComponent
 public:
 	UMainVisionRTManager();
 
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -56,36 +58,9 @@ public:
 
 private:
 
-	UFUNCTION()
-	void DrawLOS_CPU(UCanvas* Canvas, int32 Width, int32 Height);
-
-
-	//New method
-	void DrawLOSStampsBatched(
-		UTextureRenderTarget2D* TargetRT,
-		const TArray<UVision_VisualComp*>& Providers,
-		const FLinearColor& Color);
-
-	void DrawLOSStamp(
-		UCanvas* Canvas,
-		const TArray<UVision_VisualComp*>& Providers,
-		const FLinearColor& Color);
-
-	void RenderLOS_GPU(
-		FRDGBuilder& GraphBuilder,
-		FRDGTextureRef LOSTexture);
-
-	bool ConvertWorldToRT(
-		const FVector& ProviderWorldLocation,
-		const float& ProviderVisionRange,
-		FVector2D& OutPixelPosition,
-		float& OutTileSize) const;
-
 	bool GetVisibleProviders(TArray<UVision_VisualComp*>& OutProviders) const;
 
 	bool ShouldRunClientLogic() const;
-
-	void ApplyFeatheredBlurToRT();
 
 	/** Lazy-cached pool subsystem — resolved once on first UpdateCameraLOS call. */
 	ULOSRequirementPoolSubsystem* GetPoolSubsystem() const;
@@ -105,7 +80,7 @@ protected:
 	bool bDrawTextureRange = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	float CameraVisionRange;
+	float CameraVisionRange = 2000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	UCanvasRenderTarget2D* CameraLocalRT = nullptr;
@@ -157,6 +132,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Vision")
 	UMaterialInstanceDynamic* LayeredLOSInterfaceMID = nullptr;
+
+	FVector ReadyCameraCenter = FVector::ZeroVector;
+	int32 FramesUntilMPCUpdate = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	FName LayeredLOSTextureParam = TEXT("RenderTarget");

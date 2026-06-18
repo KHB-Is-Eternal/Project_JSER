@@ -160,6 +160,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Camera|State")
 	bool bIsCameraLocked = true;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Camera|Settings", meta=(ToolTip="Interval in seconds for Vision updates (e.g. 0.0333 for 30 FPS). 0.0 means uncapped.", AllowPrivateAccess = "true"))
+	float VisionUpdateInterval = 0.033333f;
+
 private:
 	FVector2D PendingKeyInput = FVector2D::ZeroVector;
 	FVector FreeCamPivotLocation = FVector::ZeroVector;
@@ -167,5 +170,4 @@ private:
 
 	// For limiting Vision updates to 30 FPS
 	float TimeSinceLastVisionUpdate = 0.f;
-	const float VisionUpdateInterval = 1.0f / 30.0f; // 30 FPS Limit
 };

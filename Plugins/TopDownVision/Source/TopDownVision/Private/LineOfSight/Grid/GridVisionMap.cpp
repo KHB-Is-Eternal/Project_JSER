@@ -3,6 +3,8 @@
 #include "Engine/Texture2D.h"
 #include "LineOfSight/WorldObstacle/ObstacleData.h"
 #include "TopDownVisionDebug.h"
+#include "RenderingThread.h"
+#include "RHICommandList.h"
 
 
 // -------------------------------------------------------------------------- //
@@ -11,8 +13,8 @@
 
 void UGridVisionMap::Initialize(int32 InResolution, float InWorldExtent)
 {
-	GridResolution = InResolution;
-	WorldExtent = InWorldExtent;
+	GridResolution = FMath::Max(8, InResolution);
+	WorldExtent = FMath::Max(1.0f, InWorldExtent);
 
 	const int32 TotalCells = GridResolution * GridResolution;
 	VisibilityGrid.SetNumZeroed(TotalCells);
@@ -160,7 +162,7 @@ void UGridVisionMap::ComputeProviderVisibility(const FGridVisionProvider& Provid
 {
 	const FIntPoint CenterGrid = WorldToGrid(Provider.WorldPosition);
 	const float CellSize = (WorldExtent * 2.f) / GridResolution;
-	const float GridRadius = Provider.VisionRadius / CellSize;
+	const float GridRadius = FMath::Min(Provider.VisionRadius / CellSize, static_cast<float>(GridResolution * 2));
 	const float RadiusSq = GridRadius * GridRadius;
 
 	// Scale ray count with radius to guarantee dense coverage at the outer edge (Circumference = 2 * PI * R)
@@ -258,18 +260,18 @@ void UGridVisionMap::UploadToGPU()
 		ColorGrid[i] = FColor(Val, Val, Val, Val);
 	}
 
-	FTexturePlatformData* PlatformData = OutputTexture->GetPlatformData();
-	if (!PlatformData || PlatformData->Mips.IsEmpty())
-		return;
+	// Safely queue a texture region update without recreating the RHI resource
+	FUpdateTextureRegion2D* Region = new FUpdateTextureRegion2D(0, 0, 0, 0, GridResolution, GridResolution);
+	
+	// Allocate a temporary buffer that will be freed by the render thread after upload
+	uint8* TextureData = (uint8*)FMemory::Malloc(ColorGrid.Num() * sizeof(FColor));
+	FMemory::Memcpy(TextureData, ColorGrid.GetData(), ColorGrid.Num() * sizeof(FColor));
 
-	FTexture2DMipMap& Mip = PlatformData->Mips[0];
-	void* TextureData = Mip.BulkData.Lock(LOCK_READ_WRITE);
-	if (TextureData)
+	OutputTexture->UpdateTextureRegions(0, 1, Region, GridResolution * 4, 4, TextureData, [](uint8* SrcData, const FUpdateTextureRegion2D* Regions)
 	{
-		FMemory::Memcpy(TextureData, ColorGrid.GetData(), ColorGrid.Num() * sizeof(FColor));
-	}
-	Mip.BulkData.Unlock();
-	OutputTexture->UpdateResource();
+		FMemory::Free(SrcData);
+		delete Regions;
+	});
 }
 
 // -------------------------------------------------------------------------- //
