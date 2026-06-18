@@ -27,7 +27,7 @@ void UUI_ScoreboardPlayerRow::Init(AER_PlayerState* PlayerState)
 	if (OwningPawn)
 	{
 		ABaseCharacter* MyChar = Cast<ABaseCharacter>(OwningPawn);
-		UpdatePlayerIcon(MyChar->HeroData->CharacterIcon);
+		if(IsValid(MyChar)) UpdatePlayerIcon(MyChar->HeroData->CharacterIcon);
 	}
 
 	if (UAbilitySystemComponent* ASC = PlayerState->GetAbilitySystemComponent())

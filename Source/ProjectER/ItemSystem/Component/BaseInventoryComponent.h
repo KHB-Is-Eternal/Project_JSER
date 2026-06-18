@@ -1,4 +1,4 @@
-﻿// File: 5th_6th-Team6-CH6-Project/Source/ProjectER/ItemSystem/Component/BaseInventoryComponent.h
+// File: 5th_6th-Team6-CH6-Project/Source/ProjectER/ItemSystem/Component/BaseInventoryComponent.h
 
 #pragma once
 
@@ -6,6 +6,8 @@
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "ItemSystem/Data/UsableItemData.h"
+#include "ActiveGameplayEffectHandle.h"
+#include "GameplayEffectTypes.h"
 #include "BaseInventoryComponent.generated.h"
 
 class UAbilitySystemComponent;
@@ -68,10 +70,7 @@ private:
 	{
 		FString ItemName;
 		float TotalHealAmount = 0.0f;
-		float TotalDurationSeconds = 0.0f;
-		float RemainingHealAmount = 0.0f;
-		float HealPerTick = 0.0f;
-		int32 RemainingTicks = 0;
+		float DurationSeconds = 0.0f;
 		float TickInterval = 1.0f;
 	};
 
@@ -81,38 +80,29 @@ private:
 	bool ApplyItemEffect(UUsableItemData* ItemData);
 	bool ApplyStatIncrease(UAbilitySystemComponent* ASC, UUsableItemData* ItemData);
 	bool EnqueueFoodHeal(UUsableItemData* ItemData);
-	bool ApplyHealAmount(float HealAmount);
 	void StartNextFoodHealEffect();
-	void StopFoodHealTimer();
-	void HandleFoodHealTick();
 	void EnsureInventoryArraysValid();
 
-	FTimerHandle FoodHealTickTimerHandle;
+	FActiveGameplayEffectHandle ActiveFoodGEHandle;
 	TArray<FPendingFoodHealEffect> PendingFoodHealQueue;
-	FPendingFoodHealEffect CurrentFoodHealEffect;
-	bool bIsFoodHealEffectActive = false;
+
+	void OnFoodGERemoved(const FGameplayEffectRemovalInfo& RemovalInfo);
 
 	struct FPendingDrinkManaEffect
 	{
 		FString ItemName;
 		float TotalManaAmount = 0.0f;
-		float TotalDurationSeconds = 0.0f;
-		float RemainingManaAmount = 0.0f;
-		float ManaPerTick = 0.0f;
-		int32 RemainingTicks = 0;
+		float DurationSeconds = 0.0f;
 		float TickInterval = 1.0f;
 	};
 
-	FTimerHandle DrinkManaTickTimerHandle;
+	FActiveGameplayEffectHandle ActiveDrinkManaGEHandle;
 	TArray<FPendingDrinkManaEffect> PendingDrinkManaQueue;
-	FPendingDrinkManaEffect CurrentDrinkManaEffect;
-	bool bIsDrinkManaEffectActive = false;
 
 	bool EnqueueDrinkMana(UUsableItemData* ItemData);
-	bool ApplyDrinkManaAmount(const float ManaAmount);
 	void StartNextDrinkManaEffect();
-	void StopDrinkManaTimer();
-	void HandleDrinkManaTick();
+	
+	void OnManaGERemoved(const FGameplayEffectRemovalInfo& RemovalInfo);
 	void ShowRecoveryFloatingText(float Amount, bool bIsMana);
 
 public:
@@ -145,4 +135,9 @@ public:
 	// 아이템 조합용: 특정 슬롯에 아이템 추가
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Crafting")
 	bool AddItemToSlot(int32 SlotIndex, UBaseItemData* Item);
+
+private:
+	// 각 아이템별 마지막 사용 시간을 저장하는 맵 (쿨타임 관리용)
+	UPROPERTY()
+	TMap<UUsableItemData*, float> LastItemUseTimes;
 };

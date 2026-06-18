@@ -9,6 +9,9 @@ class UAudioComponent;
 class UProjectileMovementComponent;
 class USkillNiagaraSpawnConfig;
 class USkillSoundSpawnConfig;
+class UShapeComponent;
+class UDecalComponent;
+class UTexture2D;
 
 /**
  * 소환물 비주얼을 담당하며 예측 키를 통해 판정 액터와 동기화되는 GCN 액터
@@ -53,21 +56,37 @@ public:
 	TObjectPtr<UAudioComponent> SfxComponent;
 
 	/** 예측 이동을 담당하는 컴포넌트 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Movement")
-	TObjectPtr<UProjectileMovementComponent> MovementComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER|GameplayCue|Component")
+	TObjectPtr<class UProjectileMovementComponent> MovementComponent;
+
+	/** 데칼 메쉬 컴포넌트: 범위나 경로를 지면에 그려주는 역할 (스스로 지면을 찾아갑니다) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER|GameplayCue|Component")
+	TObjectPtr<class UGroundIndicatorComponent> CollisionIndicatorComp;
+
+
+
+
 
 public:
 	/** 캐싱된 GEC 데이터를 반환합니다. */
 	const UObject* GetSourceObject() const { return CachedSourceObject.Get(); }
 
+	/** 콜리전 메쉬의 아웃라인을 아군/적군 여부에 따라 설정합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	void SetupCollisionOutline(UShapeComponent* InCollisionComponent, AActor* InInstigatorActor);
+
 private:
 	/** 비주얼/물리 설정값이 담긴 GEC 객체 */
-	TWeakObjectPtr<UObject> CachedSourceObject;
+	TWeakObjectPtr<const UObject> CachedSourceObject;
 
 	/** 같은 인스턴스에서 HandleSummonedVfx의 중복 호출(OnExecute + WhileActive)을 방지합니다. */
 	bool bIsAlreadyInitialized = false;
 
 public:
+	/** 대상 판정 액터(장판 등)에 자신을 부착하고 비주얼/사운드 설정 및 생명주기를 연동합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	void AttachToTargetActor(AActor* InTargetActor);
+
 	/** 타겟 액터가 파괴될 때 호출되어 자신도 파괴합니다. */
 	UFUNCTION()
 	void OnTargetActorDestroyed(AActor* DestroyedActor);

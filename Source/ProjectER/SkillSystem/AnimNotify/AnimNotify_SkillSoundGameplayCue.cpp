@@ -4,6 +4,9 @@
 #include "SkillSystem/AnimNotify/AnimNotify_SkillSoundGameplayCue.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnHelper.h"
+#if WITH_EDITOR
+#include "SkillSystem/AnimNotify/AnimNotifyCueTrackerComponent.h"
+#endif
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "GameplayCueManager.h"
@@ -67,6 +70,13 @@ void UAnimNotify_SkillSoundGameplayCue::Notify(USkeletalMeshComponent* MeshComp,
 			GCM->ExecuteGameplayCue_NonReplicated(OwnerActor, GameplayCueTag, Parameters);
 		}
 	}
+
+#if WITH_EDITOR
+	if (UAnimNotifyCueTrackerComponent* Tracker = UAnimNotifyCueTrackerComponent::GetOrCreateTracker(OwnerActor))
+	{
+		Tracker->RegisterSoundCue(MeshComp, Cast<UAnimMontage>(Animation), SpawnConfig);
+	}
+#endif
 }
 
 FString UAnimNotify_SkillSoundGameplayCue::GetNotifyName_Implementation() const

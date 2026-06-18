@@ -103,11 +103,17 @@ namespace ProjectER
 	
 	namespace Event
 	{
+		namespace Data
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage);
+		}
+
 		namespace Action
 		{
 			namespace Hit
 			{
 				UE_DECLARE_GAMEPLAY_TAG_EXTERN(BasicAttack);
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damaged);
 				
 				namespace Skill
 				{
@@ -434,6 +440,20 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Revive);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stun);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Airborne);
+		}
+	}
+
+	namespace Skill
+	{
+		namespace Animation
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Casting);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Active);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Backswing);
+		}
+		namespace Data
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(CoolTime);
 		}
 	}
 }

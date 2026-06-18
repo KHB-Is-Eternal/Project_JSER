@@ -370,7 +370,7 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 					{
 						if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(AvatarActor))
 						{
-							TargetChar->HandleLevelUp(); 
+							TargetChar->HandleLevelUp(CurrentLevel - LevelUpCount, CurrentLevel); 
 							TargetChar->OnLevelChanged();
 						}
 					}
@@ -396,7 +396,7 @@ void UBaseAttributeSet::DispatchHitEvent(const FGameplayEffectModCallbackData& D
 	FGameplayTagContainer CombinedTags = Data.EffectSpec.CapturedSourceTags.GetSpecTags();
 	CombinedTags.AppendTags(Data.EffectSpec.DynamicGrantedTags);
 
-	static const FGameplayTag HitBaseTag = FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit"));
+	static FGameplayTag HitBaseTag = FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit"));
 	for (const FGameplayTag& Tag : CombinedTags)
 	{
 		if (Tag.MatchesTag(HitBaseTag))
@@ -411,20 +411,25 @@ void UBaseAttributeSet::DispatchHitEvent(const FGameplayEffectModCallbackData& D
 		return;
 	}
 
-	FGameplayEventData Payload;
-	Payload.EventTag = HitEventTag;
-	Payload.Instigator = AttackerActor;
-	Payload.Target = TargetActor;
-	Payload.EventMagnitude = LocalDamage;
-	Payload.ContextHandle = Context;
-
 	if (IsValid(AttackerActor))
 	{
-		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(AttackerActor, HitEventTag, Payload);
+		FGameplayEventData AttackerActorPayload;
+		AttackerActorPayload.EventTag = HitEventTag;
+		AttackerActorPayload.Instigator = AttackerActor;
+		AttackerActorPayload.Target = TargetActor;
+		AttackerActorPayload.EventMagnitude = LocalDamage;
+		AttackerActorPayload.ContextHandle = Context;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(AttackerActor, HitEventTag, AttackerActorPayload);
 	}
 	if (IsValid(TargetActor))
 	{
-		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, HitEventTag, Payload);
+		FGameplayEventData TargetActorPayload;
+		TargetActorPayload.EventTag = FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit.Damaged"));
+		TargetActorPayload.Instigator = AttackerActor;
+		TargetActorPayload.Target = TargetActor;
+		TargetActorPayload.EventMagnitude = LocalDamage;
+		TargetActorPayload.ContextHandle = Context;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, TargetActorPayload.EventTag, TargetActorPayload);
 	}
 }
 

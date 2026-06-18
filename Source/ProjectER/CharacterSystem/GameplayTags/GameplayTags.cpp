@@ -102,11 +102,17 @@ namespace ProjectER
 	
 	namespace Event
 	{
+		namespace Data
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damage, "Event.Data.Damage", "Event data for local damage amount");
+		}
+
 		namespace Action
 		{
 			namespace Hit
 			{
 				UE_DEFINE_GAMEPLAY_TAG_COMMENT(BasicAttack, "Event.Action.Hit.BasicAttack", "Event for Hit BasicAttack");
+				UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damaged, "Event.Action.Hit.Damaged", "Event for Hit Damaged");
 				
 				namespace Skill
 				{
@@ -428,6 +434,20 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Revive, "Montage.Common.Revive", "Revive Action Montage");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Stun, "Montage.Common.Stun", "Stun Reaction Montage");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Airborne, "Montage.Common.Airborne", "Airborne Reaction Montage");
+		}
+	}
+
+	namespace Skill
+	{
+		namespace Animation
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Casting, "Skill.Animation.Casting", "Skill Casting State Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Active, "Skill.Animation.Active", "Skill Active (Hit) State Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Backswing, "Skill.Animation.Backswing", "Skill Backswing State Tag");
+		}
+		namespace Data
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(CoolTime, "Skill.Data.CoolTime", "Cooldown Tag for SetByCaller");
 		}
 	}
 }

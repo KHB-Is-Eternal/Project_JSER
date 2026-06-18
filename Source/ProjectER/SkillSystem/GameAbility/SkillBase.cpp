@@ -14,6 +14,7 @@
 #include "SkillSystem/AbilityTask/AbilityTask_WaitGameplayEventSyn.h"
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
 #include "SkillSystem/SkillDataAsset.h"
+#include "SkillSystem/Calculator/SkillMagnitudeCalculator.h"
 #include "SkillSystem/SkillData.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "SkillSystem/GameplayEffect/GE_SharedCooldown.h"
@@ -38,19 +39,19 @@ USkillBase::USkillBase()
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateYes;
-	CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
-	ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
-	BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+	CastingTag = ProjectER::Skill::Animation::Casting;
+	ActiveTag = ProjectER::Skill::Animation::Active;
+	BackswingTag = ProjectER::Skill::Animation::Backswing;
 	//FailedOutOfRangeTag = FGameplayTag::RequestGameplayTag(FName("State.Failed.OutOfRange"));
 	ActivationBlockedTags.AddTag(CastingTag);
 	ActivationBlockedTags.AddTag(ActiveTag);
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+	ActivationBlockedTags.AddTag(ProjectER::State::Life::Death);
+	ActivationBlockedTags.AddTag(ProjectER::State::Life::Down);
 	// Hard CC: 모든 스킬 차단
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Hard.Stun")));
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Hard.Airborne")));
+	ActivationBlockedTags.AddTag(ProjectER::State::Debuff::Hard::Stun);
+	ActivationBlockedTags.AddTag(ProjectER::State::Debuff::Hard::Airborne);
 	// Soft CC: 침묵은 스킬 사용 차단 (이동은 가능)
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Soft.Silence")));
+	ActivationBlockedTags.AddTag(ProjectER::State::Debuff::Soft::Silence);
 	
 	CooldownGameplayEffectClass = UGE_SharedCooldown::StaticClass();
 }
@@ -96,13 +97,13 @@ void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGame
 		{
 			// 몬스터의 StateTree에도 스킬 입력에 매핑되는 세부 종료 태그를 전송합니다.
 			const FGameplayTag InputTag = GetInputTag();
-			FGameplayTag EndEventTag;
-
-			if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q)) EndEventTag = ProjectER::Event::Action::Skill::End::Q;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W)) EndEventTag = ProjectER::Event::Action::Skill::End::W;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E)) EndEventTag = ProjectER::Event::Action::Skill::End::E;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R)) EndEventTag = ProjectER::Event::Action::Skill::End::R;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive)) EndEventTag = ProjectER::Event::Action::Skill::End::Passive;
+			const FGameplayTag EndEventTag = ResolveSkillEventTag(
+				InputTag,
+				ProjectER::Event::Action::Skill::End::Q,
+				ProjectER::Event::Action::Skill::End::W,
+				ProjectER::Event::Action::Skill::End::E,
+				ProjectER::Event::Action::Skill::End::R,
+				ProjectER::Event::Action::Skill::End::Passive);
 
 			if (EndEventTag.IsValid())
 			{
@@ -161,7 +162,7 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 			Duration /= (1.0f + (FMath::Max(Haste, 0.0f) / 100.0f));
 			Duration = FMath::Max(Duration, 0.1f); // 최소 쿨타임 보장
 
-			SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Skill.Data.CoolTime")), Duration);
+			SpecHandle.Data.Get()->SetSetByCallerMagnitude(ProjectER::Skill::Data::CoolTime, Duration);
 			if (const FGameplayTagContainer* CooldownTags = CachedConfig->GetCooldownTags())
 			{
 				SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(*CooldownTags);
@@ -273,7 +274,7 @@ void USkillBase::ApplyExecutionEffects()
 	{
 		UAbilitySystemComponent* const ASC = GetASC();
 		//FGameplayEffectContextHandle ContextHandle = IsValid(ASC) ? ASC->MakeEffectContext() : FGameplayEffectContextHandle();
-		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects);
+		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects, Phases[CurrentPhaseIndex].MagnitudeCalculators);
 	}
 }
 
@@ -365,7 +366,8 @@ void USkillBase::PlayAnimMontage()
 {
 	UAnimMontage* SkillMontage = CachedConfig->GetAnimMontage();
 	if (!IsValid(CachedConfig) || !IsValid(SkillMontage)) return;
-	UAbilityTask_PlayMontageAndWait* PlayTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(this, TEXT("SkillAnimation"), SkillMontage);
+	FName TaskName = FName(*SkillMontage->GetName());
+    UAbilityTask_PlayMontageAndWait* PlayTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(this, TaskName, SkillMontage, 1.f, NAME_None, true, 1.f, 0.f, true);
 	if (!IsValid(PlayTask)) return;
 
 	PlayTask->OnInterrupted.AddDynamic(this, &USkillBase::OnMontageInterrupted);
@@ -416,10 +418,20 @@ void USkillBase::PrepareToActiveSkill()
 
 void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle)
 {
-	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, ContextHandle);
+	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, TArray<FSkillMagnitudeCalculation>(), ContextHandle);
+}
+
+void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle)
+{
+	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, Calculators, ContextHandle);
 }
 
 void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle)
+{
+	ApplyEffectToTargetInternal(TargetASC, Effects, TArray<FSkillMagnitudeCalculation>(), ContextHandle);
+}
+
+void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle)
 {
 	UAbilitySystemComponent* const SourceASC = GetASC();
 	AActor* const Avatar = GetAvatar();
@@ -436,7 +448,7 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		ContextHandle.AddInstigator(Avatar, Avatar);
 	}
 
-	if (ContextHandle.GetInstigator() == nullptr)
+	if (ContextHandle.GetInstigator() == nullptr || ContextHandle.GetInstigator()->IsA<AER_PlayerState>())
 	{
 		ContextHandle.AddInstigator(Avatar, Avatar);
 	}
@@ -465,6 +477,9 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		}
 	}
 
+	// [Hook 1] 컨텍스트가 막 생성되고 Instigator 및 동기화 설정이 끝난 직후 호출
+	OnEffectContextCreated(ContextHandle);
+
 	// 2. 각 이팩트 순회하며 적용
 	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Effects)
 	{
@@ -476,14 +491,27 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		
 		if (SpecHandle.IsValid())
 		{
+			// [Hook 2] 개별 이펙트의 Spec이 MakeOutgoingSpec으로 막 생성된 직후 호출
+			OnEffectSpecCreated(SpecHandle);
+
+			// 페이즈의 계산기들 중 현재 이펙트와 매칭되는 대상이 있으면 SetByCaller 주입
+			for (const FSkillMagnitudeCalculation& CalcInfo : Calculators)
+			{
+				if (CalcInfo.TargetGameplayEffect == EffectClass && CalcInfo.Calculator && CalcInfo.SetByCallerTag.IsValid())
+				{
+					float CalcValue = CalcInfo.Calculator->CalculateValue(SourceASC, TargetASC, SpecHandle.Data.Get());
+					SpecHandle.Data.Get()->SetSetByCallerMagnitude(CalcInfo.SetByCallerTag, CalcValue);
+				}
+			}
+
 			// 스킬 입력키에 맞는 피격 태그 추가
-			FGameplayTag SkillHitTag;
-			const FGameplayTag InputTag = GetInputTag();
-			if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::Q;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::W;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::E;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::R;
-			else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive)) SkillHitTag = ProjectER::Event::Action::Hit::Skill::Passive;
+			const FGameplayTag SkillHitTag = ResolveSkillEventTag(
+				GetInputTag(),
+				ProjectER::Event::Action::Hit::Skill::Q,
+				ProjectER::Event::Action::Hit::Skill::W,
+				ProjectER::Event::Action::Hit::Skill::E,
+				ProjectER::Event::Action::Hit::Skill::R,
+				ProjectER::Event::Action::Hit::Skill::Passive);
 
 			if (SkillHitTag.IsValid())
 			{
@@ -511,6 +539,9 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 			}
 
 			// Phase 3: 최종 적용
+			// [Hook 3] 모든 처리(태그, 예측 등)가 끝나고 타겟에게 최종 적용되기 직전 호출
+			OnPreApplyEffectSpec(SpecHandle, TargetASC);
+
 			// [Fix] 서버에서 Target에게 예측 키를 강제로 전파하여 GEC까지 전달되도록 합니다.
 			// ScopedPK가 유실된 경우 Ability의 ActivationPK를 백업으로 사용하여 랜덤성을 해결합니다.
 			FPredictionKey BestPK = SourceASC->ScopedPredictionKey;
@@ -579,88 +610,65 @@ FGameplayTag USkillBase::GetInputTag() const
 
 void USkillBase::SendExecuteEvent() const
 {
-	AActor* const Avatar = GetAvatar();
-	if (!IsValid(Avatar))
-	{
-		return;
-	}
+	const FGameplayTag EventTag = ResolveSkillEventTag(
+		GetInputTag(),
+		ProjectER::Event::Action::Skill::Execute::Q,
+		ProjectER::Event::Action::Skill::Execute::W,
+		ProjectER::Event::Action::Skill::Execute::E,
+		ProjectER::Event::Action::Skill::Execute::R,
+		ProjectER::Event::Action::Skill::Execute::Passive);
 
-	const FGameplayTag InputTag = GetInputTag();
-	FGameplayTag EventTag;
-
-	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::Q;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::W;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::E;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::R;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive))
-	{
-		EventTag = ProjectER::Event::Action::Skill::Execute::Passive;
-	}
-
-	if (EventTag.IsValid())
-	{
-		FGameplayEventData Payload;
-		Payload.EventTag = InputTag;
-		Payload.Instigator = Avatar;
-		Payload.Target = Avatar;
-
-		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
-	}
+	SendSkillEvent(EventTag);
 }
 
 void USkillBase::SendEndEvent() const
 {
+	const FGameplayTag EventTag = ResolveSkillEventTag(
+		GetInputTag(),
+		ProjectER::Event::Action::Skill::End::Q,
+		ProjectER::Event::Action::Skill::End::W,
+		ProjectER::Event::Action::Skill::End::E,
+		ProjectER::Event::Action::Skill::End::R,
+		ProjectER::Event::Action::Skill::End::Passive);
+
+	SendSkillEvent(EventTag);
+}
+
+FGameplayTag USkillBase::ResolveSkillEventTag(
+	const FGameplayTag& InputTag,
+	const FGameplayTag& QTag,
+	const FGameplayTag& WTag,
+	const FGameplayTag& ETag,
+	const FGameplayTag& RTag,
+	const FGameplayTag& PassiveTag) const
+{
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q))       return QTag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W))       return WTag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E))       return ETag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R))       return RTag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive)) return PassiveTag;
+	return FGameplayTag();
+}
+
+void USkillBase::SendSkillEvent(const FGameplayTag& EventTag) const
+{
+	if (!EventTag.IsValid())
+	{
+		return;
+	}
+
 	AActor* const Avatar = GetAvatar();
 	if (!IsValid(Avatar))
 	{
 		return;
 	}
 
-	const FGameplayTag InputTag = GetInputTag();
-	FGameplayTag EventTag;
+	FGameplayEventData Payload;
+	Payload.EventTag = GetInputTag();
+	Payload.Instigator = Avatar;
+	Payload.Target = Avatar;
 
-	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::Q;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::W;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::E;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::R;
-	}
-	else if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive))
-	{
-		EventTag = ProjectER::Event::Action::Skill::End::Passive;
-	}
-
-	if (EventTag.IsValid())
-	{
-		FGameplayEventData Payload;
-		Payload.EventTag = InputTag;
-		Payload.Instigator = Avatar;
-		Payload.Target = Avatar;
-
-		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
-	}
+	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
 }
 
 bool USkillBase::IsValidRelationship(AActor* Instigator, AActor* Target, ETargetRelationship Relationship)

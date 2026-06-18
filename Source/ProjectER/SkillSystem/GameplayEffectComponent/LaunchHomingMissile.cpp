@@ -318,3 +318,19 @@ AActor* ULaunchHomingMissile::GetTargetActorFromContainer(FActiveGameplayEffects
 	return ActiveGEContainer.Owner ? ActiveGEContainer.Owner->GetOwner() : nullptr;
 }
 
+FSkillTooltipData ULaunchHomingMissile::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("유도 투사체를 발사합니다."));
+
+	FString DetailStr = TEXT("유도 미사일 : 대상을 추적하는 유도 미사일을 날립니다.");
+	FText EffectsText = FormatAppliedEffects(Applied, Level);
+	if (!EffectsText.IsEmpty())
+	{
+		DetailStr += TEXT("\n") + EffectsText.ToString();
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}
+

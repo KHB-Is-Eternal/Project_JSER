@@ -26,6 +26,8 @@ private:
 	void UpdateLevelTracker(AActor* Actor) const;
 
 public:
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Move|Teleport")
 	bool bSweep = true;
 

@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -381,6 +381,8 @@ protected:
 	void ProcessCooldown(int32 SkillIndex, float Duration, float RemainingTime);
 
 	void OnCooldownTagChanged(const FGameplayTag Tag, int32 NewCount, int32 SkillIndex);
+
+	void OnCooldownTimeChanged(FActiveGameplayEffectHandle Handle, float StartTime, float Duration, int32 SkillIndex);
 
 	// cool down 관리
 protected:

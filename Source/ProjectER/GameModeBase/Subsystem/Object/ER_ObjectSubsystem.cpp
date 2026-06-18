@@ -1,4 +1,4 @@
-﻿#include "GameModeBase/Subsystem/Object/ER_ObjectSubsystem.h"
+#include "GameModeBase/Subsystem/Object/ER_ObjectSubsystem.h"
 #include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/PointActor/ER_PointActor.h"
@@ -428,6 +428,22 @@ void UER_ObjectSubsystem::SpawnObjectInternal(FObjectInfo& Info)
         AER_GameState* ERGS = World->GetAuthGameMode()->GetGameState<AER_GameState>();
         int32 Phase = (ERGS && ERGS->GetCurrentPhase() > 0) ? ERGS->GetCurrentPhase() : 1;
         BossMonster->InitMonsterData(MonsterAssetId, Phase);
+
+        // 보스 몬스터 등장 시 디버그 로그 및 화면 메시지 출력
+        if (Info.DAName.ToString().Contains(TEXT("Boss"), ESearchCase::IgnoreCase))
+        {
+            FString RegionName = UEnum::GetValueAsString(Info.RegionType);
+            UE_LOG(LogTemp, Warning, TEXT("[ER_ObjectSubsystem] Boss Monster Spawned! ID: %s, Level: %d, Region: %s"), *MonsterAssetId.ToString(), Phase, *RegionName);
+            if (GEngine)
+            {
+                GEngine->AddOnScreenDebugMessage(
+                    -1, 
+                    10.0f, 
+                    FColor::Red, 
+                    FString::Printf(TEXT("★ Boss Spawned: %s (Phase %d) at %s ★"), *Info.DAName.ToString(), Phase, *RegionName)
+                );
+            }
+        }
     }
 
     Info.bIsSpawned = true;

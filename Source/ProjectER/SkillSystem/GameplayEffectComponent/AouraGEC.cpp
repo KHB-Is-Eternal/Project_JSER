@@ -57,3 +57,19 @@ void UAouraGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, A
 		PeriodicComp->SetupPeriodicEffect(this->Period, this->bApplyImmediately);
 	}
 }
+
+FSkillTooltipData UAouraGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("범위를 생성합니다."));
+
+	FString DetailStr = FString::Printf(TEXT("범위 : 자신 주변에 범위를 생성하여 %.1f초마다 주기적으로 효과를 적용합니다."), Period);
+	FText EffectsText = FormatAppliedEffects(Applied, Level);
+	if (!EffectsText.IsEmpty())
+	{
+		DetailStr += TEXT("\n") + EffectsText.ToString();
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}

@@ -18,6 +18,8 @@ class PROJECTER_API UJumpForceMoveGEC : public UMoveBaseGEC
 public:
 	UJumpForceMoveGEC();
 
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
+
 	virtual float CalculateMoveDuration(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const FVector& Direction) const override;
 
 protected:

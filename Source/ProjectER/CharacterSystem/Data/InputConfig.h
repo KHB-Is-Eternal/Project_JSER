@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
@@ -100,6 +100,10 @@ public:
 	// 현황판 온오프용
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UInputAction> ScoreBoardKey;
+
+	// 아이템 도감 온오프용 (B키)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TObjectPtr<UInputAction> CatalogKey;
 
 	// 채팅 온오프용
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")

@@ -155,3 +155,23 @@ void UTeleportMoveGEC::UpdateLevelTracker(AActor* Actor) const
 	if (!IsValid(Actor)) return;
 	if (ULevelAreaTrackerComponent* Tracker = Actor->FindComponentByClass<ULevelAreaTrackerComponent>()) Tracker->UpdateArea();
 }
+
+FSkillTooltipData UTeleportMoveGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("순간이동합니다."));
+
+	FString DetailStr = TEXT("순간이동 : 즉시 순간이동합니다.");
+	if (bDetectWallHit && WallHitApplied.Num() > 0)
+	{
+		DetailStr += TEXT("\n\n벽과 충돌 시 추가 효과가 적용됩니다.");
+		FText WallHitText = FormatAppliedEffects(WallHitApplied, Level);
+		if (!WallHitText.IsEmpty())
+		{
+			DetailStr += TEXT("\n") + WallHitText.ToString();
+		}
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}

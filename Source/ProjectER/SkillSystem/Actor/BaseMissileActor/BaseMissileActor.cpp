@@ -58,7 +58,7 @@ void ABaseMissileActor::OnRep_InstigatorActor()
 		{
 			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 			{
-				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
+				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
 				{
 					OnVfxHandshakeCompleted_Implementation(VfxActor);
 				}
@@ -80,8 +80,8 @@ void ABaseMissileActor::PostNetInit()
 		{
 
 
-			// (시전자 + 시전 시간) 조합으로 퍼지 비주얼 검색 (서버-클라이언트 간의 작은 시간 오차 보정, 0.5초 허용)
-			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
+			// (시전자 + 시전 시간) 조합으로 퍼지 비주얼 검색 (서버-클라이언트 간의 작은 시간 오차 보정)
+			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
 			{
 				OnVfxHandshakeCompleted_Implementation(VfxActor);
 			}
@@ -98,21 +98,12 @@ void ABaseMissileActor::OnVfxHandshakeCompleted_Implementation(AActor* VfxActor)
 {
 	if (!VfxActor) return;
 
-	// [Fix] 언리얼 생명주기 싱크 맞추기 위해 OnDestroyed 델리게이트에 VFX 액터를 바인딩
 	if (AGCN_SummonedActor* SummonedGCN = Cast<AGCN_SummonedActor>(VfxActor))
 	{
-		// 액터 통째 부착이 아니라, 알맹이인 나이아가라 컴포넌트만 뽑아서 미사일에 직접 부착합니다!
-		if (UNiagaraComponent* NiagaraComp = SummonedGCN->GetVfxComponent())
-		{
-			FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
-			NiagaraComp->AttachToComponent(this->GetRootComponent(), AttachRules);
-		}
+		// 1. 비주얼 컴포넌트 부착 및 생명주기 설정을 GameplayCue 액터 측에 위임
+		SummonedGCN->AttachToTargetActor(this);
 
-		if (!this->OnDestroyed.IsAlreadyBound(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed))
-		{
-			this->OnDestroyed.AddDynamic(SummonedGCN, &AGCN_SummonedActor::OnTargetActorDestroyed);
-		}
-
+		// 2. 물리/로직 동기화: 무브먼트 컴포넌트 데이터 세팅
 		if (const ULaunchHomingMissile* MissileGEC = Cast<ULaunchHomingMissile>(SummonedGCN->GetSourceObject()))
 		{
 			if (IsValid(ProjectileMovement))
@@ -121,7 +112,6 @@ void ABaseMissileActor::OnVfxHandshakeCompleted_Implementation(AActor* VfxActor)
 				ProjectileMovement->MaxSpeed = MissileGEC->MaxSpeed;
 				ProjectileMovement->HomingAccelerationMagnitude = MissileGEC->HomingAccelerationMagnitude;
 				ProjectileMovement->bIsHomingProjectile = (MissileGEC->HomingAccelerationMagnitude > 0.f);
-
 			}
 		}
 	}
@@ -172,7 +162,7 @@ void ABaseMissileActor::InitializeMissile(
 		{
 			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 			{
-				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, 0.5f))
+				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
 				{
 					OnVfxHandshakeCompleted_Implementation(VfxActor);
 				}

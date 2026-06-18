@@ -167,12 +167,6 @@ void UBaseInventoryComponent::UseItem(const int32 SlotIndex)
 		return;
 	}
 
-	if (!OwnerActor->HasAuthority())
-	{
-		Server_UseItem(SlotIndex);
-		return;
-	}
-
 	if (!InventoryContents.IsValidIndex(SlotIndex))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] UseItem: Invalid SlotIndex %d"), SlotIndex);
@@ -193,11 +187,34 @@ void UBaseInventoryComponent::UseItem(const int32 SlotIndex)
 		return;
 	}
 
+	// 쿨타임 체크 (클라이언트와 서버 모두에서 검사하여 RPC 스팸 방지 및 검증)
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (float* LastUseTime = LastItemUseTimes.Find(UsableItem))
+	{
+		if (CurrentTime - *LastUseTime < UsableItem->UseCooldown)
+		{
+			// 아직 쿨타임 중
+			UE_LOG(LogTemp, Verbose, TEXT("[BaseInventoryComponent] UseItem: %s is on cooldown"), *UsableItem->ItemName.ToString());
+			return;
+		}
+	}
+
+	if (!OwnerActor->HasAuthority())
+	{
+		// 클라이언트 예측: 쿨타임 시간만 먼저 갱신해서 연타 시 RPC 호출 방지
+		LastItemUseTimes.Add(UsableItem, CurrentTime);
+		Server_UseItem(SlotIndex);
+		return;
+	}
+
 	if (!CanUseItemsInCurrentLifeState())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] UseItem: blocked while Down/Death. Item='%s'"), *UsableItem->ItemName.ToString());
 		return;
 	}
+
+	// 쿨타임 적용 (서버)
+	LastItemUseTimes.Add(UsableItem, CurrentTime);
 
 	const bool bEffectApplied = ApplyItemEffect(UsableItem);
 
@@ -395,6 +412,14 @@ bool UBaseInventoryComponent::ApplyStatIncrease(UAbilitySystemComponent* ASC, UU
 	SpecHandle.Data->SetSetByCallerMagnitude(StatTag, ItemData->EffectValue);
 
 	const FActiveGameplayEffectHandle ActiveHandle = ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	
+	// Instant GE는 ActiveHandle이 생성되지 않으므로, DurationPolicy가 Instant이면 성공으로 간주합니다.
+	if (ItemEffectClass && ItemEffectClass->GetDefaultObject<UGameplayEffect>()->DurationPolicy == EGameplayEffectDurationType::Instant)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[BaseInventoryComponent] Applied Instant item GE successfully. StatTag: %s, Value: %.2f"), *StatTag.ToString(), ItemData->EffectValue);
+		return true;
+	}
+
 	if (!ActiveHandle.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyStatIncrease: Failed to apply GE"));
@@ -430,16 +455,10 @@ bool UBaseInventoryComponent::EnqueueFoodHeal(UUsableItemData* ItemData)
 		return false;
 	}
 
-	const int32 TotalTicks = FMath::Max(1, FMath::RoundToInt(ItemData->HealDurationSeconds / ItemData->HealTickInterval));
-	const float HealPerTick = ItemData->TotalHealAmount / static_cast<float>(TotalTicks);
-
 	FPendingFoodHealEffect NewEffect;
 	NewEffect.ItemName = ItemData->ItemName.ToString();
 	NewEffect.TotalHealAmount = ItemData->TotalHealAmount;
-	NewEffect.TotalDurationSeconds = ItemData->HealDurationSeconds;
-	NewEffect.RemainingHealAmount = ItemData->TotalHealAmount;
-	NewEffect.HealPerTick = HealPerTick;
-	NewEffect.RemainingTicks = TotalTicks;
+	NewEffect.DurationSeconds = ItemData->HealDurationSeconds;
 	NewEffect.TickInterval = ItemData->HealTickInterval;
 
 	PendingFoodHealQueue.Add(NewEffect);
@@ -454,31 +473,9 @@ bool UBaseInventoryComponent::EnqueueFoodHeal(UUsableItemData* ItemData)
 	return true;
 }
 
-bool UBaseInventoryComponent::ApplyHealAmount(const float HealAmount)
-{
-	if (HealAmount <= 0.0f)
-	{
-		return false;
-	}
-
-	if (!CanUseItemsInCurrentLifeState())
-	{
-		return false;
-	}
-
-	UAbilitySystemComponent* const ASC = ResolveOwnerAbilitySystemComponent();
-	if (ASC == nullptr)
-	{
-		return false;
-	}
-
-	ASC->ApplyModToAttribute(UBaseAttributeSet::GetHealthAttribute(), EGameplayModOp::Additive, HealAmount);
-	return true;
-}
-
 void UBaseInventoryComponent::StartNextFoodHealEffect()
 {
-	if (bIsFoodHealEffectActive)
+	if (ActiveFoodGEHandle.IsValid())
 	{
 		return;
 	}
@@ -488,109 +485,66 @@ void UBaseInventoryComponent::StartNextFoodHealEffect()
 		return;
 	}
 
-	AActor* const OwnerActor = GetOwner();
-	if (OwnerActor == nullptr)
+	UAbilitySystemComponent* const ASC = ResolveOwnerAbilitySystemComponent();
+	if (ASC == nullptr)
 	{
 		return;
 	}
 
-	UWorld* const World = OwnerActor->GetWorld();
-	if (World == nullptr)
-	{
-		return;
-	}
-
-	CurrentFoodHealEffect = PendingFoodHealQueue[0];
+	FPendingFoodHealEffect CurrentEffect = PendingFoodHealQueue[0];
 	PendingFoodHealQueue.RemoveAt(0);
-	bIsFoodHealEffectActive = true;
 
-	World->GetTimerManager().SetTimer(
-		FoodHealTickTimerHandle,
-		this,
-		&UBaseInventoryComponent::HandleFoodHealTick,
-		CurrentFoodHealEffect.TickInterval,
-		true);
+	// 동적 GE 생성
+	UGameplayEffect* DynamicGE = NewObject<UGameplayEffect>(GetTransientPackage(), NAME_None);
+	DynamicGE->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	DynamicGE->DurationMagnitude = FScalableFloat(CurrentEffect.DurationSeconds);
+	DynamicGE->Period = CurrentEffect.TickInterval;
+
+	const int32 TotalTicks = FMath::Max(1, FMath::RoundToInt(CurrentEffect.DurationSeconds / CurrentEffect.TickInterval));
+	const float HealPerTick = CurrentEffect.TotalHealAmount / static_cast<float>(TotalTicks);
+
+	FGameplayModifierInfo ModInfo;
+	ModInfo.Attribute = UBaseAttributeSet::GetHealthAttribute();
+	ModInfo.ModifierOp = EGameplayModOp::Additive;
+	ModInfo.ModifierMagnitude = FScalableFloat(HealPerTick);
+	DynamicGE->Modifiers.Add(ModInfo);
+
+	FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
+	Context.AddSourceObject(this);
+
+	ActiveFoodGEHandle = ASC->ApplyGameplayEffectToSelf(DynamicGE, 1.0f, Context);
+
+	if (ActiveFoodGEHandle.IsValid())
+	{
+		ASC->OnGameplayEffectRemoved_InfoDelegate(ActiveFoodGEHandle)->AddUObject(this, &UBaseInventoryComponent::OnFoodGERemoved);
+	}
 }
 
-void UBaseInventoryComponent::StopFoodHealTimer()
+void UBaseInventoryComponent::OnFoodGERemoved(const FGameplayEffectRemovalInfo& RemovalInfo)
 {
-	AActor* const OwnerActor = GetOwner();
-	if (OwnerActor == nullptr)
-	{
-		return;
-	}
-
-	UWorld* const World = OwnerActor->GetWorld();
-	if (World == nullptr)
-	{
-		return;
-	}
-
-	World->GetTimerManager().ClearTimer(FoodHealTickTimerHandle);
-}
-
-void UBaseInventoryComponent::HandleFoodHealTick()
-{
-	if (!bIsFoodHealEffectActive)
-	{
-		StopFoodHealTimer();
-		return;
-	}
+	ActiveFoodGEHandle.Invalidate();
 
 	if (!CanUseItemsInCurrentLifeState())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[BaseInventoryComponent] HandleFoodHealTick: owner became Down/Death, clear food heal"));
-		ClearFoodHealEffects();
+		PendingFoodHealQueue.Empty();
 		return;
 	}
 
-	if (CurrentFoodHealEffect.RemainingTicks <= 0 || CurrentFoodHealEffect.RemainingHealAmount <= 0.0f)
-	{
-		StopFoodHealTimer();
-		bIsFoodHealEffectActive = false;
-		StartNextFoodHealEffect();
-		return;
-	}
-
-	const float TickHealAmount = FMath::Min(CurrentFoodHealEffect.HealPerTick, CurrentFoodHealEffect.RemainingHealAmount);
-	const int32 RemainingTicksAfterThisTick = FMath::Max(CurrentFoodHealEffect.RemainingTicks - 1, 0);
-	const float RemainingDurationSeconds = static_cast<float>(RemainingTicksAfterThisTick) * CurrentFoodHealEffect.TickInterval;
-
-	/*UE_LOG(LogTemp, Log, TEXT("[FoodHealTick] Item=%s, TotalHeal=%.2f, TickHeal=%.2f, RemainingDuration=%.2f sec"),
-		*CurrentFoodHealEffect.ItemName,
-		CurrentFoodHealEffect.TotalHealAmount,
-		TickHealAmount,
-		RemainingDurationSeconds);*/
-
-	const bool bHealed = ApplyHealAmount(TickHealAmount);
-	if (!bHealed)
-	{
-		StopFoodHealTimer();
-		bIsFoodHealEffectActive = false;
-		return;
-	}
-
-	ShowRecoveryFloatingText(TickHealAmount, false);
-
-	CurrentFoodHealEffect.RemainingHealAmount -= TickHealAmount;
-	CurrentFoodHealEffect.RemainingTicks -= 1;
-
-	if (CurrentFoodHealEffect.RemainingTicks > 0 && CurrentFoodHealEffect.RemainingHealAmount > 0.0f)
-	{
-		return;
-	}
-
-	StopFoodHealTimer();
-	bIsFoodHealEffectActive = false;
 	StartNextFoodHealEffect();
 }
 
 void UBaseInventoryComponent::ClearFoodHealEffects()
 {
-	StopFoodHealTimer();
 	PendingFoodHealQueue.Empty();
-	CurrentFoodHealEffect = FPendingFoodHealEffect();
-	bIsFoodHealEffectActive = false;
+
+	if (ActiveFoodGEHandle.IsValid())
+	{
+		if (UAbilitySystemComponent* const ASC = ResolveOwnerAbilitySystemComponent())
+		{
+			ASC->RemoveActiveGameplayEffect(ActiveFoodGEHandle);
+		}
+		ActiveFoodGEHandle.Invalidate();
+	}
 
 	UE_LOG(LogTemp, Log, TEXT("[BaseInventoryComponent] ClearFoodHealEffects: cleared all food heal effects"));
 }
@@ -831,16 +785,10 @@ bool UBaseInventoryComponent::EnqueueDrinkMana(UUsableItemData* ItemData)
 		return false;
 	}
 
-	const int32 TotalTicks = FMath::Max(1, FMath::RoundToInt(ItemData->ManaDurationSeconds / ItemData->ManaTickInterval));
-	const float ManaPerTick = ItemData->TotalManaAmount / static_cast<float>(TotalTicks);
-
 	FPendingDrinkManaEffect NewEffect;
 	NewEffect.ItemName = ItemData->ItemName.ToString();
 	NewEffect.TotalManaAmount = ItemData->TotalManaAmount;
-	NewEffect.TotalDurationSeconds = ItemData->ManaDurationSeconds;
-	NewEffect.RemainingManaAmount = ItemData->TotalManaAmount;
-	NewEffect.ManaPerTick = ManaPerTick;
-	NewEffect.RemainingTicks = TotalTicks;
+	NewEffect.DurationSeconds = ItemData->ManaDurationSeconds;
 	NewEffect.TickInterval = ItemData->ManaTickInterval;
 
 	PendingDrinkManaQueue.Add(NewEffect);
@@ -855,31 +803,9 @@ bool UBaseInventoryComponent::EnqueueDrinkMana(UUsableItemData* ItemData)
 	return true;
 }
 
-bool UBaseInventoryComponent::ApplyDrinkManaAmount(const float ManaAmount)
-{
-	if (ManaAmount <= 0.0f)
-	{
-		return false;
-	}
-
-	if (!CanUseItemsInCurrentLifeState())
-	{
-		return false;
-	}
-
-	UAbilitySystemComponent* const ASC = ResolveOwnerAbilitySystemComponent();
-	if (ASC == nullptr)
-	{
-		return false;
-	}
-
-	ASC->ApplyModToAttribute(UBaseAttributeSet::GetStaminaAttribute(), EGameplayModOp::Additive, ManaAmount);
-	return true;
-}
-
 void UBaseInventoryComponent::StartNextDrinkManaEffect()
 {
-	if (bIsDrinkManaEffectActive)
+	if (ActiveDrinkManaGEHandle.IsValid())
 	{
 		return;
 	}
@@ -889,100 +815,51 @@ void UBaseInventoryComponent::StartNextDrinkManaEffect()
 		return;
 	}
 
-	AActor* const OwnerActor = GetOwner();
-	if (OwnerActor == nullptr)
+	UAbilitySystemComponent* const ASC = ResolveOwnerAbilitySystemComponent();
+	if (ASC == nullptr)
 	{
 		return;
 	}
 
-	UWorld* const World = OwnerActor->GetWorld();
-	if (World == nullptr)
-	{
-		return;
-	}
-
-	CurrentDrinkManaEffect = PendingDrinkManaQueue[0];
+	FPendingDrinkManaEffect CurrentEffect = PendingDrinkManaQueue[0];
 	PendingDrinkManaQueue.RemoveAt(0);
-	bIsDrinkManaEffectActive = true;
 
-	World->GetTimerManager().SetTimer(
-		DrinkManaTickTimerHandle,
-		this,
-		&UBaseInventoryComponent::HandleDrinkManaTick,
-		CurrentDrinkManaEffect.TickInterval,
-		true);
+	// 동적 GE 생성
+	UGameplayEffect* DynamicGE = NewObject<UGameplayEffect>(GetTransientPackage(), NAME_None);
+	DynamicGE->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	DynamicGE->DurationMagnitude = FScalableFloat(CurrentEffect.DurationSeconds);
+	DynamicGE->Period = CurrentEffect.TickInterval;
+
+	const int32 TotalTicks = FMath::Max(1, FMath::RoundToInt(CurrentEffect.DurationSeconds / CurrentEffect.TickInterval));
+	const float ManaPerTick = CurrentEffect.TotalManaAmount / static_cast<float>(TotalTicks);
+
+	FGameplayModifierInfo ModInfo;
+	ModInfo.Attribute = UBaseAttributeSet::GetStaminaAttribute(); // 마나는 Stamina 사용
+	ModInfo.ModifierOp = EGameplayModOp::Additive;
+	ModInfo.ModifierMagnitude = FScalableFloat(ManaPerTick);
+	DynamicGE->Modifiers.Add(ModInfo);
+
+	FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
+	Context.AddSourceObject(this);
+
+	ActiveDrinkManaGEHandle = ASC->ApplyGameplayEffectToSelf(DynamicGE, 1.0f, Context);
+
+	if (ActiveDrinkManaGEHandle.IsValid())
+	{
+		ASC->OnGameplayEffectRemoved_InfoDelegate(ActiveDrinkManaGEHandle)->AddUObject(this, &UBaseInventoryComponent::OnManaGERemoved);
+	}
 }
 
-void UBaseInventoryComponent::StopDrinkManaTimer()
+void UBaseInventoryComponent::OnManaGERemoved(const FGameplayEffectRemovalInfo& RemovalInfo)
 {
-	AActor* const OwnerActor = GetOwner();
-	if (OwnerActor == nullptr)
-	{
-		return;
-	}
-
-	UWorld* const World = OwnerActor->GetWorld();
-	if (World == nullptr)
-	{
-		return;
-	}
-
-	World->GetTimerManager().ClearTimer(DrinkManaTickTimerHandle);
-}
-
-void UBaseInventoryComponent::HandleDrinkManaTick()
-{
-	if (!bIsDrinkManaEffectActive)
-	{
-		StopDrinkManaTimer();
-		return;
-	}
+	ActiveDrinkManaGEHandle.Invalidate();
 
 	if (!CanUseItemsInCurrentLifeState())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[BaseInventoryComponent] HandleDrinkManaTick: owner became Down/Death, clear mana effects"));
-		ClearDrinkManaEffects();
+		PendingDrinkManaQueue.Empty();
 		return;
 	}
 
-	if (CurrentDrinkManaEffect.RemainingTicks <= 0 || CurrentDrinkManaEffect.RemainingManaAmount <= 0.0f)
-	{
-		StopDrinkManaTimer();
-		bIsDrinkManaEffectActive = false;
-		StartNextDrinkManaEffect();
-		return;
-	}
-
-	const float TickManaAmount = FMath::Min(CurrentDrinkManaEffect.ManaPerTick, CurrentDrinkManaEffect.RemainingManaAmount);
-	const int32 RemainingTicksAfterThisTick = FMath::Max(CurrentDrinkManaEffect.RemainingTicks - 1, 0);
-	const float RemainingDurationSeconds = static_cast<float>(RemainingTicksAfterThisTick) * CurrentDrinkManaEffect.TickInterval;
-
-	/*UE_LOG(LogTemp, Log, TEXT("[DrinkManaTick] Item=%s, TotalMana=%.2f, TickMana=%.2f, RemainingDuration=%.2f sec"),
-		*CurrentDrinkManaEffect.ItemName,
-		CurrentDrinkManaEffect.TotalManaAmount,
-		TickManaAmount,
-		RemainingDurationSeconds);*/
-
-	const bool bRestored = ApplyDrinkManaAmount(TickManaAmount);
-	if (!bRestored)
-	{
-		StopDrinkManaTimer();
-		bIsDrinkManaEffectActive = false;
-		return;
-	}
-
-	ShowRecoveryFloatingText(TickManaAmount, true);
-
-	CurrentDrinkManaEffect.RemainingManaAmount -= TickManaAmount;
-	CurrentDrinkManaEffect.RemainingTicks -= 1;
-
-	if (CurrentDrinkManaEffect.RemainingTicks > 0 && CurrentDrinkManaEffect.RemainingManaAmount > 0.0f)
-	{
-		return;
-	}
-
-	StopDrinkManaTimer();
-	bIsDrinkManaEffectActive = false;
 	StartNextDrinkManaEffect();
 }
 
@@ -990,10 +867,16 @@ void UBaseInventoryComponent::ClearDrinkManaEffects()
 {
 	UE_LOG(LogTemp, Log, TEXT("[BaseInventoryComponent] ClearDrinkManaEffects"));
 
-	StopDrinkManaTimer();
-	bIsDrinkManaEffectActive = false;
 	PendingDrinkManaQueue.Empty();
-	CurrentDrinkManaEffect = FPendingDrinkManaEffect();
+
+	if (ActiveDrinkManaGEHandle.IsValid())
+	{
+		if (UAbilitySystemComponent* const ASC = ResolveOwnerAbilitySystemComponent())
+		{
+			ASC->RemoveActiveGameplayEffect(ActiveDrinkManaGEHandle);
+		}
+		ActiveDrinkManaGEHandle.Invalidate();
+	}
 }
 
 bool UBaseInventoryComponent::ConsumeItemAtSlot(int32 SlotIndex)
@@ -1073,6 +956,7 @@ bool UBaseInventoryComponent::AddItemToSlot(int32 SlotIndex, UBaseItemData* Item
 
 void UBaseInventoryComponent::ShowRecoveryFloatingText(float Amount, bool bIsMana)
 {
+	/*
 	if (Amount <= 0.0f)
 	{
 		return;
@@ -1090,4 +974,5 @@ void UBaseInventoryComponent::ShowRecoveryFloatingText(float Amount, bool bIsMan
 	}
 
 	OwnerChar->Multicast_ShowRecoveryText(FMath::RoundToInt(Amount), bIsMana);
+	*/
 }
