@@ -81,6 +81,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="Vision")
     EVisionChannel GetVisionChannel() const { return VisionChannel; }
 
+    bool IsVisionProvider() const { return bIsVisionProvider; }
+
     UFUNCTION(BlueprintCallable, Category="Vision")
     void SetVisionChannel(EVisionChannel InVC);
 
@@ -180,4 +182,5 @@ private:
 private:
     bool ShouldRunClientLogic() const;
     void UpdateVisibilityFade(float DeltaTime);
+    bool IsGridVisionEnabled() const;
 };

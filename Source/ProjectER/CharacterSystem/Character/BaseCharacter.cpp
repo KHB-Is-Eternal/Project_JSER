@@ -161,6 +161,8 @@ ABaseCharacter::ABaseCharacter()
 	MinimapCaptureComponent->ProjectionType = ECameraProjectionMode::Orthographic;
 	MinimapCaptureComponent->OrthoWidth = 4500; // 이거로 미니맵 확대/축소 조절
 	MinimapCaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;	// 투명도 반영
+	MinimapCaptureComponent->bCaptureEveryFrame = false;
+	MinimapCaptureComponent->bCaptureOnMovement = false;
 
 	// 미니맵용 아이콘 만들기
 	MinimapIconMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MinimapIcon"));

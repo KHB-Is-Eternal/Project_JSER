@@ -15,6 +15,8 @@
 
 #include "GameFramework/GameStateBase.h"
 #include "LineOfSight/Management/VisionGameStateComp.h"
+#include "LineOfSight/MainVisionRTManager.h"
+#include "UObject/UObjectIterator.h"
 #include "TopDownVisionDebug.h"
 
 
@@ -86,9 +88,9 @@ void UVision_VisualComp::Initialize()
         MaxVisionRange = IndicatorRange;
     }
 
-    if (!bIsVisionProvider)
+    if (!bIsVisionProvider || IsGridVisionEnabled())
     {
-        // If not a vision provider, skip allocating rendering resources (Obstacle / Stamp)
+        // If not a vision provider or grid vision is enabled, skip allocating rendering resources (Obstacle / Stamp)
         // and only initialize visibility fading mesh.
         if (VisibilityMesh)
         {
@@ -96,7 +98,10 @@ void UVision_VisualComp::Initialize()
         }
 
         UE_LOG(LOSVision, Log,
-            TEXT("[%s] Initialize >> Lightweight mode (Not a Vision Provider)"), *GetOwner()->GetName());
+            TEXT("[%s] Initialize >> Lightweight mode (Grid Vision: %s, IsVisionProvider: %s)"),
+            *GetOwner()->GetName(),
+            IsGridVisionEnabled() ? TEXT("True") : TEXT("False"),
+            bIsVisionProvider ? TEXT("True") : TEXT("False"));
     }
     else if (bUseResourcePool)
     {
@@ -148,6 +153,7 @@ void UVision_VisualComp::SetIndicatorRange(float NewIndicatorRange) { IndicatorR
 
 void UVision_VisualComp::OnRevealed_EnterPool()
 {
+    if (IsGridVisionEnabled()) return;
     if (!bUseResourcePool || bHasActivePoolSlot) return;
     if (ULOSRequirementPoolSubsystem* PoolSub = GetWorld()->GetSubsystem<ULOSRequirementPoolSubsystem>())
         PoolSub->AcquireSlot(this);
@@ -155,6 +161,7 @@ void UVision_VisualComp::OnRevealed_EnterPool()
 
 void UVision_VisualComp::OnHidden_ExitPool()
 {
+    if (IsGridVisionEnabled()) return;
     if (!bUseResourcePool || !bHasActivePoolSlot) return;
     if (ULOSRequirementPoolSubsystem* PoolSub = GetWorld()->GetSubsystem<ULOSRequirementPoolSubsystem>())
         PoolSub->ReleaseSlot(this);
@@ -201,6 +208,7 @@ void UVision_VisualComp::UpdateVision()
 {
     if (!ShouldRunClientLogic()) return;
     if (!bIsVisionProvider) return; // Skip updating obstacle/stamp rendering if not a vision provider
+    if (IsGridVisionEnabled()) return;
     if (bUseResourcePool && !bHasActivePoolSlot) return;
 
     if (ObstacleDrawer)
@@ -227,7 +235,7 @@ void UVision_VisualComp::ToggleLOSStampUpdate(bool bIsOn)
 
 bool UVision_VisualComp::IsUpdating() const
 {
-    if (!bIsVisionProvider) return false;
+    if (!bIsVisionProvider || IsGridVisionEnabled()) return false;
     return StampDrawer ? StampDrawer->IsUpdating() : false;
 }
 
@@ -350,3 +358,37 @@ bool UVision_VisualComp::ShouldRunClientLogic() const
 {
     return GetNetMode() != NM_DedicatedServer;
 }
+
+bool UVision_VisualComp::IsGridVisionEnabled() const
+{
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return false;
+    }
+
+    APlayerController* PC = World->GetFirstPlayerController();
+    if (PC)
+    {
+        APawn* Pawn = PC->GetPawn();
+        if (Pawn)
+        {
+            if (UMainVisionRTManager* RTManager = Pawn->FindComponentByClass<UMainVisionRTManager>())
+            {
+                return RTManager->IsGridVisionEnabled();
+            }
+        }
+    }
+
+    // Fallback: Search the world for UMainVisionRTManager using TObjectIterator
+    for (TObjectIterator<UMainVisionRTManager> It; It; ++It)
+    {
+        if (It->GetWorld() == World)
+        {
+            return It->IsGridVisionEnabled();
+        }
+    }
+
+    return false;
+}
+

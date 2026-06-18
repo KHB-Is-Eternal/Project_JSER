@@ -12,7 +12,9 @@
 #include "LineOfSight/Management/VisionGameStateComp.h"
 #include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
 #include "LineOfSight/Management/Subsystem/LOSRequirementPoolSubsystem.h"
+#include "LineOfSight/Management/Subsystem/WorldObstacleSubsystem.h"
 #include "LineOfSight/Management/VisionPlayerStateComp.h"
+#include "LineOfSight/Grid/GridVisionMap.h"
 #include "TopDownVisionDebug.h"
 
 
@@ -39,6 +41,57 @@ void UMainVisionRTManager::InitializeMainVisionRTComp()
     if (!ShouldRunClientLogic())
         return;
 
+    // ── Grid Vision Path ─────────────────────────────────────────────
+    if (bUseGridVision)
+    {
+        GridVisionMap = NewObject<UGridVisionMap>(this);
+        check(GridVisionMap);
+        GridVisionMap->Initialize(GridResolution, CameraVisionRange);
+
+        // Cache pre-baked obstacle data from the world subsystem
+        if (UWorldObstacleSubsystem* ObstacleSub = GetWorld()->GetSubsystem<UWorldObstacleSubsystem>())
+        {
+            GridVisionMap->CacheObstacleData(ObstacleSub->GetTiles());
+        }
+        else
+        {
+            UE_LOG(LOSVision, Warning,
+                TEXT("UMainVisionRTManager::InitializeMainVisionRTComp >> WorldObstacleSubsystem not found — grid will have no obstacles"));
+        }
+
+        // Create post-process material and bind the grid output texture
+        if (LayeredLOSInterfaceMaterial)
+        {
+            LayeredLOSInterfaceMID = UMaterialInstanceDynamic::Create(
+                LayeredLOSInterfaceMaterial, this);
+            if (LayeredLOSInterfaceMID && GridVisionMap->GetOutputTexture())
+            {
+                LayeredLOSInterfaceMID->SetTextureParameterValue(
+                    LayeredLOSTextureParam, GridVisionMap->GetOutputTexture());
+            }
+        }
+
+        // MPC setup
+        MPCInstance = GetWorld()->GetParameterCollectionInstance(PostProcessMPC);
+        if (MPCInstance)
+        {
+            const FVector WorldLocation = GetOwner()
+                ? GetOwner()->GetActorLocation()
+                : FVector::ZeroVector;
+            MPCInstance->SetVectorParameterValue(MPCLocationParam,
+                FLinearColor(WorldLocation.X, WorldLocation.Y, WorldLocation.Z));
+            MPCInstance->SetScalarParameterValue(MPCVisibleRangeParam, CameraVisionRange);
+        }
+
+        UE_LOG(LOSVision, Log,
+            TEXT("UMainVisionRTManager::InitializeMainVisionRTComp >> Grid Vision initialized (Resolution=%d)"),
+            GridResolution);
+
+        Activate();
+        return;
+    }
+
+    // ── Legacy RT Path ───────────────────────────────────────────────
     if (!CameraLocalRT)
     {
         UE_LOG(LOSVision, Warning,
@@ -123,6 +176,18 @@ static bool RectOverlapsWorld(
 //  Update
 // -------------------------------------------------------------------------- //
 
+void UMainVisionRTManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (PendingGridTask)
+	{
+		PendingGridTask->EnsureCompletion();
+		delete PendingGridTask;
+		PendingGridTask = nullptr;
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
 void UMainVisionRTManager::DrawLOSStampsBatched(
     UTextureRenderTarget2D* TargetRT,
     const TArray<UVision_VisualComp*>& Providers,
@@ -178,6 +243,113 @@ void UMainVisionRTManager::UpdateCameraLOS()
     if (!ShouldRunClientLogic())
         return;
 
+    // ── Grid Vision Path ─────────────────────────────────────────────
+    if (bUseGridVision)
+    {
+        if (!GridVisionMap)
+            return;
+
+        TArray<UVision_VisualComp*> ActiveProviders;
+        if (!GetVisibleProviders(ActiveProviders))
+            return;
+
+        const FVector CameraCenter = GetOwner()->GetActorLocation();
+        TArray<FGridVisionProvider> GridProviders;
+        GridProviders.Reserve(ActiveProviders.Num());
+
+        for (UVision_VisualComp* Provider : ActiveProviders)
+        {
+            if (!Provider || !Provider->GetOwner())
+                continue;
+
+            if (!Provider->IsVisionProvider())
+                continue;
+
+            const bool bInRange = RectOverlapsWorld(
+                CameraCenter,                             CameraVisionRange,
+                Provider->GetOwner()->GetActorLocation(), Provider->GetVisibleRange());
+
+            if (!bInRange)
+                continue;
+
+            FGridVisionProvider GridProv;
+            GridProv.WorldPosition = FVector2D(Provider->GetOwner()->GetActorLocation());
+            GridProv.VisionRadius = Provider->GetVisibleRange();
+            GridProv.Alpha = Provider->GetVisibilityAlpha();
+            GridProviders.Add(GridProv);
+        }
+
+        // If a task is already running, check if it's done
+        if (PendingGridTask)
+        {
+            if (PendingGridTask->IsDone())
+            {
+                // Task is finished! Upload results to GPU
+                GridVisionMap->UploadToGPU();
+
+                // Write the CPU Grid result directly to the legacy RTs so that hardcoded Editor materials continue to work
+                if (UTexture2D* GridOutput = GridVisionMap->GetOutputTexture())
+                {
+                    auto DrawToRT = [&](UTextureRenderTarget2D* TargetRT)
+                    {
+                        if (!TargetRT) return;
+
+                        // 에셋의 원래 크기(예: 256)를 무시하고 GridResolution(예: 512)에 맞춰 렌더 타겟의 해상도를 동적으로 변경합니다.
+                        if (TargetRT->SizeX != GridResolution || TargetRT->SizeY != GridResolution)
+                        {
+                            TargetRT->ResizeTarget(GridResolution, GridResolution);
+                        }
+
+                        UCanvas* Canvas = nullptr;
+                        FDrawToRenderTargetContext Context;
+                        FVector2D RTSize(TargetRT->SizeX, TargetRT->SizeY);
+
+                        UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(
+                            GetWorld(), TargetRT, Canvas, RTSize, Context);
+                        
+                        if (Canvas)
+                        {
+                            FCanvasTileItem Tile(
+                                FVector2D::ZeroVector, GridOutput->GetResource(), RTSize,
+                                FVector2D::ZeroVector, FVector2D(1, 1), FLinearColor::White);
+                            Tile.BlendMode = SE_BLEND_Opaque;
+                            Canvas->DrawItem(Tile);
+                        }
+                        UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(GetWorld(), Context);
+                    };
+
+                    // This takes < 0.1ms compared to the 13ms ApplyFeatheredBlurToRT
+                    DrawToRT(CameraLocalRT);
+                    DrawToRT(FeatheredRT);
+                }
+
+                delete PendingGridTask;
+                PendingGridTask = nullptr;
+            }
+            // If still running, we just wait (do not start a new task)
+        }
+        else
+        {
+            // Start a new background task
+            PendingGridTask = new FAsyncTask<FGridVisionAsyncTask>(
+                GridVisionMap, FVector2D(CameraCenter), MoveTemp(GridProviders));
+            PendingGridTask->StartBackgroundTask();
+        }
+
+        // Update MPC
+        if (MPCInstance)
+        {
+            const FVector WorldLocation = GetOwner()
+                ? GetOwner()->GetActorLocation()
+                : FVector::ZeroVector;
+            MPCInstance->SetVectorParameterValue(MPCLocationParam,
+                FLinearColor(WorldLocation.X, WorldLocation.Y, WorldLocation.Z));
+        }
+
+        return;
+    }
+
+    // ── Legacy RT Path ───────────────────────────────────────────────
     if (!CameraLocalRT)
     {
         UE_LOG(LOSVision, Error,
@@ -446,6 +618,12 @@ bool UMainVisionRTManager::GetVisibleProviders(
 
 bool UMainVisionRTManager::ShouldRunClientLogic() const
 {
+    // 에디터 미리보기(프리뷰 월드) 창에서 렌더 타겟 에셋을 무단으로 갱신하는 것을 방지합니다.
+    if (GetWorld() && !GetWorld()->IsGameWorld())
+    {
+        return false;
+    }
+
     return GetNetMode() != NM_DedicatedServer;
 }
 

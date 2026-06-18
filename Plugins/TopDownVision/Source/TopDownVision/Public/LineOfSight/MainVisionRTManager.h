@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -6,10 +6,12 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstance.h"
 #include "LineOfSight/VisionData.h"
+#include "LineOfSight/Grid/GridVisionAsyncTask.h"
 #include "MainVisionRTManager.generated.h"
 
 class UVision_VisualComp;
 class ULOSRequirementPoolSubsystem;
+class UGridVisionMap;
 
 /*
  * Composites all in-range LOS stamps onto CameraLocalRT each frame.
@@ -29,6 +31,8 @@ public:
 	UMainVisionRTManager();
 
 protected:
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	virtual void BeginPlay() override;
 
 public:
@@ -46,6 +50,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="LineOfSight")
 	UMaterialInstanceDynamic* GetLayeredMID() const { return LayeredLOSInterfaceMID; }
+
+	UFUNCTION(BlueprintCallable, Category="LineOfSight")
+	bool IsGridVisionEnabled() const { return bUseGridVision; }
 
 private:
 
@@ -87,6 +94,12 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	bool bUseCPU = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
+	bool bUseGridVision = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	int32 GridResolution = 256;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	bool bDrawTextureRange = false;
@@ -155,8 +168,14 @@ protected:
 
 private:
 	UPROPERTY(Transient)
+	TObjectPtr<UGridVisionMap> GridVisionMap = nullptr;
+
+	UPROPERTY(Transient)
 	TArray<TObjectPtr<UVision_VisualComp>> CachedValidProviders;
 
 	UPROPERTY(Transient)
 	mutable TObjectPtr<ULOSRequirementPoolSubsystem> CachedPoolSubsystem = nullptr;
+
+	// The background task processing grid vision
+	FAsyncTask<FGridVisionAsyncTask>* PendingGridTask = nullptr;
 };
