@@ -1,4 +1,4 @@
-﻿#include "ObstacleOcclusion/MaterialOcclusion/MainOcclusionPainter.h"
+#include "ObstacleOcclusion/MaterialOcclusion/MainOcclusionPainter.h"
 #include "ObstacleOcclusion/Manager/OcclusionSubsystem.h"
 #include "ObstacleOcclusion/MaterialOcclusion/OcclusionBrushTarget.h"
 #include "ObstacleOcclusion/PhysicalOcclusion/FrustumToProjectionMatcherHelper.h"
@@ -213,6 +213,12 @@ bool UMainOcclusionPainter::RefreshFrustumParams()
 
 bool UMainOcclusionPainter::ShouldRunClientLogic()
 {
+    // 에디터 미리보기(프리뷰 월드) 창에서 렌더 타겟 에셋을 무단으로 갱신하는 것을 방지합니다.
+    if (GetWorld() && !GetWorld()->IsGameWorld())
+    {
+        return false;
+    }
+
     if (GetNetMode() == NM_DedicatedServer)
         return false;
 
