@@ -4,6 +4,9 @@
 #include "SkillSystem/AnimNotify/AnimNotifyState_SkillSoundGameplayCue.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnHelper.h"
+#if WITH_EDITOR
+#include "SkillSystem/AnimNotify/AnimNotifyCueTrackerComponent.h"
+#endif
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Animation/AnimMontage.h"
@@ -68,6 +71,13 @@ void UAnimNotifyState_SkillSoundGameplayCue::NotifyBegin(USkeletalMeshComponent*
 		}
 	}
 
+#if WITH_EDITOR
+	if (UAnimNotifyCueTrackerComponent* Tracker = UAnimNotifyCueTrackerComponent::GetOrCreateTracker(OwnerActor))
+	{
+		Tracker->RegisterSoundCue(MeshComp, Cast<UAnimMontage>(Animation), SpawnConfig);
+	}
+#endif
+
 #if WITH_EDITORONLY_DATA
 	if (UGameplayCueManager::PreviewProxyTick.IsBound())
 	{
@@ -115,6 +125,19 @@ void UAnimNotifyState_SkillSoundGameplayCue::NotifyEnd(USkeletalMeshComponent* M
 	FGameplayCueParameters Parameters;
 	Parameters.Instigator = OwnerActor;
 	Parameters.TargetAttachComponent = MeshComp;
+
+#if WITH_EDITOR
+	if (IsValid(OwnerActor))
+	{
+		if (UAnimNotifyCueTrackerComponent* Tracker = OwnerActor->FindComponentByClass<UAnimNotifyCueTrackerComponent>())
+		{
+			if (SpawnConfig && !SpawnConfig->Sound.IsNull())
+			{
+				Tracker->UnregisterCue(MeshComp, SpawnConfig->Sound.LoadSynchronous());
+			}
+		}
+	}
+#endif
 
 	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(OwnerActor))
 	{

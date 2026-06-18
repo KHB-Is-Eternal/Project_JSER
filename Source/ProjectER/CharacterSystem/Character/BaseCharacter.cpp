@@ -562,7 +562,7 @@ bool ABaseCharacter::IsLocalPlayerPawn()
 	return IsLocallyControlled();
 }
 
-void ABaseCharacter::HandleLevelUp()
+void ABaseCharacter::HandleLevelUp(float OldLevel, float NewLevel)
 {
 	if (!HasAuthority()) return;
 	
@@ -577,25 +577,33 @@ void ABaseCharacter::HandleLevelUp()
 		AS = PS->GetAttributeSet();
 	}
 
-	float OldMaxHealth = 0.0f;
-	float OldMaxStamina = 0.0f;
-
-	if (AS)
-	{
-		OldMaxHealth = AS->GetMaxHealth();
-		OldMaxStamina = AS->GetMaxStamina();
-	}
-	
-	InitAttributes();
+	// 레벨업에 따른 델타 스탯 상승 적용 (Instant Additive)
+	UpgradeAttributes(OldLevel, NewLevel);
     
 	// 레벨업 시 체력/마나 회복
-	if (AS)
+	if (AS && HeroData)
 	{
-		// 스탯 상승량 계산
-		float HealthIncrease = AS->GetMaxHealth() - OldMaxHealth;
-		float StaminaIncrease = AS->GetMaxStamina() - OldMaxStamina;
+		float HealthIncrease = 0.0f;
+		float StaminaIncrease = 0.0f;
 
-		// 상승량이 0보다 크면 현재 스탯에 더해줌
+		// 곡선 테이블을 로드하여 이전 레벨과 새 레벨의 기본 스탯 차이만 계산 (임시 버프 유실 방지)
+		UCurveTable* CurveTable = HeroData->StatCurveTable.LoadSynchronous();
+		if (CurveTable)
+		{
+			FName HP_RowName = FName(*HeroData->StatusRowName.ToString().Append(TEXT("_MaxHealth")));
+			if (FRealCurve* Curve = CurveTable->FindCurve(HP_RowName, FString()))
+			{
+				HealthIncrease = Curve->Eval(NewLevel) - Curve->Eval(OldLevel);
+			}
+
+			FName Stamina_RowName = FName(*HeroData->StatusRowName.ToString().Append(TEXT("_MaxStamina")));
+			if (FRealCurve* Curve = CurveTable->FindCurve(Stamina_RowName, FString()))
+			{
+				StaminaIncrease = Curve->Eval(NewLevel) - Curve->Eval(OldLevel);
+			}
+		}
+
+		// 상승량만큼 현재 체력/마나 회복
 		if (HealthIncrease > 0.0f)
 		{
 			AS->SetHealth(AS->GetHealth() + HealthIncrease);
@@ -967,6 +975,59 @@ void ABaseCharacter::InitAttributes()
 				CachedBaseAttackSpeed = ASCurve->Eval(1.0f);
 			}
 		}
+	}
+}
+
+void ABaseCharacter::UpgradeAttributes(float OldLevel, float NewLevel)
+{
+	if (!AbilitySystemComponent.IsValid() || !HeroData || !UpgradeStatusEffectClass) return;
+
+	UCurveTable* CurveTable = HeroData->StatCurveTable.LoadSynchronous();
+	if (!CurveTable) return;
+
+	FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+	Context.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(UpgradeStatusEffectClass, NewLevel, Context);
+
+	if (SpecHandle.IsValid())
+	{
+		auto SetStatDelta = [&](FGameplayTag AttributeTag, FString RowSuffix)
+		{
+			FName RowName = FName(*HeroData->StatusRowName.ToString().Append(RowSuffix));
+
+			FRealCurve* Curve = CurveTable->FindCurve(RowName, FString());
+			if (Curve)
+			{
+				float OldValue = Curve->Eval(OldLevel);
+				float NewValue = Curve->Eval(NewLevel);
+				float Delta = NewValue - OldValue;
+
+				// GE Spec 값 주입 (SetByCaller)
+				SpecHandle.Data->SetSetByCallerMagnitude(AttributeTag, Delta);
+			}
+		};
+
+		// 각 스탯별 레벨업 상승량(Delta) 주입
+		SetStatDelta(ProjectER::Status::MaxLevel, TEXT("_MaxLevel"));
+		SetStatDelta(ProjectER::Status::MaxXP, TEXT("_MaxXp"));
+		SetStatDelta(ProjectER::Status::MaxHealth, TEXT("_MaxHealth"));
+		SetStatDelta(ProjectER::Status::HealthRegen, TEXT("_HealthRegen"));
+		SetStatDelta(ProjectER::Status::MaxStamina, TEXT("_MaxStamina"));
+		SetStatDelta(ProjectER::Status::StaminaRegen, TEXT("_StaminaRegen"));
+		SetStatDelta(ProjectER::Status::AttackPower, TEXT("_AttackPower"));
+		SetStatDelta(ProjectER::Status::AttackSpeed, TEXT("_AttackSpeed"));
+		SetStatDelta(ProjectER::Status::AttackRange, TEXT("_AttackRange"));
+		SetStatDelta(ProjectER::Status::SkillAmp, TEXT("_SkillAmp"));
+		SetStatDelta(ProjectER::Status::CritChance, TEXT("_CritChance"));
+		SetStatDelta(ProjectER::Status::CritDamage, TEXT("_CritDamage"));
+		SetStatDelta(ProjectER::Status::Defense, TEXT("_Defense"));
+		SetStatDelta(ProjectER::Status::MoveSpeed, TEXT("_MoveSpeed"));
+		SetStatDelta(ProjectER::Status::CooldownReduction, TEXT("_CooldownReduction"));
+		SetStatDelta(ProjectER::Status::Tenacity, TEXT("_Tenacity"));
+
+		// 적용 (Instant Additive)
+		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 	}
 }
 
@@ -1750,6 +1811,7 @@ void ABaseCharacter::HandleDeath()
 		if (UBaseInventoryComponent* InvComp = FindComponentByClass<UBaseInventoryComponent>())
 		{
 			InvComp->ClearFoodHealEffects();
+			InvComp->ClearDrinkManaEffects();
 		}
 
 		if (AbilitySystemComponent.IsValid()) // 중복 사망 방지
@@ -1906,6 +1968,7 @@ void ABaseCharacter::HandleDown()
 		if (UBaseInventoryComponent* InvComp = FindComponentByClass<UBaseInventoryComponent>())
 		{
 			InvComp->ClearFoodHealEffects();
+			InvComp->ClearDrinkManaEffects();
 		}
 
 		if (AbilitySystemComponent.IsValid())

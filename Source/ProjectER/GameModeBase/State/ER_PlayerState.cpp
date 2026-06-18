@@ -1,6 +1,7 @@
 #include "ER_PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "AbilitySystemComponent.h"
+#include "CharacterSystem/GAS/ProjectERASC.h"
 #include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
 #include "CharacterSystem/Data/CharacterData.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -13,7 +14,7 @@ AER_PlayerState::AER_PlayerState()
 	bReplicates = true;
 
 	// ASC 생성 및 설정
-	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>("AbilitySystemComponent");
+	AbilitySystemComponent = CreateDefaultSubobject<UProjectERASC>("AbilitySystemComponent");
 	AbilitySystemComponent->SetIsReplicated(true); // ASC 상태 복제
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed); // ReplicationMode 설정
 

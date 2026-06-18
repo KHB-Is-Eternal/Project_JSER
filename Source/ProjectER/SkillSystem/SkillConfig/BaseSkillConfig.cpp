@@ -7,6 +7,7 @@
 #include "SkillSystem/GameAbility/InstantSkill.h"
 #include "SkillSystem/GameAbility/WatchTagAbility_Instant.h"
 #include "SkillSystem/GameAbility/WatchTagAbility_Accumulate.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 UBaseSkillConfig::UBaseSkillConfig()
 {

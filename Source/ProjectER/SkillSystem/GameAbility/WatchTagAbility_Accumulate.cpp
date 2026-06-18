@@ -3,7 +3,7 @@
 #include "WatchTagAbility_Accumulate.h"
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
 
-bool UWatchTagAbility_Accumulate::ProcessEventAndCheckCondition(const FGameplayEventData& Payload)
+bool UWatchTagAbility_Accumulate::ProcessEventAndCheckCondition(const FGameplayEventData& Payload, float& OutEventMagnitude)
 {
 	const UPassiveAccumulateSkillConfig* AccumConfig = Cast<UPassiveAccumulateSkillConfig>(PassiveConfig);
 	if (!IsValid(AccumConfig))
@@ -27,7 +27,17 @@ bool UWatchTagAbility_Accumulate::ProcessEventAndCheckCondition(const FGameplayE
 		return false;
 	}
 
-	// 임계치를 달성했습니다. 초과분 이월 여부에 따라 누적치를 처리합니다.
+	// 기획자가 에셋에서 설정한 옵션에 따라 훅으로 전달할 매그니튜드를 유연하게 결정합니다.
+	if (AccumConfig->MagnitudeType == EAccumulateMagnitudeType::TotalAccumulatedValue)
+	{
+		OutEventMagnitude = CurrentTotalValue;
+	}
+	else
+	{
+		OutEventMagnitude = Payload.EventMagnitude;
+	}
+
+	// 초과분 이월 여부에 따라 누적치를 처리합니다.
 	if (AccumConfig->bCarryOverExcess)
 	{
 		// 초과분만 남기고 임계치만큼 차감합니다.

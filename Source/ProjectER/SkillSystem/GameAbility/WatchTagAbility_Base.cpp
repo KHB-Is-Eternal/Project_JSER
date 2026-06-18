@@ -8,6 +8,7 @@
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "AbilitySystemGlobals.h"
 #include "SkillSystem/SkillDataAsset.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 UWatchTagAbility_Base::UWatchTagAbility_Base()
 {
@@ -37,6 +38,10 @@ void UWatchTagAbility_Base::OnGiveAbility(const FGameplayAbilityActorInfo* Actor
 				}
 			}
 
+			// 사망 태그 감지 델리게이트 등록 (부활 시 재활성화를 위함)
+			MyASC->RegisterGameplayTagEvent(ProjectER::State::Life::Death, EGameplayTagEventType::NewOrRemoved)
+				.AddUObject(this, &UWatchTagAbility_Base::OnDeathTagChanged, Spec.Handle);
+
 			MyASC->TryActivateAbility(Spec.Handle);
 		}
 	}
@@ -44,14 +49,21 @@ void UWatchTagAbility_Base::OnGiveAbility(const FGameplayAbilityActorInfo* Actor
 
 void UWatchTagAbility_Base::OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
 {
-	if (ActorInfo != nullptr && GrantedTriggerAbilityHandle.IsValid())
+	if (ActorInfo != nullptr)
 	{
 		UAbilitySystemComponent* const MyASC = ActorInfo->AbilitySystemComponent.Get();
 		if (MyASC != nullptr)
 		{
-			MyASC->ClearAbility(GrantedTriggerAbilityHandle);
+			// 사망 태그 감시 델리게이트 등록 해제
+			MyASC->RegisterGameplayTagEvent(ProjectER::State::Life::Death, EGameplayTagEventType::NewOrRemoved)
+				.RemoveAll(this);
+
+			if (GrantedTriggerAbilityHandle.IsValid())
+			{
+				MyASC->ClearAbility(GrantedTriggerAbilityHandle);
+				GrantedTriggerAbilityHandle = FGameplayAbilitySpecHandle();
+			}
 		}
-		GrantedTriggerAbilityHandle = FGameplayAbilitySpecHandle();
 	}
 
 	Super::OnRemoveAbility(ActorInfo, Spec);
@@ -143,9 +155,10 @@ void UWatchTagAbility_Base::OnEventReceived(FGameplayEventData Payload)
 	}
 
 	// 조건 달성 여부를 자식 클래스에게 위임합니다.
-	if (ProcessEventAndCheckCondition(Payload))
+	float FinalMagnitude = 0.0f;
+	if (ProcessEventAndCheckCondition(Payload, FinalMagnitude))
 	{
-		ExecuteTriggerAction(QueryActor);
+		ExecuteTriggerAction(QueryActor, FinalMagnitude);
 	}
 }
 
@@ -314,7 +327,7 @@ bool UWatchTagAbility_Base::CheckAttributeConditions(const FGameplayEventData& P
 	return true;
 }
 
-void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor)
+void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor, float EventMagnitude)
 {
 	if (!IsValid(PassiveConfig))
 	{
@@ -337,12 +350,12 @@ void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor)
 	}
 
 	// TriggerAbility 활성화 시도 후, TriggerEffects도 함께 적용
-	ApplyTriggerEffects(TargetActor);
+	ApplyTriggerEffects(TargetActor, EventMagnitude);
 }
 
-void UWatchTagAbility_Base::ApplyTriggerEffects(AActor* TargetActor)
+void UWatchTagAbility_Base::ApplyTriggerEffects(AActor* TargetActor, float EventMagnitude)
 {
-	if (PassiveConfig->TriggerEffects.IsEmpty() || TargetActor == nullptr)
+	if (PassiveConfig->Effects.IsEmpty() || TargetActor == nullptr)
 	{
 		return;
 	}
@@ -353,11 +366,33 @@ void UWatchTagAbility_Base::ApplyTriggerEffects(AActor* TargetActor)
 		return;
 	}
 
-	FGameplayEffectContextHandle ContextHandle = GetASC()->MakeEffectContext();
-	ContextHandle.AddInstigator(GetAvatar(), TargetActor);
-	ContextHandle.SetAbility(this);
+	// 훅에서 쓸 수 있도록 캐싱
+	CurrentEventMagnitude = EventMagnitude;
 
-	ApplyEffectToTargetInternal(TargetASC, PassiveConfig->TriggerEffects, ContextHandle);
+	// 부모의 함수를 원터치로 호출 (파라미터 추가 없음!)
+	// ContextHandle은 빈 값을 넘기면 내부에서 알아서 생성합니다.
+	ApplyEffectToTargetInternal(TargetASC, PassiveConfig->Effects, PassiveConfig->MagnitudeCalculators);
+}
+
+void UWatchTagAbility_Base::OnEffectSpecCreated(FGameplayEffectSpecHandle& SpecHandle) const
+{
+	if (IsValid(PassiveConfig) && PassiveConfig->SetByCallerTag.IsValid())
+	{
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(PassiveConfig->SetByCallerTag, CurrentEventMagnitude);
+	}
+}
+
+void UWatchTagAbility_Base::OnDeathTagChanged(const FGameplayTag Tag, int32 NewCount, FGameplayAbilitySpecHandle SpecHandle)
+{
+	// 사망 태그가 제거되었고(부활함), 현재 패시브가 비활성화 상태인 경우 재활성화
+	if (NewCount == 0 && !IsActive())
+	{
+		UAbilitySystemComponent* const MyASC = GetAbilitySystemComponentFromActorInfo();
+		if (MyASC != nullptr)
+		{
+			MyASC->TryActivateAbility(SpecHandle);
+		}
+	}
 }
 
 

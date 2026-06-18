@@ -9,7 +9,7 @@
 #include "ER_PlayerState.generated.h"
 
 
-class UAbilitySystemComponent;
+class UProjectERASC;
 class UBaseAttributeSet;
 
 
@@ -162,7 +162,7 @@ public:
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "GAS")
-	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
+	TObjectPtr<UProjectERASC> AbilitySystemComponent;
 
 	UPROPERTY(VisibleAnywhere, Category = "GAS")
 	TObjectPtr<UBaseAttributeSet> AttributeSet;

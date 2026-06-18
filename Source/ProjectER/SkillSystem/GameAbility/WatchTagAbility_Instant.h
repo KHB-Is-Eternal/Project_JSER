@@ -18,5 +18,5 @@ class PROJECTER_API UWatchTagAbility_Instant : public UWatchTagAbility_Base
 
 protected:
 	/** 이벤트가 수신되는 즉시 true를 반환하여 발동을 트리거합니다. */
-	virtual bool ProcessEventAndCheckCondition(const FGameplayEventData& Payload) override;
+	virtual bool ProcessEventAndCheckCondition(const FGameplayEventData& Payload, float& OutEventMagnitude) override;
 };

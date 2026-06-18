@@ -9,6 +9,16 @@
 class UUniformGridPanel;
 class UItemCatalogSlotWidget;
 class UBaseItemData;
+class UButton;
+
+UENUM(BlueprintType)
+enum class ECatalogFilter : uint8
+{
+	All            UMETA(DisplayName = "전체 아이템"),
+	Consumable     UMETA(DisplayName = "소비 아이템"),
+	Recovery       UMETA(DisplayName = "회복 아이템"),
+	Material       UMETA(DisplayName = "재료 아이템")
+};
 
 UCLASS()
 class PROJECTER_API UItemCatalogWidget : public UUserWidget
@@ -26,7 +36,31 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Catalog")
 	TSubclassOf<UItemCatalogSlotWidget> SlotWidgetClass;
 
+	// === Filter Buttons ===
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_FilterAll;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_FilterConsumable;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_FilterRecovery;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_FilterMaterial;
+
+public:
+	// 필터링 적용 함수
+	UFUNCTION(BlueprintCallable, Category = "Catalog")
+	void FilterItems(ECatalogFilter FilterType);
+
 private:
+	// 버튼 클릭 이벤트 바인딩
+	UFUNCTION() void OnClickFilterAll();
+	UFUNCTION() void OnClickFilterConsumable();
+	UFUNCTION() void OnClickFilterRecovery();
+	UFUNCTION() void OnClickFilterMaterial();
+
 	// 모든 아이템 데이터를 불러와 컨테이너에 추가하는 함수
-	void LoadAllItems();
+	void LoadAllItems(ECatalogFilter FilterType = ECatalogFilter::All);
 };

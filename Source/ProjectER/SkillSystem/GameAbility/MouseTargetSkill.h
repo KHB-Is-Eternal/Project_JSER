@@ -35,7 +35,7 @@ protected:
 	AActor* GetTargetUnderCursor();
 	bool IsInRange(AActor* Actor) const;
 	void RotateToTarget(AActor* Actor);
-	void ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets);
+	void ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators);
 	void CleanUpSkill();
 
 	UFUNCTION()
