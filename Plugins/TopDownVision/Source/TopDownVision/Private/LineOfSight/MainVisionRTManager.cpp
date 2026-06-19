@@ -6,6 +6,8 @@
 #include "Kismet/KismetRenderingLibrary.h"
 #include "Materials/MaterialParameterCollectionInstance.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 #include "TopDownVision/Public/LineOfSight/VisionComps/Vision_VisualComp.h"
 #include "LineOfSight/GPU/LOSStampPass.h"
@@ -44,7 +46,7 @@ void UMainVisionRTManager::InitializeMainVisionRTComp()
 
     GridVisionMap = NewObject<UGridVisionMap>(this);
     check(GridVisionMap);
-    GridVisionMap->Initialize(GridResolution, CameraVisionRange);
+    GridVisionMap->Initialize(GridResolution, FVector2D::ZeroVector, MapWorldExtent);
 
     // Cache pre-baked obstacle data from the world subsystem
     if (UWorldObstacleSubsystem* ObstacleSub = GetWorld()->GetSubsystem<UWorldObstacleSubsystem>())
@@ -69,16 +71,12 @@ void UMainVisionRTManager::InitializeMainVisionRTComp()
         }
     }
 
-    // MPC setup
+    // MPC setup (Static 1-time setup for Fog of War)
     MPCInstance = GetWorld()->GetParameterCollectionInstance(PostProcessMPC);
     if (MPCInstance)
     {
-        const FVector WorldLocation = GetOwner()
-            ? GetOwner()->GetActorLocation()
-            : FVector::ZeroVector;
-        MPCInstance->SetVectorParameterValue(MPCLocationParam,
-            FLinearColor(WorldLocation.X, WorldLocation.Y, WorldLocation.Z));
-        MPCInstance->SetScalarParameterValue(MPCVisibleRangeParam, CameraVisionRange);
+        MPCInstance->SetVectorParameterValue(MPCLocationParam, FLinearColor(0.f, 0.f, 0.f));
+        MPCInstance->SetScalarParameterValue(MPCVisibleRangeParam, MapWorldExtent);
     }
 
     UE_LOG(LOSVision, Log,
@@ -120,21 +118,19 @@ void UMainVisionRTManager::TickComponent(float DeltaTime, ELevelTick TickType, F
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	// Delay the MPC update to match the Render Thread Texture Upload latency (1 frame)
-	// This perfectly eliminates 1-frame jitter and static shadow sliding!
-	if (FramesUntilMPCUpdate > 0)
+	if (!ShouldRunClientLogic())
+		return;
+
+	// Periodic update for standing still / environmental changes
+	TimeSinceLastUpdate += DeltaTime;
+	if (TimeSinceLastUpdate >= UpdateInterval)
 	{
-		FramesUntilMPCUpdate--;
-		if (FramesUntilMPCUpdate == 0)
-		{
-			if (MPCInstance)
-			{
-				MPCInstance->SetVectorParameterValue(MPCLocationParam, 
-					FLinearColor(ReadyCameraCenter.X, ReadyCameraCenter.Y, ReadyCameraCenter.Z));
-			}
-		}
+		TimeSinceLastUpdate = 0.f;
+		UpdateCameraLOS();
 	}
 }
+
+
 
 void UMainVisionRTManager::UpdateCameraLOS()
 {
@@ -151,13 +147,6 @@ void UMainVisionRTManager::UpdateCameraLOS()
         {
             // Task is finished! Upload results to GPU
             GridVisionMap->UploadToGPU();
-
-            // Store the location where this texture was generated
-            const FVector2D TaskCenter = PendingGridTask->GetTask().GetWorldCenter();
-            ReadyCameraCenter = FVector(TaskCenter.X, TaskCenter.Y, GetOwner() ? GetOwner()->GetActorLocation().Z : 0.f);
-            // Tell the TickComponent to apply this location to the Material exactly 1 frame later
-            // (to match the UpdateTextureRegions Render Thread delay!)
-            FramesUntilMPCUpdate = 1;
 
             // Write the CPU Grid result directly to the legacy RTs so that hardcoded Editor materials continue to work
             if (UTexture2D* GridOutput = GridVisionMap->GetOutputTexture())
@@ -207,10 +196,10 @@ void UMainVisionRTManager::UpdateCameraLOS()
         TArray<UVision_VisualComp*> ActiveProviders;
         if (GetVisibleProviders(ActiveProviders))
         {
-            const FVector CameraCenter = GetOwner()->GetActorLocation();
-            
             TArray<FGridVisionProvider> GridProviders;
             GridProviders.Reserve(ActiveProviders.Num());
+
+            const FVector StaticMapCenter = FVector::ZeroVector;
 
             for (UVision_VisualComp* Provider : ActiveProviders)
             {
@@ -218,7 +207,7 @@ void UMainVisionRTManager::UpdateCameraLOS()
                     continue;
 
                 const bool bInRange = RectOverlapsWorld(
-                    CameraCenter, CameraVisionRange,
+                    StaticMapCenter, MapWorldExtent,
                     Provider->GetOwner()->GetActorLocation(), Provider->GetVisibleRange());
 
                 if (bInRange)
@@ -233,7 +222,7 @@ void UMainVisionRTManager::UpdateCameraLOS()
 
             // Start a new background task
             PendingGridTask = new FAsyncTask<FGridVisionAsyncTask>(
-                GridVisionMap, FVector2D(CameraCenter), MoveTemp(GridProviders));
+                GridVisionMap, UpdateInterval, TemporalBlendSpeed, MoveTemp(GridProviders));
             PendingGridTask->StartBackgroundTask();
         }
     }

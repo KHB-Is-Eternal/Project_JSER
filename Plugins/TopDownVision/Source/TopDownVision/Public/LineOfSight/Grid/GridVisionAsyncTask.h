@@ -24,25 +24,32 @@ class FGridVisionAsyncTask : public FNonAbandonableTask
 public:
 	FGridVisionAsyncTask(
 		UGridVisionMap* InGridMap,
-		const FVector2D& InWorldCenter,
+		float InDeltaTime,
+		float InBlendSpeed,
 		TArray<FGridVisionProvider>&& InProviders)
 		: GridMap(InGridMap)
-		, WorldCenter(InWorldCenter)
+		, DeltaTime(InDeltaTime)
+		, BlendSpeed(InBlendSpeed)
 		, Providers(MoveTemp(InProviders))
 	{
 	}
 
-	void DoWork();
+	void DoWork()
+	{
+		if (GridMap)
+		{
+			GridMap->UpdateGrid(DeltaTime, BlendSpeed, Providers);
+		}
+	}
 
 	FORCEINLINE TStatId GetStatId() const
 	{
 		RETURN_QUICK_DECLARE_CYCLE_STAT(FGridVisionAsyncTask, STATGROUP_ThreadPoolAsyncTasks);
 	}
 
-	const FVector2D& GetWorldCenter() const { return WorldCenter; }
-
 private:
 	UGridVisionMap* GridMap = nullptr;
-	FVector2D WorldCenter;
+	float DeltaTime = 0.f;
+	float BlendSpeed = 0.f;
 	TArray<FGridVisionProvider> Providers;
 };

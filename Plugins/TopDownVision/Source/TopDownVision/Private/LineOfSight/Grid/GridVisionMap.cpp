@@ -11,13 +11,15 @@
 //  Initialize
 // -------------------------------------------------------------------------- //
 
-void UGridVisionMap::Initialize(int32 InResolution, float InWorldExtent)
+void UGridVisionMap::Initialize(int32 InResolution, const FVector2D& InWorldCenter, float InWorldExtent)
 {
 	GridResolution = FMath::Max(8, InResolution);
 	WorldExtent = FMath::Max(1.0f, InWorldExtent);
+	WorldCenter = InWorldCenter;
 
 	const int32 TotalCells = GridResolution * GridResolution;
-	VisibilityGrid.SetNumZeroed(TotalCells);
+	TargetVisibilityGrid.SetNumZeroed(TotalCells);
+	CurrentVisibilityGrid.SetNumZeroed(TotalCells);
 	BlurredGrid.SetNumZeroed(TotalCells);
 	ColorGrid.SetNumZeroed(TotalCells);
 
@@ -133,22 +135,39 @@ void UGridVisionMap::CacheObstacleData(const TArray<FObstacleMaskTile>& Tiles)
 //  Grid update
 // -------------------------------------------------------------------------- //
 
-void UGridVisionMap::UpdateGrid(
-	const FVector2D& InWorldCenter,
-	const TArray<FGridVisionProvider>& Providers)
+void UGridVisionMap::UpdateGrid(float DeltaTime, float BlendSpeed, const TArray<FGridVisionProvider>& Providers)
 {
-	WorldCenter = InWorldCenter;
+	// Clear target grid
+	FMemory::Memzero(TargetVisibilityGrid.GetData(), TargetVisibilityGrid.Num());
 
-	// Clear grid
-	FMemory::Memzero(VisibilityGrid.GetData(), VisibilityGrid.Num());
-
-	// Compute visibility for each provider
+	// Compute target visibility for each provider
 	for (const FGridVisionProvider& Provider : Providers)
 	{
 		if (Provider.Alpha <= KINDA_SMALL_NUMBER)
 			continue;
 
 		ComputeProviderVisibility(Provider);
+	}
+
+	// Temporal Blending
+	const int32 NumCells = TargetVisibilityGrid.Num();
+	const float Alpha = FMath::Clamp(DeltaTime * BlendSpeed, 0.f, 1.f);
+
+	if (Alpha >= 1.0f - KINDA_SMALL_NUMBER || BlendSpeed <= 0.f)
+	{
+		// Instant snap
+		FMemory::Memcpy(CurrentVisibilityGrid.GetData(), TargetVisibilityGrid.GetData(), NumCells);
+	}
+	else
+	{
+		// Smooth Lerp
+		for (int32 i = 0; i < NumCells; ++i)
+		{
+			CurrentVisibilityGrid[i] = static_cast<uint8>(FMath::Lerp(
+				static_cast<float>(CurrentVisibilityGrid[i]), 
+				static_cast<float>(TargetVisibilityGrid[i]), 
+				Alpha));
+		}
 	}
 
 	ApplyBoxBlur();
@@ -204,7 +223,7 @@ void UGridVisionMap::ComputeProviderVisibility(const FGridVisionProvider& Provid
 
 			// Max blend — brightest provider wins
 			const int32 Idx = CellY * GridResolution + CellX;
-			VisibilityGrid[Idx] = FMath::Max(VisibilityGrid[Idx], Value);
+			TargetVisibilityGrid[Idx] = FMath::Max(TargetVisibilityGrid[Idx], Value);
 		}
 	}
 }
@@ -233,7 +252,7 @@ void UGridVisionMap::ApplyBoxBlur()
 
 					if (SX >= 0 && SX < Res && SY >= 0 && SY < Res)
 					{
-						Sum += VisibilityGrid[SY * Res + SX];
+						Sum += CurrentVisibilityGrid[SY * Res + SX];
 						++Count;
 					}
 				}

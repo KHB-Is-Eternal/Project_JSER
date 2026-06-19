@@ -79,8 +79,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	bool bDrawTextureRange = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	float CameraVisionRange = 2000.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	float MapWorldExtent = 20000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	float UpdateInterval = 0.033f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	UCanvasRenderTarget2D* CameraLocalRT = nullptr;
@@ -133,8 +136,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Vision")
 	UMaterialInstanceDynamic* LayeredLOSInterfaceMID = nullptr;
 
-	FVector ReadyCameraCenter = FVector::ZeroVector;
-	int32 FramesUntilMPCUpdate = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	float TemporalBlendSpeed = 5.0f;
+
+	float TimeSinceLastUpdate = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	FName LayeredLOSTextureParam = TEXT("RenderTarget");

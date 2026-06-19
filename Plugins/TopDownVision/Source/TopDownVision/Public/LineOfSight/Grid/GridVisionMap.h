@@ -42,15 +42,15 @@ class TOPDOWNVISION_API UGridVisionMap : public UObject
 public:
 
 	/** Allocate the grid and create the output texture. */
-	void Initialize(int32 InResolution, float InWorldExtent);
+	void Initialize(int32 InResolution, const FVector2D& InWorldCenter, float InWorldExtent);
 
 	/** Read pre-baked obstacle tile textures into CPU-side arrays.
 	 *  Call once after WorldObstacleSubsystem finishes loading tiles. */
 	void CacheObstacleData(const TArray<FObstacleMaskTile>& Tiles);
 
-	/** Recompute the visibility grid for the given camera center and providers.
-	 *  This is the heavy work — safe to call from a background thread (Phase 4). */
-	void UpdateGrid(const FVector2D& InWorldCenter, const TArray<FGridVisionProvider>& Providers);
+	/** Recompute the visibility grid for the providers.
+	 *  This is the heavy work — safe to call from a background thread. */
+	void UpdateGrid(float DeltaTime, float BlendSpeed, const TArray<FGridVisionProvider>& Providers);
 
 	/** Copy the blurred grid into OutputTexture. Must be called on the game thread. */
 	void UploadToGPU();
@@ -66,7 +66,8 @@ private:
 	FVector2D WorldCenter = FVector2D::ZeroVector;
 
 	// --- Grid data --- //
-	TArray<uint8> VisibilityGrid;
+	TArray<uint8> TargetVisibilityGrid;
+	TArray<uint8> CurrentVisibilityGrid;
 	TArray<uint8> BlurredGrid;
 	TArray<FColor> ColorGrid;
 
