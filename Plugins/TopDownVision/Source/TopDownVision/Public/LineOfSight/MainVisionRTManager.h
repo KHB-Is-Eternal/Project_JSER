@@ -88,32 +88,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	UCanvasRenderTarget2D* CameraLocalRT = nullptr;
 
-#pragma region Blur
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	UCanvasRenderTarget2D* FeatheredRT = nullptr;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	UMaterialInterface* FeatherOutMaterial = nullptr;
-
-	UPROPERTY(Transient)
-	UMaterialInstanceDynamic* FeatherMID = nullptr;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	UMaterialInterface* BlurMaterial = nullptr;
-
-	UPROPERTY(Transient)
-	UMaterialInstanceDynamic* BlurMID = nullptr;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Blur")
-	float BlurRadiusPercent = 0.03f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Blur")
-	int BlurNumSamples = 32;
-
-	FVector2D CanvasSize = FVector2D{512.f, 512.f};
-
-#pragma endregion
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	UMaterialParameterCollection* PostProcessMPC = nullptr;
@@ -138,6 +113,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
 	float TemporalBlendSpeed = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	float BlurSharpness = 3.0f;
 
 	float TimeSinceLastUpdate = 0.f;
 

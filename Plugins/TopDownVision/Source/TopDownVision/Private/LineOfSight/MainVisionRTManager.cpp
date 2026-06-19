@@ -181,7 +181,6 @@ void UMainVisionRTManager::UpdateCameraLOS()
 
                 // This takes < 0.1ms compared to the 13ms ApplyFeatheredBlurToRT
                 DrawToRT(CameraLocalRT);
-                DrawToRT(FeatheredRT);
             }
 
             delete PendingGridTask;
@@ -222,7 +221,7 @@ void UMainVisionRTManager::UpdateCameraLOS()
 
             // Start a new background task
             PendingGridTask = new FAsyncTask<FGridVisionAsyncTask>(
-                GridVisionMap, UpdateInterval, TemporalBlendSpeed, MoveTemp(GridProviders));
+                GridVisionMap, UpdateInterval, TemporalBlendSpeed, BlurSharpness, MoveTemp(GridProviders));
             PendingGridTask->StartBackgroundTask();
         }
     }

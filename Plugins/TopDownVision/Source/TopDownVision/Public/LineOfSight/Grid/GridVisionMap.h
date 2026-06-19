@@ -50,7 +50,7 @@ public:
 
 	/** Recompute the visibility grid for the providers.
 	 *  This is the heavy work — safe to call from a background thread. */
-	void UpdateGrid(float DeltaTime, float BlendSpeed, const TArray<FGridVisionProvider>& Providers);
+	void UpdateGrid(float DeltaTime, float BlendSpeed, float BlurSharpness, const TArray<FGridVisionProvider>& Providers);
 
 	/** Copy the blurred grid into OutputTexture. Must be called on the game thread. */
 	void UploadToGPU();
@@ -89,6 +89,6 @@ private:
 	FIntPoint WorldToGrid(const FVector2D& WorldPos) const;
 	FVector2D GridToWorld(int32 X, int32 Y) const;
 	uint8 SampleObstacle(const FVector2D& WorldPos) const;
-	void ComputeProviderVisibility(const FGridVisionProvider& Provider);
+	void ComputeProviderVisibility(const FGridVisionProvider& Provider, float BlurSharpness);
 	void ApplyBoxBlur();
 };

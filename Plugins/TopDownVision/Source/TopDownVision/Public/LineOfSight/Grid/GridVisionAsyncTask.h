@@ -26,10 +26,12 @@ public:
 		UGridVisionMap* InGridMap,
 		float InDeltaTime,
 		float InBlendSpeed,
+		float InBlurSharpness,
 		TArray<FGridVisionProvider>&& InProviders)
 		: GridMap(InGridMap)
 		, DeltaTime(InDeltaTime)
 		, BlendSpeed(InBlendSpeed)
+		, BlurSharpness(InBlurSharpness)
 		, Providers(MoveTemp(InProviders))
 	{
 	}
@@ -38,7 +40,7 @@ public:
 	{
 		if (GridMap)
 		{
-			GridMap->UpdateGrid(DeltaTime, BlendSpeed, Providers);
+			GridMap->UpdateGrid(DeltaTime, BlendSpeed, BlurSharpness, Providers);
 		}
 	}
 
@@ -51,5 +53,6 @@ private:
 	UGridVisionMap* GridMap = nullptr;
 	float DeltaTime = 0.f;
 	float BlendSpeed = 0.f;
+	float BlurSharpness = 0.f;
 	TArray<FGridVisionProvider> Providers;
 };
