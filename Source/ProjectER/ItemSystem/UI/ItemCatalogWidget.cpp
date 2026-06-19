@@ -7,6 +7,7 @@
 #include "Components/UniformGridPanel.h"
 #include "Components/UniformGridSlot.h"
 #include "Components/Button.h"
+#include "Components/TextBlock.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/UObjectIterator.h"
 
@@ -23,12 +24,37 @@ void UItemCatalogWidget::NativeConstruct()
 	if (Btn_FilterMaterial)
 		Btn_FilterMaterial->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickFilterMaterial);
 
+	if (Btn_PrevPage)
+		Btn_PrevPage->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickPrevPage);
+	if (Btn_NextPage)
+		Btn_NextPage->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickNextPage);
+
 	FilterItems(ECatalogFilter::All);
 }
 
 void UItemCatalogWidget::FilterItems(ECatalogFilter FilterType)
 {
-	LoadAllItems(FilterType);
+	CurrentFilter = FilterType;
+	CurrentPage = 0;
+	LoadAllItems(CurrentFilter);
+}
+
+void UItemCatalogWidget::OnClickPrevPage()
+{
+	if (CurrentPage > 0)
+	{
+		CurrentPage--;
+		LoadAllItems(CurrentFilter);
+	}
+}
+
+void UItemCatalogWidget::OnClickNextPage()
+{
+	if (CurrentPage < MaxPage)
+	{
+		CurrentPage++;
+		LoadAllItems(CurrentFilter);
+	}
 }
 
 void UItemCatalogWidget::OnClickFilterAll() { FilterItems(ECatalogFilter::All); }
@@ -94,16 +120,23 @@ void UItemCatalogWidget::LoadAllItems(ECatalogFilter FilterType)
 		}
 	}
 
-	int32 ItemCount = 0;
+	int32 TotalItems = FilteredItems.Num();
 	const int32 MaxItemsPerPage = 24; // 4x6 = 24
 	const int32 Columns = 4;
+
+	MaxPage = TotalItems > 0 ? (TotalItems - 1) / MaxItemsPerPage : 0;
+	CurrentPage = FMath::Clamp(CurrentPage, 0, MaxPage);
+
+	int32 StartIndex = CurrentPage * MaxItemsPerPage;
 
 	for (int32 i = 0; i < MaxItemsPerPage; ++i)
 	{
 		UBaseItemData* ItemData = nullptr;
-		if (i < FilteredItems.Num())
+		int32 ItemIndex = StartIndex + i;
+
+		if (ItemIndex < TotalItems)
 		{
-			ItemData = FilteredItems[i];
+			ItemData = FilteredItems[ItemIndex];
 		}
 
 		UItemCatalogSlotWidget* SlotWidget = CreateWidget<UItemCatalogSlotWidget>(this, SlotWidgetClass);
@@ -128,4 +161,23 @@ void UItemCatalogWidget::LoadAllItems(ECatalogFilter FilterType)
 	
 	// 전체 그리드 슬롯의 간격 설정
 	ItemGridContainer->SetSlotPadding(FMargin(5.f));
+
+	UpdatePaginationUI();
+}
+
+void UItemCatalogWidget::UpdatePaginationUI()
+{
+	if (Btn_PrevPage)
+	{
+		Btn_PrevPage->SetIsEnabled(CurrentPage > 0);
+	}
+	if (Btn_NextPage)
+	{
+		Btn_NextPage->SetIsEnabled(CurrentPage < MaxPage);
+	}
+	if (Text_PageInfo)
+	{
+		FString PageString = FString::Printf(TEXT("%d / %d"), CurrentPage + 1, MaxPage + 1);
+		Text_PageInfo->SetText(FText::FromString(PageString));
+	}
 }
