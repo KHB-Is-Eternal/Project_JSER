@@ -133,24 +133,38 @@ void UMainOcclusionPainter::DrawProviderArea()
     const float RTAspect     = RTWidth / RTHeight;
     const float AspectScale  = ScreenAspect / RTAspect;
 
+    // Initialize shared MID if batching is enabled
+    if (bUseBatchedRenderer && !IsValid(SharedBrushMID) && DefaultBrushMaterial)
+    {
+        SharedBrushMID = UMaterialInstanceDynamic::Create(DefaultBrushMaterial, this);
+    }
+
     for (FOcclusionBrushTarget& Target : Targets)//batch the targets occlusion brushes
     {
         if (!Target.IsValid()) continue;
 
-        if (!Target.IsMIDReady())
-            Target.InitializeMID(this, DefaultBrushMaterial);
+        // Alpha Culling: Skip drawing entirely if the target is invisible (e.g. out of Line of Sight)
+        if (Target.RevealAlpha <= KINDA_SMALL_NUMBER) continue;
 
-        if (!Target.IsMIDReady()) continue;
+        if (!bUseBatchedRenderer)
+        {
+            if (!Target.IsMIDReady())
+                Target.InitializeMID(this, DefaultBrushMaterial);
+
+            if (!Target.IsMIDReady()) continue;
+        }
 
         const FVector WorldPos    = Target.PrimitiveComp->GetComponentLocation();
+        
+        // Distance Culling
+        const float TargetDistance = FVector::Dist(FrustumParams.CameraLocation, WorldPos);
+        if (TargetDistance <= KINDA_SMALL_NUMBER || TargetDistance > MaxOcclusionDistance) continue;
+
         const float VisibleRadius = Target.GetVisibleRadius();
 
         FVector2D ScreenPos;
         if (!PlayerController->ProjectWorldLocationToScreen(WorldPos, ScreenPos))
             continue;
-
-        const float TargetDistance = FVector::Dist(FrustumParams.CameraLocation, WorldPos);
-        if (TargetDistance <= KINDA_SMALL_NUMBER) continue;
 
         // Compute size first so we can use it for the bounds margin
         const float NormalizedRadius = VisibleRadius /
@@ -174,16 +188,26 @@ void UMainOcclusionPainter::DrawProviderArea()
             ScreenUV.X * RTWidth  - BrushSizeRT_X * 0.5f,
             ScreenUV.Y * RTHeight - BrushSizeRT_Y * 0.5f);
 
-        Target.BrushMID->SetScalarParameterValue(RevealAlphaParam, Target.RevealAlpha);
+        const FMaterialRenderProxy* RenderProxy = nullptr;
 
-        Target.BrushMID->SetVectorParameterValue(
-            TEXT("TilePos"),
-            FLinearColor(BrushPos.X / RTWidth, BrushPos.Y / RTHeight, 0.f, 0.f));
-        Target.BrushMID->SetVectorParameterValue(
-            TEXT("TileSize"),
-            FLinearColor(BrushSizeRT_X / RTWidth, BrushSizeRT_Y / RTHeight, 0.f, 0.f));
+        if (bUseBatchedRenderer)
+        {
+            if (!IsValid(SharedBrushMID)) continue;
+            RenderProxy = SharedBrushMID->GetRenderProxy();
+        }
+        else
+        {
+            Target.BrushMID->SetScalarParameterValue(RevealAlphaParam, Target.RevealAlpha);
+            Target.BrushMID->SetVectorParameterValue(
+                TEXT("TilePos"),
+                FLinearColor(BrushPos.X / RTWidth, BrushPos.Y / RTHeight, 0.f, 0.f));
+            Target.BrushMID->SetVectorParameterValue(
+                TEXT("TileSize"),
+                FLinearColor(BrushSizeRT_X / RTWidth, BrushSizeRT_Y / RTHeight, 0.f, 0.f));
+            
+            RenderProxy = Target.BrushMID->GetRenderProxy();
+        }
 
-        const FMaterialRenderProxy* RenderProxy = Target.BrushMID->GetRenderProxy();
         if (!RenderProxy) continue;
 
         FCanvasTileItem TileItem(
@@ -194,6 +218,13 @@ void UMainOcclusionPainter::DrawProviderArea()
         TileItem.UV0 = FVector2D(0.f, 0.f);
         TileItem.UV1 = FVector2D(1.f, 1.f);
         TileItem.BlendMode = SE_BLEND_Additive;
+
+        // Pass RevealAlpha via Vertex Color Alpha if using batched renderer
+        if (bUseBatchedRenderer)
+        {
+            TileItem.SetColor(FLinearColor(1.f, 1.f, 1.f, Target.RevealAlpha));
+        }
+
         Canvas->DrawItem(TileItem);
     }
 

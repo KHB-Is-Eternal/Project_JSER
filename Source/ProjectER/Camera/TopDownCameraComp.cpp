@@ -243,6 +243,13 @@ void UTopDownCameraComp::InitializeCompRequirements()
 
 void UTopDownCameraComp::DrawUpdates(float DeltaSecond)// delta second not sued for now, but just in case
 {
+	// Fail-safe: Prevent the entire rendering logic from running multiple times in the exact same frame
+	if (LastDrawUpdatesFrame == GFrameCounter)
+	{
+		return;
+	}
+	LastDrawUpdatesFrame = GFrameCounter;
+
 	TimeSinceLastVisionUpdate += DeltaSecond;
 
 	// Limit rendering to 30 FPS to save GPU

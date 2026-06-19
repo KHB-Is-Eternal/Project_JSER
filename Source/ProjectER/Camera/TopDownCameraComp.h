@@ -164,6 +164,10 @@ protected:
 	float VisionUpdateInterval = 0.033333f;
 
 private:
+	// Prevents DrawUpdates from executing multiple times in a single frame
+	uint64 LastDrawUpdatesFrame = 0;
+
+private:
 	FVector2D PendingKeyInput = FVector2D::ZeroVector;
 	FVector FreeCamPivotLocation = FVector::ZeroVector;
 	FVector SmoothedFollowLocation = FVector::ZeroVector;

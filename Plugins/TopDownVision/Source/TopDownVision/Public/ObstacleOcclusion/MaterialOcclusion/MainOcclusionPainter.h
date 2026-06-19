@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -48,7 +48,24 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="OcclusionPainter")
     FName RevealAlphaParam = TEXT("RevealAlpha");
 
+    // ── Batching & Culling Options ────────────────────────────────────────
+
+    // If true, utilizes a single SharedBrushMID to batch render all targets.
+    // NOTE: Requires material asset to use Vertex Color Alpha for RevealAlpha
+    // and Local UVs instead of TilePos/TileSize parameters.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="OcclusionPainter|Optimization")
+    bool bUseBatchedRenderer = true;
+
+    // The maximum distance at which a target will be drawn to the occlusion RT.
+    // Targets beyond this distance from the camera will be culled to save performance.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="OcclusionPainter|Optimization")
+    float MaxOcclusionDistance = 6000.f;
+
 private:
+
+    // Single shared Material Instance Dynamic used for batching all targets
+    UPROPERTY(Transient)
+    TObjectPtr<UMaterialInstanceDynamic> SharedBrushMID;
 
     void DrawProviderArea();
     bool RefreshFrustumParams();
