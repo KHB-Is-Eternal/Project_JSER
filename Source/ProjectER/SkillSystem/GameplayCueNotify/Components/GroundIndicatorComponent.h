@@ -30,6 +30,9 @@ public:
 	/** 내부 메쉬 컴포넌트의 머티리얼을 설정합니다. */
 	void SetIndicatorMaterial(int32 ElementIndex, UMaterialInterface* Material);
 
+	/** 내부 메쉬 컴포넌트의 머티리얼을 반환합니다. */
+	UMaterialInterface* GetIndicatorMaterial(int32 ElementIndex) const;
+
 	/** 내부 메쉬 컴포넌트의 월드 스케일을 설정합니다. */
 	void SetIndicatorScale(const FVector& NewScale);
 

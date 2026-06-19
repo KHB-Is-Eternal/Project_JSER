@@ -348,40 +348,56 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 	// CanvasExtent(반지름) 기준 50으로 나누어 스케일을 맞춥니다.
 	CollisionIndicatorComp->SetIndicatorScale(FVector(CanvasExtent.X / 50.0f, CanvasExtent.Y / 50.0f, 1.0f));
 
-	// 6. 동적 머터리얼 세팅 (강제 덮어쓰기 방식)
-	static UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KHB/M_RangeDecal.M_RangeDecal"));
+	// 6. 동적 머터리얼 세팅
+	UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KHB/M_RangeDecal.M_RangeDecal"));
 	if (BaseMaterial)
 	{
-		UMaterialInstanceDynamic* DynMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
-		CollisionIndicatorComp->SetIndicatorMaterial(0, DynMaterial);
-
-		DynMaterial->SetVectorParameterValue(TEXT("Color"), TargetColor);
-		DynMaterial->SetScalarParameterValue(TEXT("ShapeType"), static_cast<float>(ShapeType));
-		DynMaterial->SetVectorParameterValue(TEXT("ShapeExtent"), FLinearColor(Shape3DExtent.X, Shape3DExtent.Y, Shape3DExtent.Z, 0.0f));
-		DynMaterial->SetVectorParameterValue(TEXT("CanvasExtent"), FLinearColor(CanvasExtent.X, CanvasExtent.Y, 0.0f, 0.0f));
-		DynMaterial->SetVectorParameterValue(TEXT("DecalLocalY"), FLinearColor(DecalLocalY.X, DecalLocalY.Y, DecalLocalY.Z, 0.0f));
-		DynMaterial->SetVectorParameterValue(TEXT("DecalLocalZ"), FLinearColor(DecalLocalZ.X, DecalLocalZ.Y, DecalLocalZ.Z, 0.0f));
-		DynMaterial->SetScalarParameterValue(TEXT("SpawnTime"), GetWorld()->GetTimeSeconds());
-
-		float FadeDuration = 2.0f;
-		if (const USummonRangeBaseGEC* SummonGEC = Cast<USummonRangeBaseGEC>(GetSourceObject()))
+		UMaterialInstanceDynamic* DynMaterial = nullptr;
+		if (!bIsNewComponent && CollisionIndicatorComp)
 		{
-			FadeDuration = SummonGEC->LifeSpan;
+			DynMaterial = Cast<UMaterialInstanceDynamic>(CollisionIndicatorComp->GetIndicatorMaterial(0));
 		}
-		else
+
+		if (!DynMaterial || DynMaterial->Parent != BaseMaterial)
 		{
-			float Lifespan = GetLifeSpan();
-			if (Lifespan > 0.0f)
+			// [Fix] UE5 에디터 크래시(ObjectCacheEventSink)를 우회하기 위해 Outer로 GetTransientPackage()를 전달합니다.
+			DynMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, GetTransientPackage());
+			if (DynMaterial && CollisionIndicatorComp)
 			{
-				FadeDuration = Lifespan;
+				CollisionIndicatorComp->SetIndicatorMaterial(0, DynMaterial);
 			}
 		}
 
-		if (FadeDuration <= 0.0f)
+		if (DynMaterial)
 		{
-			FadeDuration = 10.0f;
+			DynMaterial->SetVectorParameterValue(TEXT("Color"), TargetColor);
+			DynMaterial->SetScalarParameterValue(TEXT("ShapeType"), static_cast<float>(ShapeType));
+			DynMaterial->SetVectorParameterValue(TEXT("ShapeExtent"), FLinearColor(Shape3DExtent.X, Shape3DExtent.Y, Shape3DExtent.Z, 0.0f));
+			DynMaterial->SetVectorParameterValue(TEXT("CanvasExtent"), FLinearColor(CanvasExtent.X, CanvasExtent.Y, 0.0f, 0.0f));
+			DynMaterial->SetVectorParameterValue(TEXT("DecalLocalY"), FLinearColor(DecalLocalY.X, DecalLocalY.Y, DecalLocalY.Z, 0.0f));
+			DynMaterial->SetVectorParameterValue(TEXT("DecalLocalZ"), FLinearColor(DecalLocalZ.X, DecalLocalZ.Y, DecalLocalZ.Z, 0.0f));
+			DynMaterial->SetScalarParameterValue(TEXT("SpawnTime"), GetWorld()->GetTimeSeconds());
+
+			float FadeDuration = 2.0f;
+			if (const USummonRangeBaseGEC* SummonGEC = Cast<USummonRangeBaseGEC>(GetSourceObject()))
+			{
+				FadeDuration = SummonGEC->LifeSpan;
+			}
+			else
+			{
+				float Lifespan = GetLifeSpan();
+				if (Lifespan > 0.0f)
+				{
+					FadeDuration = Lifespan;
+				}
+			}
+
+			if (FadeDuration <= 0.0f)
+			{
+				FadeDuration = 10.0f;
+			}
+			DynMaterial->SetScalarParameterValue(TEXT("FadeDuration"), FadeDuration);
 		}
-		DynMaterial->SetScalarParameterValue(TEXT("FadeDuration"), FadeDuration);
 	}
 
 	// 7. 부착 및 렌더링 활성화
