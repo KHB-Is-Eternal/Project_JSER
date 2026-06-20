@@ -63,6 +63,7 @@ ABaseMonster::ABaseMonster()
 	HitBoxComp->SetupAttachment(RootComponent);
 	HitBoxComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	HitBoxComp->SetCollisionProfileName(TEXT("Spectator"));
+	HitBoxComp->SetGenerateOverlapEvents(false); // [최적화] 레이캐스트/커서 감지 전용이므로 오버랩 연산 제거
 	HitBoxComp->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (마우스 타겟팅 감지)
 	HitBoxComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
 

@@ -201,6 +201,8 @@ ABaseCharacter::ABaseCharacter()
 
 	MinimapIconMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	MinimapLineMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	MinimapIconMesh->SetGenerateOverlapEvents(false); // [최적화] 불필요한 오버랩 연산 제거
+	MinimapLineMesh->SetGenerateOverlapEvents(false);
 
 	// HP Bar 생성
 	HP_MP_BarWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("HPBarWidget"));
