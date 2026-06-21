@@ -6,6 +6,7 @@
 #include "GameplayTagContainer.h"
 #include "CharacterSystem/Interface/TargetableInterface.h"
 #include "Monster/Data/MonsterTags.h"
+#include "SignificanceManager.h"
 #include "BaseMonster.generated.h"
 
 class UGameplayAbility;
@@ -68,7 +69,10 @@ protected:
 	virtual void PossessedBy(AController* newController) override;
 
 	virtual void BeginPlay() override;
-	
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	static float EvaluateSignificance(USignificanceManager::FManagedObjectInfo* ObjectInfo, const FTransform& Viewpoint);
+	static void PostEvaluateSignificance(USignificanceManager::FManagedObjectInfo* ObjectInfo, float OldSignificance, float NewSignificance, bool bFinal);
 
 private:
 	// 이동 속도 변경값 적용

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
@@ -74,6 +74,8 @@ class PROJECTER_API AER_InGameMode : public AGameModeBase
 public:
 	AER_InGameMode();
 	
+	virtual void Tick(float DeltaSeconds) override;
+
 	virtual void BeginPlay() override;
 	virtual void PostSeamlessTravel() override;
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
@@ -159,5 +161,10 @@ private:
 	/** 재접속 대기 제한 시간 (초) */
 	UPROPERTY(EditDefaultsOnly, Category = "Reconnect")
 	float ReconnectTimeoutSeconds = 60.0f;
+
+	// ── Optimization ──
+	float SignificanceUpdateTimer = 0.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Optimization")
+	float SignificanceUpdateInterval = 0.0333f; // 기본값 약 30FPS 제한
 };
 

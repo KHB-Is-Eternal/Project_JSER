@@ -1,5 +1,8 @@
 #include "Monster/BaseMonster.h"
 
+#include "SignificanceManager.h"
+#include "DrawDebugHelpers.h"
+
 #include "Monster/GAS/AttributeSet/BaseMonsterAttributeSet.h"
 #include "Monster/Data/MonsterDataAsset.h"
 #include "Monster/Data/BaseMonsterTableRow.h"
@@ -164,6 +167,19 @@ void ABaseMonster::BeginPlay()
 	{
 		StartLocation = GetActorLocation();
 		StartRotator = GetActorRotation();
+
+		// [최적화] Significance Manager 등록 (서버 전용)
+		USignificanceManager* SignificanceManager = USignificanceManager::Get(GetWorld());
+		if (SignificanceManager)
+		{
+			SignificanceManager->RegisterObject(
+				this, 
+				FName("MonsterSignificance"), 
+				&ABaseMonster::EvaluateSignificance, 
+				USignificanceManager::EPostSignificanceType::Sequential, 
+				&ABaseMonster::PostEvaluateSignificance
+			);
+		}
 	}
 
 	if (GetNetMode() != NM_DedicatedServer)
@@ -174,6 +190,83 @@ void ABaseMonster::BeginPlay()
 	}
 }
 
+void ABaseMonster::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// [최적화] 메모리 누수 방지용 등록 해제
+	if (HasAuthority())
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (USignificanceManager* SignificanceManager = USignificanceManager::Get(World))
+			{
+				SignificanceManager->UnregisterObject(this);
+			}
+		}
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+float ABaseMonster::EvaluateSignificance(USignificanceManager::FManagedObjectInfo* ObjectInfo, const FTransform& Viewpoint)
+{
+	ABaseMonster* Monster = Cast<ABaseMonster>(ObjectInfo->GetObject());
+	if (!Monster) return 0.0f;
+
+	UWorld* World = Monster->GetWorld();
+	if (!World) return 0.0f;
+
+	// Significance Manager가 ER_InGameMode에서 넘겨준 플레이어들의 Transform(Viewpoint)마다 이 함수를 호출해줍니다.
+	// 따라서 여기서 모든 플레이어를 다시 순회할 필요 없이, 파라미터로 들어온 Viewpoint와의 거리만 재면 됩니다!
+	float DistSq = FVector::DistSquared(Monster->GetActorLocation(), Viewpoint.GetLocation());
+
+	// 3000 언리얼 유닛 (거리의 제곱 = 9,000,000)
+	if (DistSq > 9000000.0f)
+	{
+		return 0.0f; // 너무 멈 (비활성)
+	}
+	return 1.0f; // 가까움 (활성)
+}
+
+void ABaseMonster::PostEvaluateSignificance(USignificanceManager::FManagedObjectInfo* ObjectInfo, float OldSignificance, float NewSignificance, bool bFinal)
+{
+	ABaseMonster* Monster = Cast<ABaseMonster>(ObjectInfo->GetObject());
+	if (!Monster) return;
+
+	// 중요도가 변했을 때만 로직 실행
+	if (OldSignificance != NewSignificance)
+	{
+		bool bIsActive = (NewSignificance > 0.0f);
+		
+		if (UCharacterMovementComponent* MoveComp = Monster->GetCharacterMovement())
+		{
+			MoveComp->SetComponentTickEnabled(bIsActive);
+		}
+
+		if (USkeletalMeshComponent* MeshComp = Monster->GetMesh())
+		{
+			MeshComp->SetComponentTickEnabled(bIsActive);
+		}
+
+		if (UAbilitySystemComponent* ASC = Monster->GetAbilitySystemComponent())
+		{
+			ASC->SetComponentTickEnabled(bIsActive);
+		}
+
+		if (Monster->HPBarWidgetComp)
+		{
+			Monster->HPBarWidgetComp->SetComponentTickEnabled(bIsActive);
+		}
+
+		// 플러그인 의존성을 피하기 위해 런타임에 클래스 이름으로 찾아서 틱을 끕니다.
+		for (UActorComponent* Comp : Monster->GetComponents())
+		{
+			if (Comp && Comp->GetClass()->GetName().Contains(TEXT("FoliageRTInvoker")))
+			{
+				Comp->SetComponentTickEnabled(bIsActive);
+			}
+		}
+	}
+}
 
 void ABaseMonster::InitMonsterData(FPrimaryAssetId MonsterAssetId, float Level)
 {

@@ -1,4 +1,4 @@
-﻿#include "GameModeBase/GameMode/ER_InGameMode.h"
+#include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Respawn/ER_RespawnSubsystem.h"
@@ -12,6 +12,7 @@
 #include "GameFramework/GameSession.h"
 #include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h"
 #include "Engine/GameInstance.h"
+#include "SignificanceManager.h"
 
 #include "Monster/BaseMonster.h"
 
@@ -83,7 +84,48 @@ void AER_InGameMode::BeginPlay()
 
 AER_InGameMode::AER_InGameMode()
 {
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+
 	bUseSeamlessTravel = true;
+}
+
+void AER_InGameMode::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// 최적화: 매 프레임 연산하지 않고 설정된 주기(기본 30FPS)마다 한 번씩만 연산합니다.
+	SignificanceUpdateTimer += DeltaSeconds;
+	if (SignificanceUpdateTimer >= SignificanceUpdateInterval)
+	{
+		SignificanceUpdateTimer = 0.f;
+
+		if (UWorld* World = GetWorld())
+		{
+			if (USignificanceManager* SignificanceManager = USignificanceManager::Get(World))
+			{
+				TArray<FTransform> TransformArray;
+
+				// 접속해 있는 모든 플레이어 폰의 위치를 수집하여 Significance 판단 기준(Viewpoint)으로 사용합니다.
+				for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+				{
+					if (APlayerController* PC = It->Get())
+					{
+						if (APawn* PlayerPawn = PC->GetPawn())
+						{
+							TransformArray.Add(PlayerPawn->GetTransform());
+						}
+					}
+				}
+
+				// 관전 상태이거나 아직 스폰되지 않아 폰이 하나도 없는 경우에는 계산하지 않습니다.
+				if (TransformArray.Num() > 0)
+				{
+					SignificanceManager->Update(TArrayView<FTransform>(TransformArray));
+				}
+			}
+		}
+	}
 }
 
 void AER_InGameMode::PostSeamlessTravel()
