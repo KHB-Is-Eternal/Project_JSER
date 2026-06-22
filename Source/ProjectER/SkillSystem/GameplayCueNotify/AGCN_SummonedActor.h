@@ -9,9 +9,9 @@ class UAudioComponent;
 class UProjectileMovementComponent;
 class USkillNiagaraSpawnConfig;
 class USkillSoundSpawnConfig;
-class UShapeComponent;
 class UDecalComponent;
 class UTexture2D;
+class UVision_VisualComp;
 
 /**
  * 소환물 비주얼을 담당하며 예측 키를 통해 판정 액터와 동기화되는 GCN 액터
@@ -33,14 +33,14 @@ protected:
 	void HandleSummonedVfx(const FGameplayCueParameters& Parameters);
 
 	/** GEC 데이터로부터 속성 초기화 */
-	void InitializeFromGEC(const UObject* SourceObject);
+	void InitializeFromGEC(const UObject* SourceObject, const FGameplayCueParameters& Parameters);
 
 	/** Parameters와 Context로부터 실제 시전자를 찾아 반환합니다. */
 	AActor* GetActualInstigator(const FGameplayCueParameters& Parameters) const;
 
 protected:
 	/** 나이아가라 컴포넌트 초기화 및 재생 */
-	void SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig);
+	void SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig, const FGameplayCueParameters& Parameters);
 
 	/** 오디오 컴포넌트 초기화 및 재생 */
 	void SetupSfxComponent(const USkillSoundSpawnConfig* SoundConfig);
@@ -62,6 +62,10 @@ public:
 	/** 데칼 메쉬 컴포넌트: 범위나 경로를 지면에 그려주는 역할 (스스로 지면을 찾아갑니다) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER|GameplayCue|Component")
 	TObjectPtr<class UGroundIndicatorComponent> CollisionIndicatorComp;
+
+	/** 시야(Fog of War) 판정을 받기 위한 센서 컴포넌트 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER|Vision")
+	TObjectPtr<UVision_VisualComp> VisionVisualComp;
 
 
 

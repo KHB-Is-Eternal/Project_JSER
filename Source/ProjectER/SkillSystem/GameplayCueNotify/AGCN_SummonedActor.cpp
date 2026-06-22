@@ -11,11 +11,14 @@
 #include "SkillSystem/Interfaces/SkillVisualDataProvider.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
-#include "Components/AudioComponent.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillVfxCullingHelper.h"
+#include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnHelper.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Components/ShapeComponent.h"
+#include "Engine/World.h"
+#include "LineOfSight/VisionComps/Vision_VisualComp.h"
 #include "Components/SphereComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -41,6 +44,8 @@ AGCN_SummonedActor::AGCN_SummonedActor()
 	MovementComponent->bAutoActivate = false;
 	MovementComponent->bRotationFollowsVelocity = true;
 	MovementComponent->ProjectileGravityScale = 0.0f;
+
+	VisionVisualComp = CreateDefaultSubobject<UVision_VisualComp>(TEXT("VisionVisualComp"));
 }
 
 bool AGCN_SummonedActor::OnExecute_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters)
@@ -122,10 +127,10 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 	}
 
 	// [Fix] 중복 체크를 통과한 경우에만 실제 비주얼/오디오 초기화 수행 (중복 재생 방지)
-	InitializeFromGEC(Parameters.SourceObject.Get());
+	InitializeFromGEC(Parameters.SourceObject.Get(), Parameters);
 }
 
-void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
+void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject, const FGameplayCueParameters& Parameters)
 {
 	if (!SourceObject) return;
 	
@@ -135,7 +140,7 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 	if (const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(SourceObject))
 	{
 		// 1. 비주얼(VFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
-		SetupVfxComponent(VisualSource->GetAGCN_NiagaraConfig());
+		SetupVfxComponent(VisualSource->GetAGCN_NiagaraConfig(), Parameters);
 
 		// 2. 사운드(SFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
 		SetupSfxComponent(VisualSource->GetAGCN_SoundConfig());
@@ -165,15 +170,42 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 	}
 }
 
-void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig)
+void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig, const FGameplayCueParameters& Parameters)
 {
 	if (!NiagaraConfig)
 	{
 		return;
 	}
 
+	// [Optimization] 전역 시야 및 거리 최적화 판별
+	// 타겟 액터에 부착된 형태라면 타겟 액터의 시야를 따라가고, 바닥에 깔리는 장판이라면 소환물 본인(this)의 시야를 따라갑니다.
+	AActor* VisionTarget = CachedTargetActor.IsValid() ? CachedTargetActor.Get() : this;
+	
+	const EVfxCullState CullState = USkillVfxCullingHelper::CheckVfxCulling(VisionTarget, Parameters, true);
+	
+	if (CullState == EVfxCullState::SkipSpawn)
+	{
+		return; // 단발성이면서 시야 밖이면 아예 스폰하지 않음
+	}
+
 	// [Refactor] 전역 헬퍼를 사용하여 VFX 생성 및 설정 통합
 	VfxComponent = SkillNiagaraSpawnHelper::SpawnNiagara(GetWorld(), NiagaraConfig, GetActorTransform(), this);
+
+	if (IsValid(VfxComponent))
+	{
+		if (CullState == EVfxCullState::SpawnHidden)
+		{
+			VfxComponent->SetVisibility(false);
+		}
+
+		if (CullState == EVfxCullState::SpawnAndTrackVision || CullState == EVfxCullState::SpawnHidden)
+		{
+			if (UVisionParticleManagerSubsystem* VisionSubsystem = GetWorld()->GetSubsystem<UVisionParticleManagerSubsystem>())
+			{
+				VisionSubsystem->RegisterParticle(VfxComponent, VisionTarget);
+			}
+		}
+	}
 }
 
 void AGCN_SummonedActor::SetupSfxComponent(const USkillSoundSpawnConfig* SoundConfig)
