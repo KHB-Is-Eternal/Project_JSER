@@ -148,5 +148,21 @@ protected:
 	TObjectPtr<UGameplayEffect> DynamicCostGE;
 
 protected:
+	UPROPERTY()
+	FTimerHandle FallbackEndTimerHandle;
+
+	UPROPERTY()
+	TArray<FTimerHandle> FallbackActiveTimerHandles;
+
+	UPROPERTY()
+	int32 MaxExpectedActiveCount = 0;
+
+	UPROPERTY()
+	bool bHasFallbackTriggeredActive = false;
+
+	void SetupFallbackTimers();
+	void ClearFallbackTimers();
+	void Fallback_TriggerActiveTag(int32 TargetPhaseIndex);
+
 	void SetWaitEventBackswingTag();
 };
