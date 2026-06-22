@@ -96,7 +96,7 @@ void UGroundIndicatorComponent::EnsureIndicatorMeshCompExists()
 			IndicatorMeshComp->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 			
 			// 기본 데칼용 메쉬 로드 및 설정 (생성자 외부이므로 LoadObject 사용)
-			static UStaticMesh* PlaneMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
+			UStaticMesh* PlaneMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
 			if (PlaneMesh)
 			{
 				IndicatorMeshComp->SetStaticMesh(PlaneMesh);
@@ -123,6 +123,15 @@ void UGroundIndicatorComponent::SetIndicatorMaterial(int32 ElementIndex, UMateri
 	{
 		IndicatorMeshComp->SetMaterial(ElementIndex, Material);
 	}
+}
+
+UMaterialInterface* UGroundIndicatorComponent::GetIndicatorMaterial(int32 ElementIndex) const
+{
+	if (IndicatorMeshComp)
+	{
+		return IndicatorMeshComp->GetMaterial(ElementIndex);
+	}
+	return nullptr;
 }
 
 void UGroundIndicatorComponent::SetIndicatorScale(const FVector& NewScale)

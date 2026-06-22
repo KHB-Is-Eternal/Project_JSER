@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -160,8 +160,18 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Camera|State")
 	bool bIsCameraLocked = true;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Camera|Settings", meta=(ToolTip="Interval in seconds for Vision updates (e.g. 0.0333 for 30 FPS). 0.0 means uncapped.", AllowPrivateAccess = "true"))
+	float VisionUpdateInterval = 0.033333f;
+
+private:
+	// Prevents DrawUpdates from executing multiple times in a single frame
+	uint64 LastDrawUpdatesFrame = 0;
+
 private:
 	FVector2D PendingKeyInput = FVector2D::ZeroVector;
 	FVector FreeCamPivotLocation = FVector::ZeroVector;
 	FVector SmoothedFollowLocation = FVector::ZeroVector;
+
+	// For limiting Vision updates to 30 FPS
+	float TimeSinceLastVisionUpdate = 0.f;
 };

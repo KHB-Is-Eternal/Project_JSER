@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "LineOfSight/Management/Subsystem/LOSRequirementPoolSubsystem.h"
 
@@ -228,8 +228,6 @@ void ULOSRequirementPoolSubsystem::BindSlotToProvider(FLOSStampPoolSlot& Slot, U
             }
         }
     }
-
-    Provider->OnPoolSlotAcquired(Slot);
 }
 
 void ULOSRequirementPoolSubsystem::UnbindSlotFromProvider(FLOSStampPoolSlot& Slot)
@@ -245,8 +243,6 @@ void ULOSRequirementPoolSubsystem::UnbindSlotFromProvider(FLOSStampPoolSlot& Slo
             if (UVisibilityMeshComp* MeshComp = Provider->GetVisibilityMeshComp())
                 MeshComp->ClearPoolMIDs();
         }
-
-        Provider->OnPoolSlotReleased();
     }
 }
 

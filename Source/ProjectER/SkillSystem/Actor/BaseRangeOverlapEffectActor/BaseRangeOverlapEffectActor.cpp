@@ -326,7 +326,7 @@ void ABaseRangeOverlapEffectActor::ApplyEffectsToTarget(AActor* TargetActor)
 	}
 
 	// VFX
-	if (HitTargetVfxCueParameters.OriginalTag.IsValid())
+	if (bSuccessApplyGE && HitTargetVfxCueParameters.OriginalTag.IsValid())
 	{
 		FGameplayCueParameters CueParameters = HitTargetVfxCueParameters;
 		CueParameters.Location = TargetActor->GetActorLocation();
@@ -340,7 +340,7 @@ void ABaseRangeOverlapEffectActor::ApplyEffectsToTarget(AActor* TargetActor)
 	}
 
 	// Sound
-	if (HitTargetSoundCueParameters.OriginalTag.IsValid())
+	if (bSuccessApplyGE && HitTargetSoundCueParameters.OriginalTag.IsValid())
 	{
 		FGameplayCueParameters CueParameters = HitTargetSoundCueParameters;
 		CueParameters.Location = TargetActor->GetActorLocation();

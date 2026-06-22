@@ -46,4 +46,8 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UMaterialInstanceDynamic> DecayMID;
+
+    // For limiting RT updates to 30 FPS
+    float TimeSinceLastUpdate = 0.f;
+    const float UpdateInterval = 1.0f / 30.0f; // 30 FPS Limit
 };

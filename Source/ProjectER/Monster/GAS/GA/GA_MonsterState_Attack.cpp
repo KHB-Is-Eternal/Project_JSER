@@ -132,7 +132,7 @@ void UGA_MonsterState_Attack::OnAttackHitEventReceived(FGameplayEventData Payloa
 		return;
 	}
 
-	SpecHandle.Data.Get()->DynamicGrantedTags.AddTag(ProjectER::Event::Action::Hit::BasicAttack);
+	SpecHandle.Data.Get()->DynamicGrantedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit.BasicAttack")));
 
 	ContextHandle.AddInstigator(Monster, Monster);
 	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
