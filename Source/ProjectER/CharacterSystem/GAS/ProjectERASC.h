@@ -16,4 +16,14 @@ public:
 	 * 동일 태그를 공유하는 다른 이펙트가 영향받지 않도록 이 함수를 사용합니다.
 	 */
 	void RemoveGameplayCueBySource(const FGameplayTag& GameplayCueTag, const UObject* SourceObject);
+
+	virtual void InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor) override;
+
+protected:
+	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
+
+	// 유령 쿨타임 태그 정리를 위한 클리너
+	void CleanupGhostGameplayEffects();
+
+	FTimerHandle GhostGECleanupTimerHandle;
 };
