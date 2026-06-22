@@ -59,7 +59,7 @@ void UAnimNotifyState_SkillGameplayCue::NotifyBegin(USkeletalMeshComponent* Mesh
 				Parameters.AbilityLevel = Ability->GetAbilityLevel();
 			}
 		}
-		ASC->ExecuteGameplayCue(GameplayCueTag, Parameters);
+		ASC->InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::Executed, Parameters);
 	}
 	else
 	{

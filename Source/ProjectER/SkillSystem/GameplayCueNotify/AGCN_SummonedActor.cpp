@@ -65,9 +65,10 @@ bool AGCN_SummonedActor::OnRemove_Implementation(AActor* MyTarget, const FGamepl
 			AActor* ActualInstigator = GetActualInstigator(Parameters);
 			const FProjectERGameplayEffectContext* Context = static_cast<const FProjectERGameplayEffectContext*>(Parameters.EffectContext.Get());
 
-			if (ActualInstigator && Context && Context->ClientActivationTime > 0.0f)
+			float ActivationTime = Context ? Context->ClientActivationTime : 0.0f;
+			if (ActualInstigator)
 			{
-				Registry->GetAndUnregisterVfxActor(ActualInstigator, Context->ClientActivationTime);
+				Registry->GetAndUnregisterVfxActor(ActualInstigator, ActivationTime);
 			}
 		}
 	}
@@ -99,22 +100,23 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 	AActor* ActualInstigator = GetActualInstigator(Parameters);
 	const FProjectERGameplayEffectContext* Context = static_cast<const FProjectERGameplayEffectContext*>(Parameters.EffectContext.Get());
 
-	if (ActualInstigator && Context && Context->ClientActivationTime > 0.0f)
+	float ActivationTime = Context ? Context->ClientActivationTime : 0.0f;
+
+	if (ActualInstigator)
 	{
 		if (UWorld* World = GetWorld())
 		{
 			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 			{
 				// [중요] Standalone/ListenServer 호스트 등에서의 중복 실행 방지
-				// 이미 예측으로 생성된 액터가 있다면 이 인스턴스는 아무것도 하지 않고 즉시 소멸해야 합니다.
-				if (Registry->IsVfxActorRegistered(ActualInstigator, Context->ClientActivationTime))
+				if (ActivationTime > 0.0f && Registry->IsVfxActorRegistered(ActualInstigator, ActivationTime))
 				{
 					Destroy();
 					return;
 				}
 
-				// 비주얼 액터 등록
-				Registry->RegisterVfxActor(ActualInstigator, Context->ClientActivationTime, this);
+				// 비주얼 액터 등록 (Simulated Proxy의 경우 ActivationTime이 0.0f이므로 와일드카드로 작동)
+				Registry->RegisterVfxActor(ActualInstigator, ActivationTime, this);
 			}
 		}
 	}
@@ -150,6 +152,13 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject)
 				{
 					MovementComponent->Velocity = GetActorForwardVector() * MovementComponent->InitialSpeed;
 					MovementComponent->Activate(true);
+
+					// [Fix] 논리 발사체가 미처 도착하기 전에 서버에서 파괴되어 고아가 된 시각 발사체가
+					// 벽에 부딪혔을 때 무한정 얼어붙는 현상을 방지하기 위해 정지 이벤트를 바인딩합니다.
+					if (!MovementComponent->OnProjectileStop.IsAlreadyBound(this, &AGCN_SummonedActor::OnProjectileStop))
+					{
+						MovementComponent->OnProjectileStop.AddDynamic(this, &AGCN_SummonedActor::OnProjectileStop);
+					}
 				}
 			}
 		}
@@ -421,6 +430,8 @@ void AGCN_SummonedActor::AttachToTargetActor(AActor* InTargetActor)
 {
 	if (!IsValid(InTargetActor)) return;
 
+	CachedTargetActor = InTargetActor;
+
 	const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(GetSourceObject());
 	if (VisualSource)
 	{
@@ -447,6 +458,16 @@ void AGCN_SummonedActor::AttachToTargetActor(AActor* InTargetActor)
 	if (UShapeComponent* ShapeComp = InTargetActor->FindComponentByClass<UShapeComponent>())
 	{
 		SetupCollisionOutline(ShapeComp, InTargetActor->GetInstigator());
+	}
+}
+
+void AGCN_SummonedActor::OnProjectileStop(const FHitResult& ImpactResult)
+{
+	// 논리 발사체와 아직 결합(Handshake)되지 않은 고아(Orphaned) 시각 발사체가 
+	// 벽이나 바닥에 부딪혀 정지한 경우, 무한정 얼어붙는 현상을 방지하기 위해 스스로 파괴합니다.
+	if (!CachedTargetActor.IsValid())
+	{
+		Destroy();
 	}
 }
 

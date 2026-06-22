@@ -32,8 +32,8 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 			Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
 			Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
+			if (TargetASC->IsOwnerActorAuthoritative() || TargetASC->ScopedPredictionKey.IsLocalClientKey())
 			{
-				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 				TargetASC->AddGameplayCue(this->ActiveVfxConfig->CueTag, Params);
 			}
 
@@ -45,8 +45,10 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 				ensureMsgf(CustomASC != nullptr, TEXT("OnEffectRemoved: ASC is not UProjectERASC! Check Blueprint CDO."));
 				if (CustomASC)
 				{
-					FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
-					CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+					if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
+					{
+						CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+					}
 				}
 			});
 		}
@@ -59,8 +61,8 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 			Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
 			Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
+			if (TargetASC->IsOwnerActorAuthoritative() || TargetASC->ScopedPredictionKey.IsLocalClientKey())
 			{
-				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 				TargetASC->AddGameplayCue(this->ActiveSoundConfig->CueTag, Params);
 			}
 
@@ -72,8 +74,10 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 				ensureMsgf(CustomASC != nullptr, TEXT("OnEffectRemoved: ASC is not UProjectERASC! Check Blueprint CDO."));
 				if (CustomASC)
 				{
-					FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
-					CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+					if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
+					{
+						CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+					}
 				}
 			});
 		}
