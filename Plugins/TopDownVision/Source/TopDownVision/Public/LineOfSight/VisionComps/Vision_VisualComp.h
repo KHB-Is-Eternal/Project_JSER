@@ -98,6 +98,9 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category="Vision")
     EVisionChannel GetLocalPlayerVisionChannel() const;
 
+    UFUNCTION(BlueprintCallable, Category="Vision")
+    void RefreshOcclusionAndEvaluatorRadius();
+
 
 
     UPROPERTY(BlueprintAssignable, Category="Occlusion Tracer")

@@ -220,12 +220,19 @@ void UVision_VisualComp::SetVisionChannel(EVisionChannel InVC)
     FString TempDebug = TopDownVisionDebug::GetClientDebugName(GetOwner());
     VisionChannel = InVC;
 
-    // 팀이 변경되면 시야 반경 및 Occlusion 타겟 업데이트
+    RefreshOcclusionAndEvaluatorRadius();
+}
+
+void UVision_VisualComp::RefreshOcclusionAndEvaluatorRadius()
+{
     if (OcclusionTargetIndex != INDEX_NONE)
     {
-        if (UOcclusionSubsystem* OccSub = GetWorld()->GetSubsystem<UOcclusionSubsystem>())
+        if (UWorld* World = GetWorld())
         {
-            OccSub->UpdateTargetByIndex(OcclusionTargetIndex, VisibilityAlpha, GetVisibleRange());
+            if (UOcclusionSubsystem* OccSub = World->GetSubsystem<UOcclusionSubsystem>())
+            {
+                OccSub->UpdateTargetByIndex(OcclusionTargetIndex, VisibilityAlpha, GetVisibleRange());
+            }
         }
     }
 
@@ -247,11 +254,14 @@ bool UVision_VisualComp::IsSharedVisionChannel() const
 
 EVisionChannel UVision_VisualComp::GetLocalPlayerVisionChannel() const
 {
-    if (ULOSVisionSubsystem* Subsystem = GetWorld()->GetSubsystem<ULOSVisionSubsystem>())
+    if (UWorld* World = GetWorld())
     {
-        if (UVisionPlayerStateComp* LocalVPS = Subsystem->GetLocalVisionPS(GetWorld()))
+        if (ULOSVisionSubsystem* Subsystem = World->GetSubsystem<ULOSVisionSubsystem>())
         {
-            return LocalVPS->GetTeamChannel();
+            if (UVisionPlayerStateComp* LocalVPS = Subsystem->GetLocalVisionPS(World))
+            {
+                return LocalVPS->GetTeamChannel();
+            }
         }
     }
     return EVisionChannel::None;
