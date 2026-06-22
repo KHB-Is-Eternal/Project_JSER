@@ -60,8 +60,11 @@ public:
     UFUNCTION(BlueprintCallable, Category="Vision")
     void SetVisionRange(float NewRange);
 
-    float GetVisibleRange()    const { return VisionRange; }
-    float GetMaxVisibleRange() const { return MaxVisionRange; }
+    UFUNCTION(BlueprintCallable, Category="Vision")
+    float GetVisibleRange()    const;
+
+    UFUNCTION(BlueprintCallable, Category="Vision")
+    float GetMaxVisibleRange() const;
 
     UFUNCTION(BlueprintCallable, Category="Vision")
     UMaterialInstanceDynamic* GetStampMID() const;
