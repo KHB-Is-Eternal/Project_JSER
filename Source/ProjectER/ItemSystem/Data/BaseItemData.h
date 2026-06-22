@@ -20,6 +20,14 @@ enum class EItemCategory : uint8
     Equipment    UMETA(DisplayName = "장비 아이템 (Equipment)")
 };
 
+UENUM(BlueprintType)
+enum class EItemRarity : uint8
+{
+    Normal      UMETA(DisplayName = "일반 (Normal)"),
+    Rare        UMETA(DisplayName = "희귀 (Rare)"),
+    Unique      UMETA(DisplayName = "영웅/유니크 (Unique)")
+};
+
 UCLASS(BlueprintType)
 class PROJECTER_API UBaseItemData : public UPrimaryDataAsset
 {
@@ -36,14 +44,20 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Visual")
     TSoftObjectPtr<UStaticMesh> ItemMesh;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Visual")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Info")
     TSoftObjectPtr<UTexture2D> ItemIcon;
+
+    UFUNCTION(BlueprintCallable, Category = "Item|UI")
+    FLinearColor GetRarityColor() const;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings")
     EItemPickupType PickupType;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings")
     EItemCategory ItemCategory = EItemCategory::None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings")
+    EItemRarity ItemRarity = EItemRarity::Normal;
 
     // Item ToolTip
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Info")

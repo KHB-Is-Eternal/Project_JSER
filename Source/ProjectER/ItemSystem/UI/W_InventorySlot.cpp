@@ -1,4 +1,4 @@
-﻿#include "ItemSystem/UI/W_InventorySlot.h"
+#include "ItemSystem/UI/W_InventorySlot.h"
 
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
@@ -169,7 +169,14 @@ void UW_InventorySlot::ApplyNormalStyle()
 		return;
 	}
 
-	SlotBorder->SetBrushColor(FLinearColor(0.08f, 0.08f, 0.08f, 0.85f));
+	if (CachedItemData)
+	{
+		SlotBorder->SetBrushColor(CachedItemData->GetRarityColor());
+	}
+	else
+	{
+		SlotBorder->SetBrushColor(FLinearColor(0.08f, 0.08f, 0.08f, 0.85f));
+	}
 }
 
 void UW_InventorySlot::ApplyDropHoverStyle()
