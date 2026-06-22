@@ -1,6 +1,7 @@
 #include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 #include "NiagaraComponent.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
+#include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 
 void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 {
@@ -29,7 +30,8 @@ void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 
 		if (UVision_VisualComp* VisionComp = Target->FindComponentByClass<UVision_VisualComp>())
 		{
-			const bool bShouldBeVisible = (VisionComp->GetVisibilityAlpha() > 0.0f);
+			float CurrentAlpha = VisionComp->GetVisibilityAlpha();
+			const bool bShouldBeVisible = (CurrentAlpha > 0.0f);
 			
 			// 상태가 다를 때만 업데이트 (SetVisibility 오버헤드 방지)
 			if (NC->IsVisible() != bShouldBeVisible)

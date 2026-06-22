@@ -87,6 +87,9 @@ public:
     bool IsVisionProvider() const { return bIsVisionProvider; }
 
     UFUNCTION(BlueprintCallable, Category="Vision")
+    void SetIsVisionProvider(bool bInIsVisionProvider) { bIsVisionProvider = bInIsVisionProvider; }
+
+    UFUNCTION(BlueprintCallable, Category="Vision")
     void SetVisionChannel(EVisionChannel InVC);
 
     UFUNCTION(BlueprintCallable, Category="Vision")

@@ -51,9 +51,13 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Visual")
 	TObjectPtr<UNiagaraComponent> VfxComponent;
 
-	/** 사운드를 담당하는 오디오 컴포넌트 */
+	/** 오디오 컴포넌트 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Audio")
 	TObjectPtr<UAudioComponent> SfxComponent;
+
+	/** 시야 탐지 및 루트 역할을 하는 컴포넌트 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER | Collision")
+	TObjectPtr<class USphereComponent> SceneRoot;
 
 	/** 예측 이동을 담당하는 컴포넌트 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER|GameplayCue|Component")

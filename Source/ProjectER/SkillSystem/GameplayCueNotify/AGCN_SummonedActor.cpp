@@ -19,6 +19,7 @@
 #include "Components/ShapeComponent.h"
 #include "Engine/World.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
+#include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 #include "Components/SphereComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -36,7 +37,30 @@ AGCN_SummonedActor::AGCN_SummonedActor()
 	bReplicates = false;
 
 	// [Fix] RootComponent 생성 (루트가 없으면 월드 위치 설정이 불가능합니다.)
-	USceneComponent* SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	// 시야(OcclusionTarget) 판정을 위해 UPrimitiveComponent를 상속받는 SphereComponent를 루트로 사용합니다.
+	SceneRoot = CreateDefaultSubobject<USphereComponent>(TEXT("SceneRoot"));
+	SetRootComponent(SceneRoot);
+	SceneRoot->InitSphereRadius(10.0f);
+	
+	// [Fix] 시야 시스템(FOW)의 탐지 구체(DetectionSphere)가 이 액터를 인식할 수 있도록 콜리전을 켭니다.
+	SceneRoot->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	SceneRoot->SetGenerateOverlapEvents(true); // 언리얼 엔진에서 겹침 이벤트가 발생하려면 쌍방 모두 true여야 합니다!
+	
+	// 프로젝트 커스텀 채널인 VisionSensor(ECC_GameTraceChannel3)를 기본 오브젝트 타입으로 설정합니다.
+	SceneRoot->SetCollisionObjectType(ECC_GameTraceChannel3);
+	
+	// 불필요한 물리/트레이스 간섭을 막기 위해 기본적으로 모든 채널을 무시합니다.
+	SceneRoot->SetCollisionResponseToAllChannels(ECR_Ignore);
+	
+	// FOW 탐지 구체와의 겹침(Overlap) 이벤트만 허용합니다. 
+	// 탐지 구체가 WorldDynamic일 수도 있고 VisionSensor일 수도 있으므로 둘 다 허용합니다.
+	SceneRoot->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+	SceneRoot->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Overlap);
+	
+	// [Fix] TopDownVision 플러그인이 겹침 이벤트를 수신했을 때 무시하지 않도록 기본 태그를 추가합니다.
+	SceneRoot->ComponentTags.Add(TEXT("VisionTarget"));
+	
+	SceneRoot->PrimaryComponentTick.bCanEverTick = false; // 불필요한 연산 방지를 위해 틱을 끕니다
 	RootComponent = SceneRoot;
 
 	// 예측 이동을 위한 컴포넌트 생성 (기본은 비활성)
@@ -46,6 +70,8 @@ AGCN_SummonedActor::AGCN_SummonedActor()
 	MovementComponent->ProjectileGravityScale = 0.0f;
 
 	VisionVisualComp = CreateDefaultSubobject<UVision_VisualComp>(TEXT("VisionVisualComp"));
+	// 장판은 시야를 밝히는 용도(Vision Provider)가 아니라 안개에 가려지는 대상(Target)이므로 관련 연산 최적화를 위해 끕니다.
+	VisionVisualComp->SetIsVisionProvider(false);
 }
 
 bool AGCN_SummonedActor::OnExecute_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters)
@@ -94,6 +120,7 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 	FVector SpawnLocation = Parameters.Location;
 	FRotator SpawnRotation = Parameters.Normal.IsNearlyZero() ? GetActorRotation() : Parameters.Normal.Rotation();
 	
+	// 여기서 SetActorLocation이 호출되면서 위에서 설정한 콜리전 정보로 즉시 Overlap 이벤트가 발생함
 	SetActorLocationAndRotation(SpawnLocation, SpawnRotation);
 
 	// 2. 기본 수명 설정 (서버 트래벌 등 예외 상황에서 고아가 되는 것 방지)
@@ -181,6 +208,20 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 	// 타겟 액터에 부착된 형태라면 타겟 액터의 시야를 따라가고, 바닥에 깔리는 장판이라면 소환물 본인(this)의 시야를 따라갑니다.
 	AActor* VisionTarget = CachedTargetActor.IsValid() ? CachedTargetActor.Get() : this;
 	
+	// 소환물 본인 시야를 따르는 경우 (바닥 장판), 시야 시스템에 정상 등록하기 위해 초기화 및 팀 채널 동기화를 수행합니다.
+	if (IsValid(VisionVisualComp))
+	{
+		AActor* InstigatorActor = GetActualInstigator(Parameters);
+		if (IsValid(InstigatorActor))
+		{
+			if (UVision_VisualComp* InstigatorVisionComp = InstigatorActor->FindComponentByClass<UVision_VisualComp>())
+			{
+				VisionVisualComp->SetVisionChannel(InstigatorVisionComp->GetVisionChannel());
+			}
+		}
+		VisionVisualComp->Initialize();
+	}
+	
 	const EVfxCullState CullState = USkillVfxCullingHelper::CheckVfxCulling(VisionTarget, Parameters, true);
 	
 	if (CullState == EVfxCullState::SkipSpawn)
@@ -202,7 +243,9 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 		{
 			if (UVisionParticleManagerSubsystem* VisionSubsystem = GetWorld()->GetSubsystem<UVisionParticleManagerSubsystem>())
 			{
-				VisionSubsystem->RegisterParticle(VfxComponent, VisionTarget);
+				// TargetActor가 아닌 '이 비주얼 액터(this)'를 타겟으로 등록합니다.
+				// (실제 시야 컴포넌트(VisionVisualComp)는 이 액터에 부착되어 있기 때문입니다.)
+				VisionSubsystem->RegisterParticle(VfxComponent, this);
 			}
 		}
 	}
