@@ -160,6 +160,8 @@ void UW_InventorySlot::RefreshVisual()
 			StackCountText->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
+
+	ApplyNormalStyle();
 }
 
 void UW_InventorySlot::ApplyNormalStyle()

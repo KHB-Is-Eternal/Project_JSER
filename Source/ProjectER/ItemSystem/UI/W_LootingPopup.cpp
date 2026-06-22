@@ -1,4 +1,4 @@
-﻿// W_LootingPopup.cpp
+// W_LootingPopup.cpp
 #include "ItemSystem/UI/W_LootingPopup.h"
 #include "ItemSystem/Data/BaseItemData.h"
 #include "ItemSystem/Actor/BaseBoxActor.h"
@@ -185,11 +185,13 @@ void UW_LootingPopup::UpdateLootingSlots(const AActor* Box)
 					SlotButton->OnUnhovered.AddDynamic(this, &UW_LootingPopup::HideTooltip);
 					/// 툴팁 바인드 ///
 					SlotButton->SetIsEnabled(true);
+					SlotButton->SetBackgroundColor(CurrentItem->GetRarityColor());
 				}
 				else
 				{
 					// 아이템이 없으면 클릭 비활성화
 					SlotButton->SetIsEnabled(false);
+					SlotButton->SetBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f));
 				}
 			}
 
