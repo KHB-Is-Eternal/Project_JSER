@@ -355,7 +355,25 @@ void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor, float Even
 
 void UWatchTagAbility_Base::ApplyTriggerEffects(AActor* TargetActor, float EventMagnitude)
 {
-	if (PassiveConfig->Effects.IsEmpty() || TargetActor == nullptr)
+	if (TargetActor == nullptr)
+	{
+		return;
+	}
+
+	bool bHasAnyEffect = !PassiveConfig->Effects.IsEmpty();
+	if (!bHasAnyEffect)
+	{
+		for (const FSkillMagnitudeCalculation& Calc : PassiveConfig->MagnitudeCalculators)
+		{
+			if (IsValid(Calc.TargetGameplayEffect))
+			{
+				bHasAnyEffect = true;
+				break;
+			}
+		}
+	}
+
+	if (!bHasAnyEffect)
 	{
 		return;
 	}

@@ -520,7 +520,21 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 	UAbilitySystemComponent* const SourceASC = GetASC();
 	AActor* const Avatar = GetAvatar();
 
-	if (!ensure(SourceASC) || !ensure(Avatar) || !IsValid(TargetASC) || Effects.Num() <= 0)
+	if (!ensure(SourceASC) || !ensure(Avatar) || !IsValid(TargetASC))
+	{
+		return;
+	}
+
+	TArray<TSubclassOf<UBaseGameplayEffect>> CombinedEffects = Effects;
+	for (const FSkillMagnitudeCalculation& CalcInfo : Calculators)
+	{
+		if (IsValid(CalcInfo.TargetGameplayEffect))
+		{
+			CombinedEffects.AddUnique(CalcInfo.TargetGameplayEffect);
+		}
+	}
+
+	if (CombinedEffects.IsEmpty())
 	{
 		return;
 	}
@@ -565,7 +579,7 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 	OnEffectContextCreated(ContextHandle);
 
 	// 2. 각 이팩트 순회하며 적용
-	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Effects)
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : CombinedEffects)
 	{
 		if (!IsValid(EffectClass)) continue;
 

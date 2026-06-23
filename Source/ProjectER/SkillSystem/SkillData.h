@@ -60,7 +60,7 @@ struct FSkillMagnitudeCalculation
 
     // 이 계산값을 주입할 대상 GameplayEffect 클래스 (페이즈 내 적용할 GE 목록 중 하나 지정)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Magnitude")
-    TSubclassOf<class UGameplayEffect> TargetGameplayEffect;
+    TSubclassOf<class UBaseGameplayEffect> TargetGameplayEffect;
 
     // 이 GameplayEffect에 적용할 SetByCaller 태그
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Magnitude")
