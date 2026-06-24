@@ -3,14 +3,11 @@
 #include "SkillSystem/GameplayCueNotify/GCN_SummonedRegistrySubsystem.h"
 #include "SkillSystem/GameplayEffectComponent/SummonRangeBaseGEC.h"
 #include "SkillSystem/GameplayEffectComponent/SummonRangeAtBone.h"
-#include "SkillSystem/GameplayEffectComponent/LaunchProjectile.h"
-#include "SkillSystem/GameplayEffectComponent/LaunchHomingMissile.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 #include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
 #include "SkillSystem/Interfaces/SkillVisualDataProvider.h"
 #include "NiagaraComponent.h"
-#include "NiagaraFunctionLibrary.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillVfxCullingHelper.h"
 #include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
@@ -19,17 +16,13 @@
 #include "Components/ShapeComponent.h"
 #include "Engine/World.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
-#include "SkillSystem/Actor/BaseMissileActor/BaseMissileActor.h"
-#include "GameFramework/ProjectileMovementComponent.h"
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
 #include "Components/SphereComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "CharacterSystem/Interface/TargetableInterface.h"
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
-#include "Components/StaticMeshComponent.h"
-#include "GameFramework/SpringArmComponent.h"
-#include "Engine/Texture2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
 AGCN_SummonedActor::AGCN_SummonedActor()
@@ -215,13 +208,7 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 	if (IsValid(VisionVisualComp))
 	{
 		AActor* InstigatorActor = GetActualInstigator(Parameters);
-		if (IsValid(InstigatorActor))
-		{
-			if (UVision_VisualComp* InstigatorVisionComp = InstigatorActor->FindComponentByClass<UVision_VisualComp>())
-			{
-				VisionVisualComp->SetVisionChannel(InstigatorVisionComp->GetVisionChannel());
-			}
-		}
+		SyncVisionChannelWithInstigator(InstigatorActor);
 		VisionVisualComp->Initialize();
 	}
 	
@@ -517,6 +504,12 @@ void AGCN_SummonedActor::AttachToTargetActor(AActor* InTargetActor)
 	FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, false);
 	AttachToActor(InTargetActor, AttachRules);
 
+	// [Fix] 핸드셰이크 시점에 시전자의 실제 팀 비전 채널을 찾아 다시 한 번 동기화해 줍니다. (멀티플레이어 클라이언트 보정)
+	if (IsValid(InTargetActor))
+	{
+		SyncVisionChannelWithInstigator(InTargetActor->GetInstigator());
+	}
+
 	const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(GetSourceObject());
 	if (VisualSource)
 	{
@@ -553,6 +546,38 @@ void AGCN_SummonedActor::OnProjectileStop(const FHitResult& ImpactResult)
 	if (!CachedTargetActor.IsValid())
 	{
 		Destroy();
+	}
+}
+
+void AGCN_SummonedActor::SyncVisionChannelWithInstigator(AActor* InInstigator)
+{
+	if (!IsValid(VisionVisualComp) || !IsValid(InInstigator)) return;
+
+	if (UVision_VisualComp* InstigatorVisionComp = InInstigator->FindComponentByClass<UVision_VisualComp>())
+	{
+		const EVisionChannel NewChannel = InstigatorVisionComp->GetVisionChannel();
+		const EVisionChannel OldChannel = VisionVisualComp->GetVisionChannel();
+		
+		if (OldChannel != NewChannel)
+		{
+			if (UWorld* World = GetWorld())
+			{
+				if (ULOSVisionSubsystem* Subsystem = World->GetSubsystem<ULOSVisionSubsystem>())
+				{
+					if (OldChannel != EVisionChannel::None)
+					{
+						Subsystem->UnregisterProvider(VisionVisualComp, OldChannel);
+					}
+					
+					VisionVisualComp->SetVisionChannel(NewChannel);
+					
+					if (NewChannel != EVisionChannel::None)
+					{
+						Subsystem->RegisterProvider(VisionVisualComp, NewChannel);
+					}
+				}
+			}
+		}
 	}
 }
 

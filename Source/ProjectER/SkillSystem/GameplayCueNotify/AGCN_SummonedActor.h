@@ -24,6 +24,33 @@ class PROJECTER_API AGCN_SummonedActor : public AGameplayCueNotify_Actor
 public:
 	AGCN_SummonedActor();
 
+	/** 캐싱된 GEC 데이터를 반환합니다. */
+	const UObject* GetSourceObject() const { return CachedSourceObject.Get(); }
+
+	/** 콜리전 메쉬의 아웃라인을 아군/적군 여부에 따라 설정합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	void SetupCollisionOutline(UShapeComponent* InCollisionComponent, AActor* InInstigatorActor);
+
+	/** 대상 판정 액터(장판 등)에 자신을 부착하고 비주얼/사운드 설정 및 생명주기를 연동합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	void AttachToTargetActor(AActor* InTargetActor);
+
+	/** 타겟 액터가 파괴될 때 호출되어 자신도 파괴합니다. */
+	UFUNCTION()
+	void OnTargetActorDestroyed(AActor* DestroyedActor);
+
+	/** 나이아가라 컴포넌트를 외부에서 부착할 수 있도록 반환합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	UNiagaraComponent* GetVfxComponent() const { return VfxComponent; }
+
+	/** 오디오 컴포넌트를 외부에서 부착할 수 있도록 반환합니다. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
+	UAudioComponent* GetSfxComponent() const { return SfxComponent; }
+
+	/** 고아 발사체가 벽에 부딪혀 정지했을 때 자신을 파괴합니다. */
+	UFUNCTION()
+	void OnProjectileStop(const FHitResult& ImpactResult);
+
 protected:
 	virtual bool OnExecute_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) override;
 	virtual bool WhileActive_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) override;
@@ -38,13 +65,15 @@ protected:
 	/** Parameters와 Context로부터 실제 시전자를 찾아 반환합니다. */
 	AActor* GetActualInstigator(const FGameplayCueParameters& Parameters) const;
 
-protected:
 	/** 나이아가라 컴포넌트 초기화 및 재생 */
 	void SetupVfxComponent(const USkillNiagaraSpawnConfig* NiagaraConfig, const FGameplayCueParameters& Parameters);
 
 	/** 오디오 컴포넌트 초기화 및 재생 */
 	void SetupSfxComponent(const USkillSoundSpawnConfig* SoundConfig);
 
+private:
+	/** 시전자의 비전 채널을 읽어와 이 장판 액터의 비전 채널을 동기화하고 FOW 시스템에 등록/갱신합니다. */
+	void SyncVisionChannelWithInstigator(AActor* InInstigator);
 
 public:
 	/** 비주얼을 담당하는 나이아가라 컴포넌트 */
@@ -71,17 +100,7 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ProjectER|Vision")
 	TObjectPtr<UVision_VisualComp> VisionVisualComp;
 
-
-
-
-
-public:
-	/** 캐싱된 GEC 데이터를 반환합니다. */
-	const UObject* GetSourceObject() const { return CachedSourceObject.Get(); }
-
-	/** 콜리전 메쉬의 아웃라인을 아군/적군 여부에 따라 설정합니다. */
-	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
-	void SetupCollisionOutline(UShapeComponent* InCollisionComponent, AActor* InInstigatorActor);
+protected:
 
 private:
 	/** 비주얼/물리 설정값이 담긴 GEC 객체 */
@@ -92,25 +111,4 @@ private:
 
 	/** 결합(Handshake)된 논리적 타겟 액터를 가리키는 약한 포인터 */
 	TWeakObjectPtr<AActor> CachedTargetActor;
-
-public:
-	/** 대상 판정 액터(장판 등)에 자신을 부착하고 비주얼/사운드 설정 및 생명주기를 연동합니다. */
-	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
-	void AttachToTargetActor(AActor* InTargetActor);
-
-	/** 타겟 액터가 파괴될 때 호출되어 자신도 파괴합니다. */
-	UFUNCTION()
-	void OnTargetActorDestroyed(AActor* DestroyedActor);
-
-	/** 나이아가라 컴포넌트를 외부에서 부착할 수 있도록 반환합니다. */
-	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
-	UNiagaraComponent* GetVfxComponent() const { return VfxComponent; }
-
-	/** 오디오 컴포넌트를 외부에서 부착할 수 있도록 반환합니다. */
-	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
-	UAudioComponent* GetSfxComponent() const { return SfxComponent; }
-
-	/** 고아 발사체가 벽에 부딪혀 정지했을 때 자신을 파괴합니다. */
-	UFUNCTION()
-	void OnProjectileStop(const FHitResult& ImpactResult);
 };
