@@ -19,6 +19,8 @@
 #include "Components/ShapeComponent.h"
 #include "Engine/World.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
+#include "SkillSystem/Actor/BaseMissileActor/BaseMissileActor.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -58,6 +60,8 @@ AGCN_SummonedActor::AGCN_SummonedActor()
 	
 	// [Fix] TopDownVision 플러그인이 겹침 이벤트를 수신했을 때 무시하지 않도록 기본 태그를 추가합니다.
 	SceneRoot->ComponentTags.Add(TEXT("VisionTarget"));
+	
+
 	
 	SceneRoot->PrimaryComponentTick.bCanEverTick = false; // 불필요한 연산 방지를 위해 틱을 끕니다
 	RootComponent = SceneRoot;
@@ -233,18 +237,21 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 
 	if (IsValid(VfxComponent))
 	{
-		if (CullState == EVfxCullState::SpawnHidden)
+		if (CullState == EVfxCullState::SpawnHidden || 
+			(CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen && 
+			 IsValid(VisionVisualComp) && VisionVisualComp->GetVisibilityAlpha() <= 0.0f))
 		{
 			VfxComponent->SetVisibility(false);
 		}
 
-		if (CullState == EVfxCullState::SpawnAndTrackVision || CullState == EVfxCullState::SpawnHidden)
+		if (CullState == EVfxCullState::SpawnAndTrackVision || 
+			CullState == EVfxCullState::SpawnHidden || 
+			CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen)
 		{
 			if (UVisionParticleManagerSubsystem* VisionSubsystem = GetWorld()->GetSubsystem<UVisionParticleManagerSubsystem>())
 			{
-				// TargetActor가 아닌 '이 비주얼 액터(this)'를 타겟으로 등록합니다.
-				// (실제 시야 컴포넌트(VisionVisualComp)는 이 액터에 부착되어 있기 때문입니다.)
-				VisionSubsystem->RegisterParticle(VfxComponent, this);
+				const bool bTrackUntilSeen = (CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen);
+				VisionSubsystem->RegisterParticle(VfxComponent, this, bTrackUntilSeen);
 			}
 		}
 	}

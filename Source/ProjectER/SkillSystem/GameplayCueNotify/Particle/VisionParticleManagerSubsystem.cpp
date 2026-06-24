@@ -29,13 +29,28 @@ void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 
 		if (UVision_VisualComp* VisionComp = Target->FindComponentByClass<UVision_VisualComp>())
 		{
-			float CurrentAlpha = VisionComp->GetVisibilityAlpha();
+			const float CurrentAlpha = VisionComp->GetVisibilityAlpha();
 			const bool bShouldBeVisible = (CurrentAlpha > 0.0f);
 			
-			// 상태가 다를 때만 업데이트 (SetVisibility 오버헤드 방지)
-			if (NC->IsVisible() != bShouldBeVisible)
+			if (bShouldBeVisible)
 			{
-				NC->SetVisibility(bShouldBeVisible);
+				if (!NC->GetVisibleFlag())
+				{
+					NC->SetVisibility(true);
+				}
+
+				if (ManagedParticles[i].bTrackUntilSeen)
+				{
+					ManagedParticles.RemoveAtSwap(i);
+					continue;
+				}
+			}
+			else
+			{
+				if (NC->GetVisibleFlag())
+				{
+					NC->SetVisibility(false);
+				}
 			}
 		}
 	}
@@ -46,12 +61,12 @@ TStatId UVisionParticleManagerSubsystem::GetStatId() const
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UVisionParticleManagerSubsystem, STATGROUP_Tickables);
 }
 
-void UVisionParticleManagerSubsystem::RegisterParticle(UNiagaraComponent* Particle, AActor* TargetActor)
+void UVisionParticleManagerSubsystem::RegisterParticle(UNiagaraComponent* Particle, AActor* TargetActor, bool bTrackUntilSeen)
 {
 	if (!IsValid(Particle) || !IsValid(TargetActor))
 	{
 		return;
 	}
 
-	ManagedParticles.Emplace(Particle, TargetActor);
+	ManagedParticles.Emplace(Particle, TargetActor, bTrackUntilSeen);
 }

@@ -17,9 +17,12 @@ struct FManagedVisionParticle
 	UPROPERTY()
 	TWeakObjectPtr<AActor> VisionTarget;
 
+	UPROPERTY()
+	bool bTrackUntilSeen = false;
+
 	FManagedVisionParticle() {}
-	FManagedVisionParticle(UNiagaraComponent* InParticle, AActor* InTarget)
-		: ParticleComp(InParticle), VisionTarget(InTarget) {}
+	FManagedVisionParticle(UNiagaraComponent* InParticle, AActor* InTarget, bool bInTrackUntilSeen = false)
+		: ParticleComp(InParticle), VisionTarget(InTarget), bTrackUntilSeen(bInTrackUntilSeen) {}
 };
 
 /**
@@ -40,7 +43,7 @@ public:
 	 * @param TargetActor 시야 판정의 기준이 되는 액터 (보통 MyTarget 또는 Instigator)
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Skill VFX")
-	void RegisterParticle(UNiagaraComponent* Particle, AActor* TargetActor);
+	void RegisterParticle(UNiagaraComponent* Particle, AActor* TargetActor, bool bTrackUntilSeen = false);
 
 private:
 	TArray<FManagedVisionParticle> ManagedParticles;

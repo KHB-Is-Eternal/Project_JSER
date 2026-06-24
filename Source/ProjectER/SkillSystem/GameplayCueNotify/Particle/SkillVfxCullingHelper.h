@@ -8,10 +8,11 @@
 UENUM(BlueprintType)
 enum class EVfxCullState : uint8
 {
-	SpawnAndIgnoreVision, // 무조건 스폰하고 시야 추적 안 함 (아군 파티클, 투사체 등 - 항상 보임)
-	SpawnAndTrackVision,  // 정상 스폰 후 시야 추적 함 (현재 내 시야 내에 스폰되는 적군 파티클 - 안개로 가면 꺼짐)
-	SpawnHidden,          // 숨겨진 상태로 스폰 후 시야 추적 함 (현재 안개 속에 스폰되는 적군 지속형 파티클)
-	SkipSpawn             // 스폰 아예 생략 (현재 안개 속에 스폰되는 적군 단발성 파티클)
+	SpawnAndIgnoreVision,         // 무조건 스폰하고 시야 추적 안 함 (아군 파티클 등 - 항상 보임)
+	SpawnAndTrackVision,          // 정상 스폰 후 시야 추적 함 (장판형 스킬 - 안개로 가면 꺼짐)
+	SpawnAndTrackVisionUntilSeen, // 스폰 후 시야에 보일 때까지만 추적 함 (발사체형 스킬 - 한 번 보인 후에는 안개로 가도 유지)
+	SpawnHidden,                  // 숨겨진 상태로 스폰 후 시야 추적 함 (현재 안개 속에 스폰되는 적군 지속형 파티클)
+	SkipSpawn                     // 스폰 아예 생략 (현재 안개 속에 스폰되는 적군 단발성 파티클)
 };
 
 /**
