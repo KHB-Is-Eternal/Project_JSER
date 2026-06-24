@@ -1,7 +1,6 @@
 #include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 #include "NiagaraComponent.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
-#include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 
 void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 {

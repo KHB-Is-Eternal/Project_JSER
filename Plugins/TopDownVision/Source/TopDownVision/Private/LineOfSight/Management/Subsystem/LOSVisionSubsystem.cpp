@@ -1,4 +1,4 @@
-﻿#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
 
 #include "TopDownVision/Public/LineOfSight/VisionComps/Vision_VisualComp.h"
 #include "LineOfSight/Management/VisionGameStateComp.h"
@@ -56,6 +56,12 @@ bool ULOSVisionSubsystem::RegisterProvider(
     {
         UE_LOG(LOSVisionSubsystem, Error,
             TEXT("RegisterProvider >> Null provider"));
+        return false;
+    }
+    if (!Provider->IsVisionProvider())
+    {
+        UE_LOG(LOSVisionSubsystem, Log,
+            TEXT("RegisterProvider >> Ignoring %s as it is not a VisionProvider"), *Provider->GetOwner()->GetName());
         return false;
     }
     if (InVisionChannel == EVisionChannel::None)

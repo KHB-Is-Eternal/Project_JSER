@@ -19,7 +19,6 @@
 #include "Components/ShapeComponent.h"
 #include "Engine/World.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
-#include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 #include "Components/SphereComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -506,6 +505,10 @@ void AGCN_SummonedActor::AttachToTargetActor(AActor* InTargetActor)
 	if (!IsValid(InTargetActor)) return;
 
 	CachedTargetActor = InTargetActor;
+
+	// [Fix] 비주얼 액터 본체(this)도 논리 액터에 부착하여, 시야 컴포넌트(VisionVisualComp)가 파티클과 함께 움직이도록 보장합니다.
+	FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
+	AttachToActor(InTargetActor, AttachRules);
 
 	const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(GetSourceObject());
 	if (VisualSource)
