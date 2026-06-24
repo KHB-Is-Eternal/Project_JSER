@@ -512,9 +512,9 @@ void AGCN_SummonedActor::AttachToTargetActor(AActor* InTargetActor)
 	if (!IsValid(InTargetActor)) return;
 
 	CachedTargetActor = InTargetActor;
-
 	// [Fix] 비주얼 액터 본체(this)도 논리 액터에 부착하여, 시야 컴포넌트(VisionVisualComp)가 파티클과 함께 움직이도록 보장합니다.
-	FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
+	// bWeldSimulatedBodies를 false로 설정하여 개별 오버랩(EndOverlap 등)이 씹히지 않도록 수정합니다.
+	FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, false);
 	AttachToActor(InTargetActor, AttachRules);
 
 	const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(GetSourceObject());

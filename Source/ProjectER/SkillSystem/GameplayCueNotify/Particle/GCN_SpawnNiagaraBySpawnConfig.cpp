@@ -7,6 +7,7 @@
 #include "SkillSystem/GameplayCueNotify/Particle/SkillVfxCullingHelper.h"
 #include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
+#include "LineOfSight/VisionComps/Vision_VisualComp.h"
 
 #include "Engine/Blueprint.h"
 #include "AbilitySystemStats.h"
@@ -151,18 +152,24 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 	UNiagaraComponent* const SpawnedComponent = SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
 	if (IsValid(SpawnedComponent))
 	{
-		if (CullState == EVfxCullState::SpawnHidden)
+		const AActor* VisionTarget = IsValid(MyTarget) ? MyTarget : SourceActor;
+
+		if (CullState == EVfxCullState::SpawnHidden || 
+			(CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen && 
+			 IsValid(VisionTarget) && VisionTarget->FindComponentByClass<UVision_VisualComp>() && 
+			 VisionTarget->FindComponentByClass<UVision_VisualComp>()->GetVisibilityAlpha() <= 0.0f))
 		{
 			SpawnedComponent->SetVisibility(false);
 		}
 
-		if (CullState == EVfxCullState::SpawnAndTrackVision || CullState == EVfxCullState::SpawnHidden)
+		if (CullState == EVfxCullState::SpawnAndTrackVision || 
+			CullState == EVfxCullState::SpawnHidden || 
+			CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen)
 		{
 			if (UVisionParticleManagerSubsystem* VisionSubsystem = World->GetSubsystem<UVisionParticleManagerSubsystem>())
 			{
-				// 시야 판정 기준 타겟으로 MyTarget 또는 SourceActor를 전달
-				const AActor* VisionTarget = IsValid(MyTarget) ? MyTarget : SourceActor;
-				VisionSubsystem->RegisterParticle(SpawnedComponent, const_cast<AActor*>(VisionTarget));
+				const bool bTrackUntilSeen = (CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen);
+				VisionSubsystem->RegisterParticle(SpawnedComponent, const_cast<AActor*>(VisionTarget), bTrackUntilSeen);
 			}
 		}
 
