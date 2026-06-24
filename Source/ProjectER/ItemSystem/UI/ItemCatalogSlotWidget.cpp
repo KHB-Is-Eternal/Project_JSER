@@ -36,6 +36,7 @@ void UItemCatalogSlotWidget::InitializeSlot(UBaseItemData* InItemData)
 		if (ItemButton)
 		{
 			ItemButton->SetIsEnabled(true);
+			ItemButton->SetBackgroundColor(CachedItemData->GetRarityColor());
 		}
 	}
 	else
@@ -48,6 +49,7 @@ void UItemCatalogSlotWidget::InitializeSlot(UBaseItemData* InItemData)
 		if (ItemButton)
 		{
 			ItemButton->SetIsEnabled(false); // 빈 슬롯은 클릭 불가
+			ItemButton->SetBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)); // 기본 바탕색
 		}
 	}
 }
