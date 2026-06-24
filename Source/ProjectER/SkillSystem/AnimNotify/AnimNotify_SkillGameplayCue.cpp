@@ -59,7 +59,7 @@ void UAnimNotify_SkillGameplayCue::Notify(USkeletalMeshComponent* MeshComp, UAni
 			}
 		}
 
-		ASC->ExecuteGameplayCue(GameplayCueTag, Parameters);
+		ASC->InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::Executed, Parameters);
 	}
 	else
 	{

@@ -4,6 +4,8 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillVfxCullingHelper.h"
+#include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 
 UGCN_FloatingText::UGCN_FloatingText()
 {
@@ -20,6 +22,12 @@ bool UGCN_FloatingText::OnExecute_Implementation(AActor* MyTarget, const FGamepl
 
 	UWorld* const World = MyTarget->GetWorld();
 	if (!IsValid(World))
+	{
+		return false;
+	}
+
+	const EVfxCullState CullState = USkillVfxCullingHelper::CheckVfxCulling(MyTarget, Parameters, false);
+	if (CullState == EVfxCullState::SkipSpawn)
 	{
 		return false;
 	}
@@ -65,6 +73,20 @@ bool UGCN_FloatingText::OnExecute_Implementation(AActor* MyTarget, const FGamepl
 		NiagaraComp->SetVariableFloat(FName(TEXT("Number")), ValueNumber);
 		NiagaraComp->SetVariableLinearColor(FName(TEXT("Color")), TextColor);
 		NiagaraComp->SetVariableFloat(FName(TEXT("Size")), TextSize);
+
+		if (CullState == EVfxCullState::SpawnHidden)
+		{
+			NiagaraComp->SetVisibility(false);
+		}
+
+		if (CullState == EVfxCullState::SpawnAndTrackVision || CullState == EVfxCullState::SpawnHidden)
+		{
+			if (UVisionParticleManagerSubsystem* VisionSubsystem = World->GetSubsystem<UVisionParticleManagerSubsystem>())
+			{
+				VisionSubsystem->RegisterParticle(NiagaraComp, MyTarget);
+			}
+		}
+
 		return true;
 	}
 

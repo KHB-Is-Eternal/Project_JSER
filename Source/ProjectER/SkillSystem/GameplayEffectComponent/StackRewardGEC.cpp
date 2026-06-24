@@ -105,8 +105,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorVfxConfig.Get();
 
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorVfxConfig->CueTag, Params);
 						}
 					}
@@ -122,8 +122,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 						
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.TargetVfxConfig->CueTag, Params);
 						}
 					}
@@ -136,8 +136,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorSoundConfig.Get();
 
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorSoundConfig->CueTag, Params);
 						}
 					}
@@ -152,8 +152,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.TargetSoundConfig->CueTag, Params);
 						}
 					}

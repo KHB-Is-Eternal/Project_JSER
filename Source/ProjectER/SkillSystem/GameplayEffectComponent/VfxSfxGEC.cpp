@@ -21,7 +21,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 	UAbilitySystemComponent* TargetASC = ActiveGEContainer.Owner;
 	if (IsValid(TargetASC))
 	{
-		// 1. 발동 효과 실행 (Duration/Infinite GE이므로 지속성 효과로 등록)
+		// 1. 발동 ?�과 ?�행 (Duration/Infinite GE?��?�?지?�성 ?�과�??�록)
 		TArray<TPair<FGameplayTag, TWeakObjectPtr<const UObject>>> OngoingCues;
 
 		auto AddOngoing = [&](const UObject* Config, FGameplayTag Tag)
@@ -33,7 +33,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 				Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
 				Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
-				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
+				if (TargetASC->IsOwnerActorAuthoritative() || TargetASC->ScopedPredictionKey.IsLocalClientKey())
 				TargetASC->AddGameplayCue(Tag, Params);
 				OngoingCues.Add(TPair<FGameplayTag, TWeakObjectPtr<const UObject>>(Tag, Config));
 			}
@@ -42,7 +42,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 		if (IsValid(TriggerVfx)) AddOngoing(TriggerVfx.Get(), TriggerVfx->CueTag);
 		if (IsValid(TriggerSound)) AddOngoing(TriggerSound.Get(), TriggerSound->CueTag);
 
-		// 1.1 최초 적용 시점 스택 수치가 최대 스택인지 검사 및 상태 저장
+		// 1.1 최초 ?�용 ?�점 ?�택 ?�치가 최�? ?�택?��? 검??�??�태 ?�??
 		int32 InitialStack = ActiveGE.Spec.GetStackCount();
 		int32 MaxStack = ActiveGE.Spec.Def ? ActiveGE.Spec.Def->GetStackLimitCount() : 0;
 		
@@ -57,7 +57,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 				Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
 				Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
-				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
+				if (TargetASC->IsOwnerActorAuthoritative() || TargetASC->ScopedPredictionKey.IsLocalClientKey())
 				TargetASC->AddGameplayCue(MaxStackVfx->CueTag, Params);
 				*bMaxStackCueActive = true;
 			}
@@ -68,17 +68,17 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 				Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
 				Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
-				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
+				if (TargetASC->IsOwnerActorAuthoritative() || TargetASC->ScopedPredictionKey.IsLocalClientKey())
 				TargetASC->AddGameplayCue(MaxStackSound->CueTag, Params);
 			}
 		}
 
-		// 2. 제거 효과 바인딩 (Ongoing 중단 + Removed 효과 실행)
+		// 2. ?�거 ?�과 바인??(Ongoing 중단 + Removed ?�과 ?�행)
 		if (OngoingCues.Num() > 0 || IsValid(RemovedVfx.Get()) || IsValid(RemovedSound.Get()) || IsValid(MaxStackVfx.Get()) || IsValid(MaxStackSound.Get()))
 		{
 			TWeakObjectPtr<const UVfxSfxGEC> WeakThis(this);
 			TWeakObjectPtr<UAbilitySystemComponent> WeakASC(TargetASC);
-			FGameplayEffectSpec Spec = ActiveGE.Spec; // 복사본 저장
+			FGameplayEffectSpec Spec = ActiveGE.Spec; // 복사�??�??
 
 			ActiveGE.EventSet.OnEffectRemoved.AddLambda([WeakThis, WeakASC, Spec, OngoingCues, bMaxStackCueActive](const FGameplayEffectRemovalInfo& RemovalInfo)
 			{
@@ -89,31 +89,31 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 					
 					if (CustomASC)
 					{
-						// 지속성으로 등록된 발동 효과 제거
+						// 지?�성?�로 ?�록??발동 ?�과 ?�거
 						for (const auto& CuePair : OngoingCues)
 						{
-							FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+							if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
 							CustomASC->RemoveGameplayCueBySource(CuePair.Key, CuePair.Value.Get());
 						}
 
-						// 최대 스택 효과 제거
+						// 최�? ?�택 ?�과 ?�거
 						if (*bMaxStackCueActive && WeakThis.IsValid())
 						{
 							if (WeakThis->MaxStackVfx.Get() && WeakThis->MaxStackVfx->CueTag.IsValid())
 							{
-								FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+								if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
 								CustomASC->RemoveGameplayCueBySource(WeakThis->MaxStackVfx->CueTag, WeakThis->MaxStackVfx.Get());
 							}
 							if (WeakThis->MaxStackSound.Get() && WeakThis->MaxStackSound->CueTag.IsValid())
 							{
-								FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+								if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
 								CustomASC->RemoveGameplayCueBySource(WeakThis->MaxStackSound->CueTag, WeakThis->MaxStackSound.Get());
 							}
 							*bMaxStackCueActive = false;
 						}
 					}
 
-					// 제거 시점의 효과 실행 (Burst)
+					// ?�거 ?�점???�과 ?�행 (Burst)
 					if (WeakThis.IsValid())
 					{
 						WeakThis->ExecuteEffects(WeakASC.Get(), Spec, WeakThis->RemovedVfx.Get(), WeakThis->RemovedSound.Get());
@@ -122,7 +122,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 			});
 		}
 
-		// 3. 스택 변경 시 발동 효과 재실행 (스택 증가 및 최대 스택 도달 연출)
+		// 3. ?�택 변�???발동 ?�과 ?�실??(?�택 증�? �?최�? ?�택 ?�달 ?�출)
 		if (IsValid(TriggerVfx.Get()) || IsValid(TriggerSound.Get()) || IsValid(MaxStackVfx.Get()) || IsValid(MaxStackSound.Get()))
 		{
 			TWeakObjectPtr<const UVfxSfxGEC> WeakThis(this);
@@ -139,10 +139,10 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 
 						if (NewStack > OldStack)
 						{
-							// 스택 증가 이펙트 실행
+							// ?�택 증�? ?�펙???�행
 							WeakThis->ExecuteEffects(ASC, Effect->Spec, WeakThis->TriggerVfx.Get(), WeakThis->TriggerSound.Get());
 
-							// 최대 스택 도달 시 이펙트 (최초 도달 순간에만 실행)
+							// 최�? ?�택 ?�달 ???�펙??(최초 ?�달 ?�간?�만 ?�행)
 							if (LimitCount > 0 && NewStack >= LimitCount && !(*bMaxStackCueActive))
 							{
 								if (WeakThis->MaxStackVfx.Get() && WeakThis->MaxStackVfx->CueTag.IsValid())
@@ -152,7 +152,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 									Params.Instigator = Effect->Spec.GetContext().GetInstigator();
 									Params.EffectCauser = Effect->Spec.GetContext().GetEffectCauser();
 
-									FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
+									if (ASC->IsOwnerActorAuthoritative() || ASC->ScopedPredictionKey.IsLocalClientKey())
 									ASC->AddGameplayCue(WeakThis->MaxStackVfx->CueTag, Params);
 								}
 								if (WeakThis->MaxStackSound.Get() && WeakThis->MaxStackSound->CueTag.IsValid())
@@ -162,7 +162,7 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 									Params.Instigator = Effect->Spec.GetContext().GetInstigator();
 									Params.EffectCauser = Effect->Spec.GetContext().GetEffectCauser();
 
-									FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
+									if (ASC->IsOwnerActorAuthoritative() || ASC->ScopedPredictionKey.IsLocalClientKey())
 									ASC->AddGameplayCue(WeakThis->MaxStackSound->CueTag, Params);
 								}
 								*bMaxStackCueActive = true;
@@ -170,19 +170,19 @@ bool UVfxSfxGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& Ac
 						}
 						else if (NewStack < OldStack)
 						{
-							// 스택 감소 시 최대 스택 미만으로 내려가면 이펙트 제거
+							// ?�택 감소 ??최�? ?�택 미만?�로 ?�려가�??�펙???�거
 							if (LimitCount > 0 && NewStack < LimitCount && *bMaxStackCueActive)
 							{
 								if (UProjectERASC* CustomASC = Cast<UProjectERASC>(ASC))
 								{
 									if (WeakThis->MaxStackVfx.Get() && WeakThis->MaxStackVfx->CueTag.IsValid())
 									{
-										FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+										if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
 										CustomASC->RemoveGameplayCueBySource(WeakThis->MaxStackVfx->CueTag, WeakThis->MaxStackVfx.Get());
 									}
 									if (WeakThis->MaxStackSound.Get() && WeakThis->MaxStackSound->CueTag.IsValid())
 									{
-										FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
+										if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
 										CustomASC->RemoveGameplayCueBySource(WeakThis->MaxStackSound->CueTag, WeakThis->MaxStackSound.Get());
 									}
 								}
@@ -207,12 +207,12 @@ void UVfxSfxGEC::OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& Activ
 	{
 		if (GESpec.GetPeriod() > 0.0f)
 		{
-			// 주기적 틱인 경우
+			// 주기???�인 경우
 			ExecuteEffects(ASC, GESpec, PeriodicVfx.Get(), PeriodicSound.Get(), PredictionKey);
 		}
 		else
 		{
-			// 즉시(Instant) 실행인 경우
+			// 즉시(Instant) ?�행??경우
 			ExecuteEffects(ASC, GESpec, TriggerVfx.Get(), TriggerSound.Get(), PredictionKey);
 		}
 	}
@@ -224,7 +224,7 @@ void UVfxSfxGEC::ExecuteEffects(UAbilitySystemComponent* ASC, const FGameplayEff
 
 	const FGameplayEffectContextHandle& Context = GESpec.GetContext();
 	
-	// 기본 위치 설정: Context에 Origin이 있으면 사용, 없으면 Target(Avatar) 위치 사용
+	// 기본 ?�치 ?�정: Context??Origin???�으�??�용, ?�으�?Target(Avatar) ?�치 ?�용
 	FVector CueLocation = Context.HasOrigin() ? Context.GetOrigin() : ASC->GetAvatarActor()->GetActorLocation();
 	FVector CueDirection = FVector::UpVector;
 	if (const FHitResult* Hit = Context.GetHitResult())
@@ -232,7 +232,7 @@ void UVfxSfxGEC::ExecuteEffects(UAbilitySystemComponent* ASC, const FGameplayEff
 		CueDirection = Hit->Normal;
 	}
 
-	// 1. VFX 실행
+	// 1. VFX ?�행
 	if (IsValid(VfxConfig) && VfxConfig->CueTag.IsValid())
 	{
 		FGameplayCueParameters Params(GESpec);
@@ -242,11 +242,11 @@ void UVfxSfxGEC::ExecuteEffects(UAbilitySystemComponent* ASC, const FGameplayEff
 		Params.Instigator = Context.GetInstigator();
 		Params.EffectCauser = Context.GetEffectCauser();
 
-		FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
+		if (ASC->IsOwnerActorAuthoritative() || ASC->ScopedPredictionKey.IsLocalClientKey())
 		ASC->ExecuteGameplayCue(VfxConfig->CueTag, Params);
 	}
 
-	// 2. SFX 실행
+	// 2. SFX ?�행
 	if (IsValid(SoundConfig) && SoundConfig->CueTag.IsValid())
 	{
 		FGameplayCueParameters Params(GESpec);
@@ -256,7 +256,7 @@ void UVfxSfxGEC::ExecuteEffects(UAbilitySystemComponent* ASC, const FGameplayEff
 		Params.Instigator = Context.GetInstigator();
 		Params.EffectCauser = Context.GetEffectCauser();
 
-		FScopedPredictionWindow PredictionWindow(ASC, !ASC->GetPredictionKeyForNewAction().IsValidKey());
+		if (ASC->IsOwnerActorAuthoritative() || ASC->ScopedPredictionKey.IsLocalClientKey())
 		ASC->ExecuteGameplayCue(SoundConfig->CueTag, Params);
 	}
 }

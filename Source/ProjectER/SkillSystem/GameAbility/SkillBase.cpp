@@ -33,6 +33,7 @@
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
 #include "GameFramework/GameState.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
+#include "SkillSystem/AnimNotify/AnimNotify_AddTagSkillActive.h"
 
 USkillBase::USkillBase()
 {
@@ -64,6 +65,7 @@ void USkillBase::SetSkillTagCount(FGameplayTag Tag, int32 Count)
 void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	CurrentPhaseIndex = 0;
+	bHasFallbackTriggeredActive = false;
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
 	{
@@ -84,6 +86,8 @@ void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const 
 
 void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
+	ClearFallbackTimers();
+
 	if (bWasCancelled) {
 		OnCancelAbility();
 	}
@@ -291,6 +295,13 @@ void USkillBase::OnSkillAnimationEventReceived(FGameplayEventData Payload)
 	}
 	else if (EventTag == ActiveTag)
 	{
+		// [수정] 폴백 타이머가 이미 개입하여 타격을 진행했다면, 
+		// 실제 몽타주 노티파이가 뒤늦게 도착하더라도 무시하여 다단히트 중복 타격을 방지합니다.
+		if (bHasFallbackTriggeredActive)
+		{
+			return; 
+		}
+
 		// [수정] 매 타격(Active) 시점마다 TryExecuteSkill을 호출하여 상태를 철저히 검증합니다.
 		if (!TryExecuteSkill())
 		{
@@ -380,6 +391,78 @@ void USkillBase::PlayAnimMontage()
 	BaseCharacter->StopMove();
 }
 
+void USkillBase::SetupFallbackTimers()
+{
+	UAnimMontage* SkillMontage = CachedConfig ? CachedConfig->GetAnimMontage() : nullptr;
+	if (!IsValid(SkillMontage)) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	float MontageLength = SkillMontage->GetPlayLength();
+
+	// 1. 전체 종료 백업 타이머 (애니메이션 틱 문제로 OnCompleted가 안 불릴 경우 대비)
+	float FallbackEndTime = MontageLength + 0.25f;
+	World->GetTimerManager().SetTimer(FallbackEndTimerHandle, this, &USkillBase::CompleteFinishSkill, FallbackEndTime, false);
+
+	// 2. ActiveTag 백업 타이머 등록
+	int32 PhaseIndex = 0;
+	for (const FAnimNotifyEvent& NotifyEvent : SkillMontage->Notifies)
+	{
+		if (NotifyEvent.Notify && NotifyEvent.Notify->IsA(UAnimNotify_AddTagSkillActive::StaticClass()))
+		{
+			FTimerHandle ActiveTimer;
+			FTimerDelegate Delegate = FTimerDelegate::CreateUObject(this, &USkillBase::Fallback_TriggerActiveTag, PhaseIndex);
+			
+			float TriggerTime = NotifyEvent.GetTriggerTime() + 0.1f;
+			World->GetTimerManager().SetTimer(ActiveTimer, Delegate, TriggerTime, false);
+			
+			FallbackActiveTimerHandles.Add(ActiveTimer);
+			PhaseIndex++;
+		}
+	}
+	
+	MaxExpectedActiveCount = PhaseIndex;
+}
+
+void USkillBase::ClearFallbackTimers()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(FallbackEndTimerHandle);
+		for (FTimerHandle& Handle : FallbackActiveTimerHandles)
+		{
+			World->GetTimerManager().ClearTimer(Handle);
+		}
+	}
+	FallbackActiveTimerHandles.Empty();
+}
+
+void USkillBase::Fallback_TriggerActiveTag(int32 TargetPhaseIndex)
+{
+	if (!IsActive()) return;
+
+	if (CurrentPhaseIndex > TargetPhaseIndex) return;
+
+	// 폴백 타이머가 작동했음을 마킹. 이후에 도착하는 실제 애니메이션 Active 노티파이는 전부 무시됨.
+	bHasFallbackTriggeredActive = true;
+
+	if (!TryExecuteSkill()) return;
+
+	ChangeSkillState(ESkillAbilityState::Active);
+
+	if (UWorld* World = GetWorld())
+	{
+		if (AGameStateBase* GameState = World->GetGameState())
+		{
+			this->SyncedActivationTime = GameState->GetServerWorldTimeSeconds();
+		}
+	}
+
+	ExecuteSkill();
+	CurrentPhaseIndex++;
+}
+
 void USkillBase::SetWaitAnimationEvents()
 {
 	// 커스텀 태스크가 계층형 매칭을 지원하지 않으므로, 각 태그에 대해 개별 태스크를 생성합니다.
@@ -413,6 +496,7 @@ void USkillBase::PrepareToActiveSkill()
 
 	SetWaitAnimationEvents();
 	PlayAnimMontage();
+	SetupFallbackTimers();
 	//if (IsLocallyControlled() || HasAuthority(&CurrentActivationInfo)) PlayAnimMontage();
 }
 
@@ -436,7 +520,21 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 	UAbilitySystemComponent* const SourceASC = GetASC();
 	AActor* const Avatar = GetAvatar();
 
-	if (!ensure(SourceASC) || !ensure(Avatar) || !IsValid(TargetASC) || Effects.Num() <= 0)
+	if (!ensure(SourceASC) || !ensure(Avatar) || !IsValid(TargetASC))
+	{
+		return;
+	}
+
+	TArray<TSubclassOf<UBaseGameplayEffect>> CombinedEffects = Effects;
+	for (const FSkillMagnitudeCalculation& CalcInfo : Calculators)
+	{
+		if (IsValid(CalcInfo.TargetGameplayEffect))
+		{
+			CombinedEffects.AddUnique(CalcInfo.TargetGameplayEffect);
+		}
+	}
+
+	if (CombinedEffects.IsEmpty())
 	{
 		return;
 	}
@@ -481,7 +579,7 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 	OnEffectContextCreated(ContextHandle);
 
 	// 2. 각 이팩트 순회하며 적용
-	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Effects)
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : CombinedEffects)
 	{
 		if (!IsValid(EffectClass)) continue;
 

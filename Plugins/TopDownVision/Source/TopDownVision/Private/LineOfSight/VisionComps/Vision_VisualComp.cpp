@@ -14,6 +14,7 @@
 
 #include "GameFramework/GameStateBase.h"
 #include "LineOfSight/Management/VisionGameStateComp.h"
+#include "LineOfSight/Management/VisionPlayerStateComp.h"
 #include "LineOfSight/MainVisionRTManager.h"
 #include "TopDownVisionDebug.h"
 
@@ -78,12 +79,6 @@ void UVision_VisualComp::Initialize()
     if (!ShouldRunClientLogic())
         return;
 
-    if (!IsSharedVisionChannel() && IndicatorRange > 0.f)
-    {
-        VisionRange    = IndicatorRange;
-        MaxVisionRange = IndicatorRange;
-    }
-
     // Grid Vision always skips allocating local rendering resources (Obstacle / Stamp)
     // and only initializes visibility fading mesh.
     if (VisibilityMesh)
@@ -103,7 +98,7 @@ void UVision_VisualComp::Initialize()
 
     if (UOcclusionSubsystem* OccSub = GetWorld()->GetSubsystem<UOcclusionSubsystem>())
         if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent()))
-            OcclusionTargetIndex = OccSub->RegisterTarget(Root, nullptr, VisionRange);
+            OcclusionTargetIndex = OccSub->RegisterTarget(Root, nullptr, GetVisibleRange());
 }
 
 void UVision_VisualComp::SetIndicatorRange(float NewIndicatorRange) { IndicatorRange = NewIndicatorRange; }
@@ -224,6 +219,27 @@ void UVision_VisualComp::SetVisionChannel(EVisionChannel InVC)
 {
     FString TempDebug = TopDownVisionDebug::GetClientDebugName(GetOwner());
     VisionChannel = InVC;
+
+    RefreshOcclusionAndEvaluatorRadius();
+}
+
+void UVision_VisualComp::RefreshOcclusionAndEvaluatorRadius()
+{
+    if (OcclusionTargetIndex != INDEX_NONE)
+    {
+        if (UWorld* World = GetWorld())
+        {
+            if (UOcclusionSubsystem* OccSub = World->GetSubsystem<UOcclusionSubsystem>())
+            {
+                OccSub->UpdateTargetByIndex(OcclusionTargetIndex, VisibilityAlpha, GetVisibleRange());
+            }
+        }
+    }
+
+    if (CachedEvaluatorComp)
+    {
+        CachedEvaluatorComp->SyncDetectionRadius();
+    }
 }
 
 void UVision_VisualComp::UpdateVisionRange(float NewRange)
@@ -238,11 +254,35 @@ bool UVision_VisualComp::IsSharedVisionChannel() const
 
 EVisionChannel UVision_VisualComp::GetLocalPlayerVisionChannel() const
 {
-    AGameStateBase* GS = GetWorld()->GetGameState();
-    if (!GS) return EVisionChannel::None;
-    UVisionGameStateComp* GSComp = GS->FindComponentByClass<UVisionGameStateComp>();
-    if (!GSComp) return EVisionChannel::None;
-    return GSComp->GetLocalPlayerTeamChannel();
+    if (UWorld* World = GetWorld())
+    {
+        if (ULOSVisionSubsystem* Subsystem = World->GetSubsystem<ULOSVisionSubsystem>())
+        {
+            if (UVisionPlayerStateComp* LocalVPS = Subsystem->GetLocalVisionPS(World))
+            {
+                return LocalVPS->GetTeamChannel();
+            }
+        }
+    }
+    return EVisionChannel::None;
+}
+
+float UVision_VisualComp::GetVisibleRange() const
+{
+    if (!IsSharedVisionChannel() && IndicatorRange > 0.f)
+    {
+        return IndicatorRange;
+    }
+    return VisionRange;
+}
+
+float UVision_VisualComp::GetMaxVisibleRange() const
+{
+    if (!IsSharedVisionChannel() && IndicatorRange > 0.f)
+    {
+        return IndicatorRange;
+    }
+    return MaxVisionRange;
 }
 
 bool UVision_VisualComp::ShouldRunClientLogic() const

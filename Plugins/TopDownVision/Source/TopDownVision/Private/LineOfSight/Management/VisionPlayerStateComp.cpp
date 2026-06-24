@@ -172,6 +172,9 @@ void UVisionPlayerStateComp::InitializeSameTeamEvaluators()
         if (!Provider || !Provider->GetOwner())
             continue;
 
+        // 로컬 플레이어의 팀 정보가 세팅/변경되었으므로 모든 시야 제공자의 동적 반경을 갱신합니다.
+        Provider->RefreshOcclusionAndEvaluatorRadius();
+
         if (!CanSeeTeam(Provider->GetVisionChannel()))
             continue;
 

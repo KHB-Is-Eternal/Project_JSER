@@ -49,6 +49,7 @@
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "LineOfSight/MainVisionRTManager.h"
 #include "LineOfSight/Management/VisionPlayerStateComp.h"
+#include "LineOfSight/VisionComps/Vision_VisualComp.h"
 
 // 길찾기 성능 프로파일링 — 콘솔: stat ProjectER_Pathfinding
 DECLARE_STATS_GROUP(TEXT("ProjectER_Pathfinding"), STATGROUP_ERPathfinding, STATCAT_Advanced);
@@ -2480,64 +2481,31 @@ void ABaseCharacter::UpdateCraftingUIVisibility()
 		return;
 	}
 
-	// 2. 적이거나 중립일 때 1000거리 이상이면 가림
-	float Dist = FVector::Dist(this->GetActorLocation(), LocalChar->GetActorLocation());
-	if (Dist > 1000.f)
+	// 2. 시야(Vision) 플러그인 연동: UVision_VisualComp를 통해 가시성 확인
+	if (UVision_VisualComp* VisionComp = FindComponentByClass<UVision_VisualComp>())
 	{
-		CraftingWidgetComp->SetVisibility(false);
-		return;
-	}
-
-	// 3. 거리 1000 안쪽이면 시야(장애물) 라인트레이스 확인 (월드 스태틱만 감지)
-	TArray<FHitResult> HitResults;
-	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(this);
-	QueryParams.AddIgnoredActor(LocalChar);
-
-	FCollisionObjectQueryParams ObjectParams;
-	ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
-
-	// 중간에 겹치는 투명 볼륨(PCGVolume 등)을 통과하기 위해 MultiTrace 사용
-	bool bHit = GetWorld()->LineTraceMultiByObjectType(
-		HitResults,
-		LocalChar->GetActorLocation(),
-		this->GetActorLocation(),
-		ObjectParams,
-		QueryParams
-	);
-
-	bool bBlockedByWall = false;
-
-	if (bHit)
-	{
-		for (const FHitResult& Hit : HitResults)
+		// Vision 컴포넌트의 Alpha 값이 0.0f보다 크면 시야에 들어온 것
+		if (VisionComp->GetVisibilityAlpha() > 0.0f)
 		{
-			AActor* HitActor = Hit.GetActor();
-			
-			// 충돌한 액터가 '볼륨(Volume)' 클래스 계열이면 무시하고 통과시킴
-			if (HitActor && !HitActor->IsA<AVolume>())
-			{
-				bBlockedByWall = true;
-				
-				// 디버깅용 로그: 진짜 벽을 가린 녀석 출력
-				FString HitName = HitActor->GetName();
-				FString CompName = Hit.GetComponent() ? Hit.GetComponent()->GetName() : TEXT("UnknownComp");
-				UE_LOG(LogTemp, Warning, TEXT("[Crafting UI Visibility] Blocked by Actor: %s / Component: %s"), *HitName, *CompName);
-				
-				break; // 하나라도 진짜 벽에 막혔으면 더 검사할 필요 없음
-			}
+			CraftingWidgetComp->SetVisibility(true);
 		}
-	}
-
-	if (bBlockedByWall)
-	{
-		// 중간에 진짜 장애물(벽 등)이 있으면 가림
-		CraftingWidgetComp->SetVisibility(false);
+		else
+		{
+			CraftingWidgetComp->SetVisibility(false);
+		}
 	}
 	else
 	{
-		// 안 가려져 있으면 보임
-		CraftingWidgetComp->SetVisibility(true);
+		// 만약 Vision 컴포넌트가 없다면, 기존 방식(거리 1000 이내)을 기본값으로 사용
+		float Dist = FVector::Dist(this->GetActorLocation(), LocalChar->GetActorLocation());
+		if (Dist > 1000.f)
+		{
+			CraftingWidgetComp->SetVisibility(false);
+		}
+		else
+		{
+			CraftingWidgetComp->SetVisibility(true);
+		}
 	}
 }
 

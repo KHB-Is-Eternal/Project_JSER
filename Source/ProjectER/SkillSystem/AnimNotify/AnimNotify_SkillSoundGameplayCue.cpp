@@ -61,7 +61,7 @@ void UAnimNotify_SkillSoundGameplayCue::Notify(USkeletalMeshComponent* MeshComp,
 			}
 		}
 
-		ASC->ExecuteGameplayCue(GameplayCueTag, Parameters);
+		ASC->InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::Executed, Parameters);
 	}
 	else
 	{
