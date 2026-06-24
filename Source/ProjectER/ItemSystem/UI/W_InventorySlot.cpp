@@ -362,7 +362,8 @@ void UW_InventorySlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FPo
 			CachedItemData->ItemShortDesc,
 			CachedItemData->ItemLongDesc,
 			FText::GetEmpty(),
-			true
+			true,
+			CachedItemData->GetRarityTextColor()
 		);
 	}
 }

@@ -85,7 +85,8 @@ void UItemCatalogSlotWidget::OnItemHovered()
 			CachedItemData->ItemShortDesc,
 			CachedItemData->ItemLongDesc,
 			FText::GetEmpty(),
-			true
+			true,
+			CachedItemData->GetRarityTextColor()
 		);
 	}
 }

@@ -269,7 +269,8 @@ void UW_LootingPopup::OnItemHovered()
 					Elem.Value->ItemShortDesc,
 					Elem.Value->ItemLongDesc,
 					FText::FromString(""),
-					true
+					true,
+					Elem.Value->GetRarityTextColor()
 				);
 			}
 		}

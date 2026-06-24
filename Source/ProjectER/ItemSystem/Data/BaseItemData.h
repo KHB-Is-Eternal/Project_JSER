@@ -50,6 +50,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Item|UI")
     FLinearColor GetRarityColor() const;
 
+    UFUNCTION(BlueprintCallable, Category = "Item|UI")
+    FLinearColor GetRarityTextColor() const;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings")
     EItemPickupType PickupType;
 
