@@ -6,6 +6,15 @@
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 
+// 프리로드 체인을 위해 추가된 헤더들
+#include "CharacterSystem/Data/CharacterData.h"
+#include "Monster/Data/MonsterDataAsset.h"
+#include "SkillSystem/SkillDataAsset.h"
+#include "SkillSystem/SkillConfig/BaseSkillConfig.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+
 void UER_AssetPreloadSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -13,7 +22,6 @@ void UER_AssetPreloadSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UER_AssetPreloadSubsystem::Deinitialize()
 {
-	// 에셋 로딩 핸들러 해제 및 배열 클리어
 	if (AssetLoadHandle.IsValid())
 	{
 		AssetLoadHandle->CancelHandle();
@@ -26,64 +34,220 @@ void UER_AssetPreloadSubsystem::Deinitialize()
 
 void UER_AssetPreloadSubsystem::StartPreloadMonsterAssets()
 {
-	// 이미 로드 중이라면 무시
+	// 하위 호환성을 위해 캐릭터 경로 배열을 비워서 호출
+	StartPreloadAssets(TArray<FSoftObjectPath>());
+}
+
+void UER_AssetPreloadSubsystem::StartPreloadAssets(const TArray<FSoftObjectPath>& CharacterPaths)
+{
 	if (AssetLoadHandle.IsValid() && AssetLoadHandle->IsLoadingInProgress())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Preload] Preload already in progress..."));
-		return;
+		AssetLoadHandle->CancelHandle();
+		AssetLoadHandle.Reset();
 	}
+	PreloadedAssets.Empty();
 
-	// 에셋 레지스트리 검색
+	// 1단계: 몬스터 데이터 에셋 스캔 및 플레이어 캐릭터 에셋 목록 취합
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	TArray<FAssetData> AssetDataList;
 
-	// 검색할 폴더 경로 (유저 지정 경로)
 	FARFilter Filter;
 	Filter.PackagePaths.Add(FName("/Game/BCW/Monster/MonsterData"));
-	// 하위 폴더까지 검색
 	Filter.bRecursivePaths = true;
-
-	// AssetRegistry에 요청해서 특정 폴더에 있는 UMonsterDataAsset 클래스를 상속받는 모든 에셋을 검색
 	Filter.ClassPaths.Add(FTopLevelAssetPath(TEXT("/Script/ProjectER"), TEXT("MonsterDataAsset")));
 	
-	// 검색한 에셋들을 AssetDataList에 저장
 	AssetRegistryModule.Get().GetAssets(Filter, AssetDataList);
 
-	if (AssetDataList.Num() == 0)
+	TArray<FSoftObjectPath> LevelAssetsToLoad;
+	for (const FAssetData& AssetData : AssetDataList)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Preload] No MonsterDataAssets found in /Game/BCW/Monster/MonsterData. Broadcasting complete immediately."));
+		LevelAssetsToLoad.Add(AssetData.ToSoftObjectPath());
+	}
+
+	for (const FSoftObjectPath& CharPath : CharacterPaths)
+	{
+		if (CharPath.IsValid())
+		{
+			LevelAssetsToLoad.AddUnique(CharPath);
+		}
+	}
+
+	if (LevelAssetsToLoad.Num() == 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Preload] No Monster or Character assets to load. Broadcasting complete."));
 		OnPreloadComplete.Broadcast();
 		return;
 	}
 
-	// AssetDataList에 저장된 에셋들을 AssetsToLoad에 추가(경로 문자열)
-	TArray<FSoftObjectPath> AssetsToLoad;
-	for (const FAssetData& AssetData : AssetDataList)
-	{
-		AssetsToLoad.Add(AssetData.ToSoftObjectPath());
-	}
+	UE_LOG(LogTemp, Log, TEXT("[Preload] Step 1: Starting async load for %d Level assets (Characters + Monsters)..."), LevelAssetsToLoad.Num());
 
-	UE_LOG(LogTemp, Warning, TEXT("[Preload] Starting async load for %d monster assets..."), AssetsToLoad.Num());
-
-	// StreamableManager를 통해 비동기 로딩을 요청
-	// 로드 완료 시 OnMonsterAssetsLoadedAsync 실행
 	FStreamableManager& StreamableManager = UAssetManager::GetStreamableManager();
 	AssetLoadHandle = StreamableManager.RequestAsyncLoad(
-		AssetsToLoad,
-		FStreamableDelegate::CreateUObject(this, &UER_AssetPreloadSubsystem::OnMonsterAssetsLoadedAsync)
+		LevelAssetsToLoad,
+		FStreamableDelegate::CreateUObject(this, &UER_AssetPreloadSubsystem::OnLevelAssetsLoadedAsync)
 	);
 }
 
-void UER_AssetPreloadSubsystem::OnMonsterAssetsLoadedAsync()
+void UER_AssetPreloadSubsystem::OnLevelAssetsLoadedAsync()
+{
+	if (!AssetLoadHandle.IsValid())
+	{
+		OnPreloadComplete.Broadcast();
+		return;
+	}
+
+	// 1단계에서 로드된 레벨 에셋들을 GC 방지를 위해 보관
+	TArray<UObject*> LoadedLevelAssets;
+	AssetLoadHandle->GetLoadedAssets(LoadedLevelAssets);
+	PreloadedAssets.Append(LoadedLevelAssets);
+	AssetLoadHandle.Reset();
+
+	// 2단계: 플레이어 캐릭터의 SkillDataAsset 소프트 경로 수집
+	TArray<FSoftObjectPath> SkillPathsToLoad;
+
+	for (UObject* Asset : LoadedLevelAssets)
+	{
+		if (const UCharacterData* CharData = Cast<UCharacterData>(Asset))
+		{
+			for (const TSoftObjectPtr<USkillDataAsset>& SkillPtr : CharData->SkillDataAsset)
+			{
+				if (!SkillPtr.IsNull())
+				{
+					SkillPathsToLoad.AddUnique(SkillPtr.ToSoftObjectPath());
+				}
+			}
+		}
+		else if (const UMonsterDataAsset* MonsterData = Cast<UMonsterDataAsset>(Asset))
+		{
+			// 몬스터 스킬은 이미 하드 레퍼런스 상태이므로 가비지 컬렉션 방지 배열에 직접 등록만 해둠
+			for (UObject* MonsterSkill : MonsterData->SkillDataAssets)
+			{
+				if (MonsterSkill)
+				{
+					PreloadedAssets.AddUnique(MonsterSkill);
+				}
+			}
+		}
+	}
+
+	if (SkillPathsToLoad.Num() == 0)
+	{
+		// 추가로 로드할 스킬 에셋이 없다면 바로 3단계(나이아가라 파티클 추출)로 점프
+		UE_LOG(LogTemp, Log, TEXT("[Preload] Step 2: No dynamic SkillDataAssets to load. Proceeding to particle extraction..."));
+		OnSkillAssetsLoadedAsync();
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Preload] Step 2: Starting async load for %d dynamic SkillDataAssets..."), SkillPathsToLoad.Num());
+
+	FStreamableManager& StreamableManager = UAssetManager::GetStreamableManager();
+	AssetLoadHandle = StreamableManager.RequestAsyncLoad(
+		SkillPathsToLoad,
+		FStreamableDelegate::CreateUObject(this, &UER_AssetPreloadSubsystem::OnSkillAssetsLoadedAsync)
+	);
+}
+
+void UER_AssetPreloadSubsystem::OnSkillAssetsLoadedAsync()
 {
 	if (AssetLoadHandle.IsValid())
 	{
-		// 로드된 에셋들(MonsterDataAsset 및 내부 Mesh/Anim 등 연쇄 로드됨)을 배열에 넣어 GC 방지
-		AssetLoadHandle->GetLoadedAssets(PreloadedAssets);
-		UE_LOG(LogTemp, Warning, TEXT("[Preload] Monster Assets loading complete! Loaded %d assets. Ready to spawn"), PreloadedAssets.Num());
+		// 2단계에서 로드된 플레이어 스킬 에셋들을 GC 방지를 위해 보관
+		TArray<UObject*> LoadedSkillAssets;
+		AssetLoadHandle->GetLoadedAssets(LoadedSkillAssets);
+		PreloadedAssets.Append(LoadedSkillAssets);
+		AssetLoadHandle.Reset();
 	}
 
-	// 로딩 왼료 이벤트를 Broadcasting 하여 PlayerController 등에서 처리할 수 있게 함
+	// 3단계: 로드된 모든 스킬(플레이어 + 몬스터 스킬)들로부터 나이아가라 파티클 경로 수집
+	TArray<FSoftObjectPath> NiagaraPathsToLoad;
+
+	for (UObject* Asset : PreloadedAssets)
+	{
+		const USkillDataAsset* SkillData = Cast<USkillDataAsset>(Asset);
+		if (!SkillData || !SkillData->SkillConfig)
+		{
+			continue;
+		}
+
+		const UBaseSkillConfig* Config = SkillData->SkillConfig;
+		TArray<TSubclassOf<UBaseGameplayEffect>> AssociatedGEs;
+
+		// Active Skill의 ExecutionPhases 내의 GE 수집
+		for (const FSkillExecutionPhase& Phase : Config->GetExecutionPhases())
+		{
+			for (const TSubclassOf<UBaseGameplayEffect>& GEClass : Phase.Effects)
+			{
+				if (GEClass) AssociatedGEs.AddUnique(GEClass);
+			}
+		}
+
+		// MouseTargetSkill 등 TargetPhases 내의 GE 수집
+		if (const UMouseTargetSkillConfig* TargetConfig = Cast<UMouseTargetSkillConfig>(Config))
+		{
+			for (const FTargetExecutionPhase& Phase : TargetConfig->GetTargetPhases())
+			{
+				for (const TSubclassOf<UBaseGameplayEffect>& GEClass : Phase.TargetEffects)
+				{
+					if (GEClass) AssociatedGEs.AddUnique(GEClass);
+				}
+			}
+		}
+
+		// Passive Skill의 Effects 수집
+		if (const UPassiveSkillConfig* PassiveConfig = Cast<UPassiveSkillConfig>(Config))
+		{
+			for (const TSubclassOf<UBaseGameplayEffect>& GEClass : PassiveConfig->Effects)
+			{
+				if (GEClass) AssociatedGEs.AddUnique(GEClass);
+			}
+		}
+
+		// 수집된 GE들의 Component(BaseGEC)들로부터 나이아가라 경로 수집
+		for (const TSubclassOf<UBaseGameplayEffect>& GEClass : AssociatedGEs)
+		{
+			if (!GEClass) continue;
+
+			const UBaseGameplayEffect* GE = GEClass->GetDefaultObject<UBaseGameplayEffect>();
+			if (!GE) continue;
+
+			for (const UGameplayEffectComponent* Component : GE->GetGEComponents())
+			{
+				if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+				{
+					BaseGEC->CollectNiagaraPaths(NiagaraPathsToLoad);
+				}
+			}
+		}
+	}
+
+	if (NiagaraPathsToLoad.Num() == 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Preload] Step 3: No Niagara systems gathered for preloading. Broadcasting complete immediately."));
+		OnPreloadComplete.Broadcast();
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Preload] Step 3: Starting async load for %d Niagara systems..."), NiagaraPathsToLoad.Num());
+
+	FStreamableManager& StreamableManager = UAssetManager::GetStreamableManager();
+	AssetLoadHandle = StreamableManager.RequestAsyncLoad(
+		NiagaraPathsToLoad,
+		FStreamableDelegate::CreateUObject(this, &UER_AssetPreloadSubsystem::OnNiagaraAssetsLoadedAsync)
+	);
+}
+
+void UER_AssetPreloadSubsystem::OnNiagaraAssetsLoadedAsync()
+{
+	if (AssetLoadHandle.IsValid())
+	{
+		TArray<UObject*> LoadedNiagaraAssets;
+		AssetLoadHandle->GetLoadedAssets(LoadedNiagaraAssets);
+		PreloadedAssets.Append(LoadedNiagaraAssets);
+		
+		UE_LOG(LogTemp, Log, TEXT("[Preload] Niagara Assets loading complete! Loaded %d systems. Preload process fully complete!"), LoadedNiagaraAssets.Num());
+		AssetLoadHandle.Reset();
+	}
+
 	OnPreloadComplete.Broadcast();
 }
 
@@ -105,7 +269,7 @@ void UER_AssetPreloadSubsystem::HideLoadingScreen()
 {
 	if (!LoadingUIInstance)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Preload] HideLoadingScreen: No active LoadingUIInstance to remove."));
+		UE_LOG(LogTemp, Log, TEXT("[Preload] HideLoadingScreen: No active LoadingUIInstance to remove."));
 		return;
 	}
 

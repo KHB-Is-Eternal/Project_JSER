@@ -187,3 +187,8 @@ void UBaseGEC::GetSkillProcEffects(UAbilitySystemComponent* InstigatorASC, UGame
 		}
 	}
 }
+
+void UBaseGEC::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+}
+

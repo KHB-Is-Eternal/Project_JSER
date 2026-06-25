@@ -101,3 +101,28 @@ FSkillTooltipData UAdditionalEffectGEC::GetTooltipDescription(int32 Level, TSubc
 	Data.DetailedDescription = FText::FromString(DetailStr);
 	return Data;
 }
+
+void UAdditionalEffectGEC::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+	Super::CollectNiagaraPaths(OutPaths);
+	if (ActiveVfxConfig && !ActiveVfxConfig->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(ActiveVfxConfig->NiagaraSystem.ToSoftObjectPath());
+	}
+	for (const TSubclassOf<UBaseGameplayEffect>& GEClass : Bonus)
+	{
+		if (GEClass)
+		{
+			if (const UBaseGameplayEffect* GE = GEClass->GetDefaultObject<UBaseGameplayEffect>())
+			{
+				for (const UGameplayEffectComponent* Component : GE->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						BaseGEC->CollectNiagaraPaths(OutPaths);
+					}
+				}
+			}
+		}
+	}
+}

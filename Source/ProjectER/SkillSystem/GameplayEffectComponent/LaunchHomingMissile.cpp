@@ -334,3 +334,32 @@ FSkillTooltipData ULaunchHomingMissile::GetTooltipDescription(int32 Level, TSubc
 	return Data;
 }
 
+
+void ULaunchHomingMissile::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+	Super::CollectNiagaraPaths(OutPaths);
+	if (MissileVfx && !MissileVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(MissileVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	if (ImpactVfx && !ImpactVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(ImpactVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	for (const TSubclassOf<UBaseGameplayEffect>& GEClass : Applied)
+	{
+		if (GEClass)
+		{
+			if (const UBaseGameplayEffect* GE = GEClass->GetDefaultObject<UBaseGameplayEffect>())
+			{
+				for (const UGameplayEffectComponent* Component : GE->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						BaseGEC->CollectNiagaraPaths(OutPaths);
+					}
+				}
+			}
+		}
+	}
+}

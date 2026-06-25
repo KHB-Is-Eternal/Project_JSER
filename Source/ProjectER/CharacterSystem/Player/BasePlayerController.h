@@ -302,7 +302,7 @@ public:
 
 	// [Asset Preloading]
 	UFUNCTION(BlueprintCallable, Client, Reliable)
-	void Client_StartPreload();
+	void Client_StartPreload(const TArray<FSoftObjectPath>& CharacterPaths);
 
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_NotifyLoadComplete();

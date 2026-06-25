@@ -63,4 +63,6 @@ public:
 	/** 최대 스택(Max Stack) 도달 시점에 실행할 사운드 */
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|SFX")
 	TObjectPtr<USkillSoundSpawnConfig> MaxStackSound;
+
+	virtual void CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const override;
 };

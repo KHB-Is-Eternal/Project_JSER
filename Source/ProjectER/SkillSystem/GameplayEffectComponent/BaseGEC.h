@@ -69,6 +69,9 @@ public:
 	virtual class USkillSoundSpawnConfig* GetAGCN_SoundConfig() const override { return nullptr; }
 	virtual void SetupMovement(class UProjectileMovementComponent* Movement) const {}
 
+	/** 나이아가라 프리로드 경로 수집 */
+	virtual void CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const;
+
 protected:
 
 private:

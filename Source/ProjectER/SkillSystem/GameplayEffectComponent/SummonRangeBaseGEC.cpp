@@ -361,3 +361,32 @@ FTransform USummonRangeBaseGEC::ApplyCommonSpawnOptionsToTransform(const FTransf
 
 	return FTransform(CombinedRotation, TargetLocation);
 }
+
+void USummonRangeBaseGEC::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+	Super::CollectNiagaraPaths(OutPaths);
+	if (RangeSpawnVfx && !RangeSpawnVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(RangeSpawnVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	if (HitTargetVfx && !HitTargetVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(HitTargetVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	for (const TSubclassOf<UBaseGameplayEffect>& GEClass : Applied)
+	{
+		if (GEClass)
+		{
+			if (const UBaseGameplayEffect* GE = GEClass->GetDefaultObject<UBaseGameplayEffect>())
+			{
+				for (const UGameplayEffectComponent* Component : GE->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						BaseGEC->CollectNiagaraPaths(OutPaths);
+					}
+				}
+			}
+		}
+	}
+}

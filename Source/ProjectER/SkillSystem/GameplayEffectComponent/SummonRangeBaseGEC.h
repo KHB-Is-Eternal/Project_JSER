@@ -110,4 +110,7 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Summon|Effect")
 	TArray<TSubclassOf<UBaseGameplayEffect>> Applied;
+
+public:
+	virtual void CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const override;
 };
