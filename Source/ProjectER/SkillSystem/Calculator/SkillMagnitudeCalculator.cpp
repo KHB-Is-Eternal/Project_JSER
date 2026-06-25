@@ -34,7 +34,7 @@ float USkillMagnitudeCalculator::CalculateValue(UAbilitySystemComponent* SourceA
 			}
 			else
 			{
-				UE_LOG(LogTemp, Warning, TEXT("USkillMagnitudeCalculator: 0으로 나누려고 시도하여 무시되었습니다."));
+				UE_LOG(LogTemp, Log, TEXT("USkillMagnitudeCalculator: Attempted to divide by zero. Ignored."));
 			}
 			break;
 		}
@@ -66,7 +66,7 @@ float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbility
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("USkillMagnitudeCalculator: TargetASC가 존재하지 않지만 TargetStat을 참조하려고 했습니다. 0을 반환합니다."));
+			UE_LOG(LogTemp, Log, TEXT("USkillMagnitudeCalculator: TargetASC is null but attempted to reference TargetStat. Returning 0."));
 		}
 		break;
 
@@ -84,7 +84,7 @@ float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbility
 		}
 		else if (!TargetASC)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("USkillMagnitudeCalculator: TargetASC가 존재하지 않지만 TargetTagStack을 참조하려고 했습니다. 0을 반환합니다."));
+			UE_LOG(LogTemp, Log, TEXT("USkillMagnitudeCalculator: TargetASC is null but attempted to reference TargetTagStack. Returning 0."));
 		}
 		break;
 
@@ -95,7 +95,7 @@ float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbility
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("USkillMagnitudeCalculator: SubFormula가 nullptr입니다. 0을 반환합니다."));
+			UE_LOG(LogTemp, Log, TEXT("USkillMagnitudeCalculator: SubFormula is null. Returning 0."));
 		}
 		break;
 
