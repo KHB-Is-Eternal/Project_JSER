@@ -1,4 +1,4 @@
-#include "GameModeBase/Subsystem/Preload/ER_AssetPreloadSubsystem.h"
+﻿#include "GameModeBase/Subsystem/Preload/ER_AssetPreloadSubsystem.h"
 #include "Engine/AssetManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -14,6 +14,9 @@
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "NiagaraFunctionLibrary.h"
+
+
 
 void UER_AssetPreloadSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -245,6 +248,34 @@ void UER_AssetPreloadSubsystem::OnNiagaraAssetsLoadedAsync()
 		PreloadedAssets.Append(LoadedNiagaraAssets);
 		
 		UE_LOG(LogTemp, Log, TEXT("[Preload] Niagara Assets loading complete! Loaded %d systems. Preload process fully complete!"), LoadedNiagaraAssets.Num());
+
+		if (UWorld* World = GetWorld())
+		{
+			int32 PreSpawnCount = 0;
+
+			for (UObject* Asset : LoadedNiagaraAssets)
+			{
+				if (UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(Asset))
+				{
+					UNiagaraComponent* TempComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+						World,
+						NiagaraSystem,
+						FVector(0.f, 0.f, -100000.f),
+						FRotator::ZeroRotator,
+						FVector(1.f),
+						true,
+						true,
+						ENCPoolMethod::AutoRelease
+					);
+					if (TempComp)
+					{
+						PreSpawnCount++;
+					}
+				}
+			}
+			UE_LOG(LogTemp, Log, TEXT("[Preload] Optimized %d Niagara systems via AutoRelease Pre-spawn (Total spawned: %d) to prevent rendering and instantiation hitching."), LoadedNiagaraAssets.Num(), PreSpawnCount);
+		}
+
 		AssetLoadHandle.Reset();
 	}
 
