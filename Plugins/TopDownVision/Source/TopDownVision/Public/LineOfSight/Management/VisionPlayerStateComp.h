@@ -52,6 +52,9 @@ private:
     UFUNCTION() void OnRep_TeamChannel();
     UFUNCTION() void OnRep_AllReveal();
 
+    UFUNCTION()
+    void OnPawnSet(APlayerState* PlayerState, APawn* NewPawn, APawn* OldPawn);
+
     void InitializeSameTeamEvaluators();
 
     /** Pushes TeamChannel onto the owning pawn's Vision_VisualComp and

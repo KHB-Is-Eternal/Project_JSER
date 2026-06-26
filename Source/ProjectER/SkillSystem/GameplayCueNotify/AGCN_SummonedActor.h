@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayCueNotify_Actor.h"
+#include "Components/SceneComponent.h"
 #include "AGCN_SummonedActor.generated.h"
 
 class UNiagaraComponent;
@@ -34,6 +35,9 @@ public:
 	/** 대상 판정 액터(장판 등)에 자신을 부착하고 비주얼/사운드 설정 및 생명주기를 연동합니다. */
 	UFUNCTION(BlueprintCallable, Category = "ProjectER|GameplayCue")
 	void AttachToTargetActor(AActor* InTargetActor);
+
+	/** 부모 이동으로 인해 자식의 트랜스폼이 갱신되었을 때 명시적으로 오버랩을 갱신하여 호스트 Sweep 버그를 방지합니다. */
+	void OnTransformUpdated(USceneComponent* UpdatedComponent, EUpdateTransformFlags UpdateTransformFlags, ETeleportType Teleport);
 
 	/** 타겟 액터가 파괴될 때 호출되어 자신도 파괴합니다. */
 	UFUNCTION()
@@ -74,6 +78,9 @@ protected:
 private:
 	/** 시전자의 비전 채널을 읽어와 이 장판 액터의 비전 채널을 동기화하고 FOW 시스템에 등록/갱신합니다. */
 	void SyncVisionChannelWithInstigator(AActor* InInstigator);
+
+	/** 호스트/로컬 컨트롤 환경에서의 물리 이동 누락 시 오버랩 갱신을 수동으로 처리하도록 설정합니다. */
+	void SetupManualOverlapUpdate(AActor* InTargetActor);
 
 public:
 	/** 비주얼을 담당하는 나이아가라 컴포넌트 */

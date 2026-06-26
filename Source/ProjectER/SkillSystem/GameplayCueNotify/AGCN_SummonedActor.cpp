@@ -500,9 +500,11 @@ void AGCN_SummonedActor::AttachToTargetActor(AActor* InTargetActor)
 
 	CachedTargetActor = InTargetActor;
 	// [Fix] 비주얼 액터 본체(this)도 논리 액터에 부착하여, 시야 컴포넌트(VisionVisualComp)가 파티클과 함께 움직이도록 보장합니다.
-	// bWeldSimulatedBodies를 false로 설정하여 개별 오버랩(EndOverlap 등)이 씹히지 않도록 수정합니다.
+	// bWeldSimulatedBodies를 false로 설정하여 결합(Weld) 시 자식 컴포넌트의 개별 오버랩(EndOverlap 등) 이벤트가 씹히는 현상을 방지합니다.
 	FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, false);
 	AttachToActor(InTargetActor, AttachRules);
+
+	SetupManualOverlapUpdate(InTargetActor);
 
 	// [Fix] 핸드셰이크 시점에 시전자의 실제 팀 비전 채널을 찾아 다시 한 번 동기화해 줍니다. (멀티플레이어 클라이언트 보정)
 	if (IsValid(InTargetActor))
@@ -539,6 +541,14 @@ void AGCN_SummonedActor::AttachToTargetActor(AActor* InTargetActor)
 	}
 }
 
+void AGCN_SummonedActor::OnTransformUpdated(USceneComponent* UpdatedComponent, EUpdateTransformFlags UpdateTransformFlags, ETeleportType Teleport)
+{
+	if (UpdatedComponent)
+	{
+		UpdatedComponent->UpdateOverlaps();
+	}
+}
+
 void AGCN_SummonedActor::OnProjectileStop(const FHitResult& ImpactResult)
 {
 	// 논리 발사체와 아직 결합(Handshake)되지 않은 고아(Orphaned) 시각 발사체가 
@@ -546,6 +556,27 @@ void AGCN_SummonedActor::OnProjectileStop(const FHitResult& ImpactResult)
 	if (!CachedTargetActor.IsValid())
 	{
 		Destroy();
+	}
+}
+
+void AGCN_SummonedActor::SetupManualOverlapUpdate(AActor* InTargetActor)
+{
+	if (!IsValid(InTargetActor)) return;
+
+	// [Fix] 타겟 액터가 직접 물리 이동(Sweep)을 주도하는 환경(서버 권한을 갖거나, 로컬 조종 중인 폰)일 때만 수동 갱신을 바인딩합니다.
+	// 클라이언트 측의 Simulated Proxy는 네트워크 텔레포트/보간 시 엔진이 알아서 오버랩을 갱신하므로 불필요한 중복 호출을 막습니다.
+	bool bRequiresManualOverlapUpdate = InTargetActor->HasAuthority();
+	if (!bRequiresManualOverlapUpdate)
+	{
+		if (APawn* TargetPawn = Cast<APawn>(InTargetActor))
+		{
+			bRequiresManualOverlapUpdate = TargetPawn->IsLocallyControlled();
+		}
+	}
+
+	if (bRequiresManualOverlapUpdate && SceneRoot && !SceneRoot->TransformUpdated.IsBoundToObject(this))
+	{
+		SceneRoot->TransformUpdated.AddUObject(this, &AGCN_SummonedActor::OnTransformUpdated);
 	}
 }
 
