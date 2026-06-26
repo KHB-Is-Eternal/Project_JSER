@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -19,7 +19,8 @@ public:
 
     void setTooltipInstance(UUI_ToolTip* InTooltipInstance) { TooltipInstance = InTooltipInstance; }
 
-    void ShowTooltip(UWidget* AnchorWidget,FText Name, FText ShortDesc, FText DetailDesc, FText CostDesc, bool showUpper);
+    // [김현수 추가분] 매개변수 끝에 이름 폰트 색상(NameColor) 추가 (기본값 설정으로 기존 코드 안정성 확보)
+    void ShowTooltip(UWidget* AnchorWidget,FText Name, FText ShortDesc, FText DetailDesc, FText CostDesc, bool showUpper, FLinearColor NameColor = FLinearColor(0.0f, 0.0f, 0.0f, 1.0f));
 
 private:
     UPROPERTY()
