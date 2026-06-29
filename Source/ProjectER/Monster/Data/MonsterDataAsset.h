@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
@@ -179,5 +179,15 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|Reward")
 	int Exp;
+
+	// [김현수 추가분] 개별 몬스터 드랍 테이블 연동용 변수
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	TArray<TObjectPtr<UBaseItemData>> DropItemPool;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	int32 MinDropCount = 1;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	int32 MaxDropCount = 3;
 
 };

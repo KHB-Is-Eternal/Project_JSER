@@ -320,6 +320,19 @@ void ABaseMonster::OnMonsterDataLoaded(FPrimaryAssetId MonsterAssetId, float Lev
 	if (HasAuthority())
 	{
 		InitStateTree();
+		
+		// [김현수 추가분] 몬스터 개별 드랍 테이블 연동 처리
+		if (LootableComp && MonsterData)
+		{
+			// 데이터 에셋에 드랍 아이템이 하나라도 설정되어 있을 때만 덮어씌움 (안 그러면 기본값이 날아감)
+			if (MonsterData->DropItemPool.Num() > 0)
+			{
+				LootableComp->ItemPool = MonsterData->DropItemPool;
+				LootableComp->MinLootCount = MonsterData->MinDropCount;
+				LootableComp->MaxLootCount = MonsterData->MaxDropCount;
+				LootableComp->InitializeRandomLoot();
+			}
+		}
 	}
 
 	//Trigger BP event function
