@@ -267,6 +267,12 @@ void ULaunchHomingMissile::InitializeActorData(ABaseMissileActor* Actor, const F
 		InitialSpeed, MaxSpeed, HomingAccelerationMagnitude, ReachThreshold, bDestroyOnHit, Transform.GetRotation().GetForwardVector());
 	
 	Actor->SetLifeSpan(LifeSpan);
+
+	// [Optimization] 미사일의 속도와 수명을 기반으로 네트워크 컬링 거리를 동적으로 계산합니다.
+	float SpeedToUse = MaxSpeed > 0.f ? MaxSpeed : InitialSpeed;
+	float MaxTravelDistance = SpeedToUse * LifeSpan;
+	float CullDistance = FMath::Max(15000.0f, MaxTravelDistance + 2000.0f); // 2000 유닛 여유분
+	Actor->NetCullDistanceSquared = FMath::Square(CullDistance);
 }
 
 FTransform ULaunchHomingMissile::CalculateSpawnTransform(

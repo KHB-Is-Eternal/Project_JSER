@@ -42,16 +42,30 @@ EVfxCullState USkillVfxCullingHelper::CheckVfxCulling(const AActor* TargetActor,
 	bool bIsProjectile = false;
 	if (IsValid(EffectCauser))
 	{
-		if (EffectCauser->IsA(ABaseMissileActor::StaticClass()) || EffectCauser->FindComponentByClass<UProjectileMovementComponent>() != nullptr)
+		if (EffectCauser->IsA(ABaseMissileActor::StaticClass()))
 		{
 			bIsProjectile = true;
+		}
+		else if (const UProjectileMovementComponent* ProjComp = EffectCauser->FindComponentByClass<UProjectileMovementComponent>())
+		{
+			if (ProjComp->bAutoActivate || ProjComp->IsActive() || ProjComp->InitialSpeed > 0.0f)
+			{
+				bIsProjectile = true;
+			}
 		}
 	}
 	if (!bIsProjectile && IsValid(TargetActor))
 	{
-		if (TargetActor->IsA(ABaseMissileActor::StaticClass()) || TargetActor->FindComponentByClass<UProjectileMovementComponent>() != nullptr)
+		if (TargetActor->IsA(ABaseMissileActor::StaticClass()))
 		{
 			bIsProjectile = true;
+		}
+		else if (const UProjectileMovementComponent* ProjComp = TargetActor->FindComponentByClass<UProjectileMovementComponent>())
+		{
+			if (ProjComp->bAutoActivate || ProjComp->IsActive() || ProjComp->InitialSpeed > 0.0f)
+			{
+				bIsProjectile = true;
+			}
 		}
 	}
 
@@ -75,7 +89,10 @@ EVfxCullState USkillVfxCullingHelper::CheckVfxCulling(const AActor* TargetActor,
 				{
 					return bIsPersistent ? EVfxCullState::SpawnAndTrackVisionUntilSeen : EVfxCullState::SkipSpawn;
 				}
-				return bIsPersistent ? EVfxCullState::SpawnHidden : EVfxCullState::SkipSpawn;
+				else
+				{
+					return bIsPersistent ? EVfxCullState::SpawnHidden : EVfxCullState::SkipSpawn;
+				}
 			}
 		}
 	}

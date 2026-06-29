@@ -162,13 +162,8 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject, const FG
 	// [Refactor] 특정 GEC 클래스나 부모 GEC에 의존하지 않고 인터페이스(ISkillVisualDataProvider)를 사용합니다.
 	if (const ISkillVisualDataProvider* VisualSource = Cast<ISkillVisualDataProvider>(SourceObject))
 	{
-		// 1. 비주얼(VFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
-		SetupVfxComponent(VisualSource->GetAGCN_NiagaraConfig(), Parameters);
-
-		// 2. 사운드(SFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
-		SetupSfxComponent(VisualSource->GetAGCN_SoundConfig());
-
-		// 3. 이동(Movement) 초기화 - GEC인 경우에만 추가 설정 수행
+		// 1. 이동(Movement) 초기화 - GEC인 경우에만 추가 설정 수행
+		// [Fix] Vfx/Sfx 초기화 시 투사체 여부를 정확히 판별하기 위해 Movement 셋업을 가장 먼저 수행합니다.
 		if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(SourceObject))
 		{
 			if (MovementComponent)
@@ -190,6 +185,12 @@ void AGCN_SummonedActor::InitializeFromGEC(const UObject* SourceObject, const FG
 				}
 			}
 		}
+
+		// 2. 비주얼(VFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
+		SetupVfxComponent(VisualSource->GetAGCN_NiagaraConfig(), Parameters);
+
+		// 3. 사운드(SFX) 초기화 - 인터페이스가 제공하는 컨피그를 사용
+		SetupSfxComponent(VisualSource->GetAGCN_SoundConfig());
 	}
 }
 
@@ -214,34 +215,50 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 	
 	const EVfxCullState CullState = USkillVfxCullingHelper::CheckVfxCulling(VisionTarget, Parameters, true);
 	
-	if (CullState == EVfxCullState::SkipSpawn)
+	if (CullState != EVfxCullState::SkipSpawn)
 	{
-		return; // 단발성이면서 시야 밖이면 아예 스폰하지 않음
-	}
+		// [Refactor] 전역 헬퍼를 사용하여 VFX 생성 및 설정 통합
+		VfxComponent = SkillNiagaraSpawnHelper::SpawnNiagara(GetWorld(), NiagaraConfig, GetActorTransform(), this);
 
-	// [Refactor] 전역 헬퍼를 사용하여 VFX 생성 및 설정 통합
-	VfxComponent = SkillNiagaraSpawnHelper::SpawnNiagara(GetWorld(), NiagaraConfig, GetActorTransform(), this);
-
-	if (IsValid(VfxComponent))
-	{
-		if (CullState == EVfxCullState::SpawnHidden || 
-			(CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen && 
-			 IsValid(VisionVisualComp) && VisionVisualComp->GetVisibilityAlpha() <= 0.0f))
+		if (IsValid(VfxComponent))
 		{
-			VfxComponent->SetVisibility(false);
-		}
-
-		if (CullState == EVfxCullState::SpawnAndTrackVision || 
-			CullState == EVfxCullState::SpawnHidden || 
-			CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen)
-		{
-			if (UVisionParticleManagerSubsystem* VisionSubsystem = GetWorld()->GetSubsystem<UVisionParticleManagerSubsystem>())
+			if (CullState == EVfxCullState::SpawnHidden || 
+				(CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen && 
+				 IsValid(VisionVisualComp) && VisionVisualComp->GetVisibilityAlpha() <= 0.0f))
 			{
-				const bool bTrackUntilSeen = (CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen);
-				VisionSubsystem->RegisterParticle(VfxComponent, this, bTrackUntilSeen);
+				VfxComponent->SetVisibility(false);
+				VfxComponent->SetHiddenInGame(true);
+			}
+
+			if (CullState == EVfxCullState::SpawnAndTrackVision || 
+				CullState == EVfxCullState::SpawnHidden || 
+				CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen)
+			{
+				if (UVisionParticleManagerSubsystem* VisionSubsystem = GetWorld()->GetSubsystem<UVisionParticleManagerSubsystem>())
+				{
+					const bool bTrackUntilSeen = (CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen);
+					VisionSubsystem->RegisterParticle(VfxComponent, this, bTrackUntilSeen);
+				}
 			}
 		}
 	}
+
+	// [Log] AGCN_SummonedActor의 팀값, 시야팀채널, EVfxCullState 로그 출력
+	ETeamType Team = ETeamType::None;
+	AActor* InstigatorActor = GetActualInstigator(Parameters);
+	if (const ITargetableInterface* InstigatorTargetable = Cast<ITargetableInterface>(InstigatorActor))
+	{
+		Team = InstigatorTargetable->GetTeamType();
+	}
+	
+	EVisionChannel VisionChannel = EVisionChannel::None;
+	if (IsValid(VisionVisualComp))
+	{
+		VisionChannel = VisionVisualComp->GetVisionChannel();
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[AGCN_SummonedActor] InitializeFromGEC Completed | Actor: %s | Team: %d | VisionChannel: %d | CullState: %d"),
+		*GetName(), (int32)Team, (int32)VisionChannel, (int32)CullState);
 }
 
 void AGCN_SummonedActor::SetupSfxComponent(const USkillSoundSpawnConfig* SoundConfig)

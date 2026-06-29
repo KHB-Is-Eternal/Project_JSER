@@ -31,12 +31,14 @@ void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 		{
 			const float CurrentAlpha = VisionComp->GetVisibilityAlpha();
 			const bool bShouldBeVisible = (CurrentAlpha > 0.0f);
-			
+			const bool bCurrentlyVisible = NC->GetVisibleFlag();
+
 			if (bShouldBeVisible)
 			{
-				if (!NC->GetVisibleFlag())
+				if (!bCurrentlyVisible)
 				{
 					NC->SetVisibility(true);
+					NC->SetHiddenInGame(false);
 				}
 
 				if (ManagedParticles[i].bTrackUntilSeen)
@@ -47,9 +49,10 @@ void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 			}
 			else
 			{
-				if (NC->GetVisibleFlag())
+				if (bCurrentlyVisible)
 				{
 					NC->SetVisibility(false);
+					NC->SetHiddenInGame(true);
 				}
 			}
 		}
