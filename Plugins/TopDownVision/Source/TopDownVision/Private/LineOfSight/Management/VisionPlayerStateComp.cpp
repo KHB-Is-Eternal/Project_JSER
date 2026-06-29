@@ -300,6 +300,12 @@ void UVisionPlayerStateComp::ReevaluateTargetVisibility(
         }
     }
 
+    UE_LOG(VisionPlayerStateComp, Warning,
+        TEXT("[ReevalVis] %s | ShouldBeVisible=%d | ExcludeTeam=%d | MyTeam=%d | TargetChannel=%d"),
+        *Target->GetName(), bShouldBeVisible,
+        (int32)ExcludeObserverTeam, (int32)TeamChannel,
+        (int32)VisualComp->GetVisionChannel());
+
     VisualComp->SetVisible(bShouldBeVisible);
 }
 

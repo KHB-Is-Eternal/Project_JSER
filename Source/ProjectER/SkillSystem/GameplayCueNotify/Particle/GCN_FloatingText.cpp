@@ -75,12 +75,13 @@ bool UGCN_FloatingText::OnExecute_Implementation(AActor* MyTarget, const FGamepl
 		NiagaraComp->SetVariableLinearColor(FName(TEXT("Color")), TextColor);
 		NiagaraComp->SetVariableFloat(FName(TEXT("Size")), TextSize);
 
+		UVision_VisualComp* VisionVisualComp = MyTarget->FindComponentByClass<UVision_VisualComp>();
 		if (CullState == EVfxCullState::SpawnHidden || 
 			(CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen && 
-			 IsValid(MyTarget) && MyTarget->FindComponentByClass<UVision_VisualComp>() && 
-			 MyTarget->FindComponentByClass<UVision_VisualComp>()->GetVisibilityAlpha() <= 0.0f))
+			 IsValid(VisionVisualComp) && VisionVisualComp->GetVisibilityAlpha() <= 0.0f))
 		{
 			NiagaraComp->SetVisibility(false);
+			NiagaraComp->SetHiddenInGame(true);
 		}
 
 		if (CullState == EVfxCullState::SpawnAndTrackVision || 
