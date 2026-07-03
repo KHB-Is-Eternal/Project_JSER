@@ -321,16 +321,14 @@ void ABaseMonster::OnMonsterDataLoaded(FPrimaryAssetId MonsterAssetId, float Lev
 	{
 		InitStateTree();
 		
-		// [김현수 추가분] 몬스터 개별 드랍 테이블 연동 처리
+		// [김현수 추가분] 몬스터 개별 가챠(Gacha) 드랍 테이블 연동 처리
 		if (LootableComp && MonsterData)
 		{
 			// 데이터 에셋에 드랍 아이템이 하나라도 설정되어 있을 때만 덮어씌움 (안 그러면 기본값이 날아감)
 			if (MonsterData->DropItemPool.Num() > 0)
 			{
-				LootableComp->ItemPool = MonsterData->DropItemPool;
-				LootableComp->MinLootCount = MonsterData->MinDropCount;
-				LootableComp->MaxLootCount = MonsterData->MaxDropCount;
-				LootableComp->InitializeRandomLoot();
+				TArray<UBaseItemData*> GachaResult = GenerateGachaDrops();
+				LootableComp->InitializeWithItems(GachaResult);
 			}
 		}
 	}
@@ -1057,4 +1055,107 @@ void ABaseMonster::OffCCChanged()
 	// CC 상태 종료 후 Combat상태로 전환용
 	bIsCombat = false;
 	SendStateTreeEvent(MonsterTags.HitEventTag);
+}
+
+// [김현수 추가분] 가챠 확률 계산 헬퍼 함수
+TArray<UBaseItemData*> ABaseMonster::GenerateGachaDrops() const
+{
+	TArray<UBaseItemData*> ResultDrops;
+	if (!MonsterData) return ResultDrops;
+
+	// 1. 드랍 카운트 굴림
+	int32 LootCount = FMath::RandRange(MonsterData->MinDropCount, MonsterData->MaxDropCount);
+	
+	// 레어도 확률 맵 복사 (정규화용)
+	TMap<EItemRarity, float> NormalizedRates;
+	float TotalRarityRate = 0.0f;
+	for (const auto& Pair : MonsterData->RarityDropRates)
+	{
+		TotalRarityRate += Pair.Value;
+	}
+
+	if (TotalRarityRate <= 0.0f) 
+	{
+		// 확률 세팅이 아예 없으면 꽝(빈 배열) 반환
+		return ResultDrops;
+	}
+
+	// [옵션B] 100%가 안되거나 넘어도 무조건 100% 기준으로 비율(Normalize) 보정
+	for (const auto& Pair : MonsterData->RarityDropRates)
+	{
+		NormalizedRates.Add(Pair.Key, Pair.Value / TotalRarityRate);
+	}
+
+	for (int32 i = 0; i < LootCount; ++i)
+	{
+		// 2. 등급(Rarity) 굴림
+		float RarityRoll = FMath::FRand(); // 0.0 ~ 1.0 사이 난수
+		float CurrentAccum = 0.0f;
+		EItemRarity PickedRarity = EItemRarity::Normal;
+		
+		for (const auto& Pair : NormalizedRates)
+		{
+			CurrentAccum += Pair.Value;
+			if (RarityRoll <= CurrentAccum)
+			{
+				PickedRarity = Pair.Key;
+				break;
+			}
+		}
+
+		// 3. 당첨된 등급에 해당하는 아이템 필터링 (가중치 0.0 인 것 제외)
+		TArray<FDropItemInfo> FilteredPool;
+		for (const FDropItemInfo& DropInfo : MonsterData->DropItemPool)
+		{
+			if (DropInfo.Item && DropInfo.Item->ItemRarity == PickedRarity && DropInfo.Weight > 0.0f)
+			{
+				FilteredPool.Add(DropInfo);
+			}
+		}
+
+		// [옵션A] 만약 해당 등급의 풀이 비어있다면, 하위 등급으로 강등시켜서 재탐색 (Unique -> Rare -> Normal)
+		if (FilteredPool.Num() == 0)
+		{
+			// EItemRarity는 uint8 기반이므로 숫자가 작을수록 하위 등급
+			uint8 RarityInt = static_cast<uint8>(PickedRarity);
+			while (FilteredPool.Num() == 0 && RarityInt > 0)
+			{
+				RarityInt--; // 한 단계 강등
+				EItemRarity DowngradedRarity = static_cast<EItemRarity>(RarityInt);
+				
+				for (const FDropItemInfo& DropInfo : MonsterData->DropItemPool)
+				{
+					if (DropInfo.Item && DropInfo.Item->ItemRarity == DowngradedRarity && DropInfo.Weight > 0.0f)
+					{
+						FilteredPool.Add(DropInfo);
+					}
+				}
+			}
+		}
+
+		// 4. 아이템 가중치(Weight) 경쟁 굴림
+		if (FilteredPool.Num() > 0)
+		{
+			float TotalWeight = 0.0f;
+			for (const FDropItemInfo& Info : FilteredPool)
+			{
+				TotalWeight += Info.Weight;
+			}
+
+			float ItemRoll = FMath::FRandRange(0.0f, TotalWeight);
+			float ItemAccum = 0.0f;
+
+			for (const FDropItemInfo& Info : FilteredPool)
+			{
+				ItemAccum += Info.Weight;
+				if (ItemRoll <= ItemAccum)
+				{
+					ResultDrops.Add(Info.Item);
+					break;
+				}
+			}
+		}
+	}
+
+	return ResultDrops;
 }

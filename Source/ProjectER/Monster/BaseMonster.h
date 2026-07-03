@@ -19,6 +19,7 @@ class UUserWidget;
 class UBaseMonsterAttributeSet;
 class UGameplayEffect;
 class ABaseCharacter;
+class UBaseItemData;
 class UMonsterDataAsset;
 class ULootableComponent;
 struct FOnAttributeChangeData;
@@ -158,6 +159,9 @@ private:
 	void InitMonsterDataLoading(FPrimaryAssetId MonsterAssetId, float Level);
 
 	void OnMonsterDataLoaded(FPrimaryAssetId LoadedId, float Level);
+
+	// [김현수 추가분] 가챠 확률 계산 헬퍼 함수
+	TArray<UBaseItemData*> GenerateGachaDrops() const;
 
 	void InitGiveAbilities();
 
