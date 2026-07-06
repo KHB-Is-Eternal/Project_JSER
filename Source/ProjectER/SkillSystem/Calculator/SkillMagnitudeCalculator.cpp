@@ -2,6 +2,8 @@
 
 #include "SkillSystem/Calculator/SkillMagnitudeCalculator.h"
 #include "AbilitySystemComponent.h"
+#include "GameplayEffect.h"
+
 
 float USkillMagnitudeCalculator::CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC) const
 {
@@ -106,6 +108,50 @@ float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbility
 			{
 				return Spec->SetByCallerTagMagnitudes.FindRef(Step.Tag);
 			}
+		}
+		break;
+
+	case ECalcOperandType::SourceEffectStack:
+		if (SourceASC && Step.EffectClass)
+		{
+			FGameplayEffectQuery Query;
+			Query.EffectDefinition = Step.EffectClass;
+
+			int32 TotalStack = 0;
+			TArray<FActiveGameplayEffectHandle> ActiveEffects = SourceASC->GetActiveEffects(Query);
+			for (const FActiveGameplayEffectHandle& Handle : ActiveEffects)
+			{
+				const FActiveGameplayEffect* ActiveGE = SourceASC->GetActiveGameplayEffect(Handle);
+				if (ActiveGE)
+				{
+					TotalStack += ActiveGE->Spec.GetStackCount();
+				}
+			}
+			return static_cast<float>(TotalStack);
+		}
+		break;
+
+	case ECalcOperandType::TargetEffectStack:
+		if (TargetASC && Step.EffectClass)
+		{
+			FGameplayEffectQuery Query;
+			Query.EffectDefinition = Step.EffectClass;
+
+			int32 TotalStack = 0;
+			TArray<FActiveGameplayEffectHandle> ActiveEffects = TargetASC->GetActiveEffects(Query);
+			for (const FActiveGameplayEffectHandle& Handle : ActiveEffects)
+			{
+				const FActiveGameplayEffect* ActiveGE = TargetASC->GetActiveGameplayEffect(Handle);
+				if (ActiveGE)
+				{
+					TotalStack += ActiveGE->Spec.GetStackCount();
+				}
+			}
+			return static_cast<float>(TotalStack);
+		}
+		else if (!TargetASC)
+		{
+			UE_LOG(LogTemp, Log, TEXT("USkillMagnitudeCalculator: TargetASC is null but attempted to reference TargetEffectStack. Returning 0."));
 		}
 		break;
 	}
