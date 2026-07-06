@@ -507,6 +507,14 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 
 		// UGroundIndicatorComponent 자체에 스프링암 상속 규칙이 내재되어 있으므로 단순 부착만 수행합니다.
 		CollisionIndicatorComp->AttachToComponent(InCollisionComponent, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+
+		// [Fix] 만약 이 시점에 VFX가 이미 시야에 의해 숨겨진 상태라면 데칼도 즉시 숨겨진 상태로 등록합니다.
+		if (VfxComponent && !VfxComponent->GetVisibleFlag())
+		{
+			CollisionIndicatorComp->SetVisibility(false, true);
+			CollisionIndicatorComp->SetHiddenInGame(true, true);
+		}
+
 		CollisionIndicatorComp->RegisterComponent();
 	}
 }
