@@ -29,6 +29,7 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
+#include "GameplayEffectTypes.h"
 
 ABaseMonster::ABaseMonster()
 	:
@@ -141,9 +142,12 @@ void ABaseMonster::PossessedBy(AController* newController)
 
 	if (HasAuthority())
 	{
+		// GAS 표준 이동속도 변경 감지 델리게이트 바인딩
+		ASC->GetGameplayAttributeValueChangeDelegate(UBaseAttributeSet::GetMoveSpeedAttribute())
+			.AddUObject(this, &ABaseMonster::OnMoveSpeedChangedHandle);
+
 		AttributeSet->OnMonsterHit.AddDynamic(this, &ABaseMonster::MonsterGroupHitCall);
 		AttributeSet->OnMonsterDeath.AddDynamic(this, &ABaseMonster::SendDeathEvent);
-		AttributeSet->OnMoveSpeedChanged.AddDynamic(this, &ABaseMonster::OnMoveSpeedChangedHandle);
 		MonsterRangeComp->OnPlayerCountOne.AddDynamic(this, &ABaseMonster::SendBeginSearchEvent);
 		MonsterRangeComp->OnPlayerCountZero.AddDynamic(this, &ABaseMonster::SendEndSearchEvent);
 		MonsterRangeComp->OnPlayerOut.AddDynamic(this, &ABaseMonster::SendTargetOffEvent);
@@ -487,9 +491,12 @@ void ABaseMonster::OnHealthChangedHandle(float CurrentHP, float MaxHP)
 	HPBar->SetPercent(CurrentHP / MaxHP);
 }
 
-void ABaseMonster::OnMoveSpeedChangedHandle(float OldSpeed, float NewSpeed)
+void ABaseMonster::OnMoveSpeedChangedHandle(const FOnAttributeChangeData& Data)
 {
-	GetCharacterMovement()->MaxWalkSpeed = NewSpeed;
+	if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
+	{
+		MovementComp->MaxWalkSpeed = Data.NewValue;
+	}
 }
 
 void ABaseMonster::Multicast_SetCollisionProfileName_Implementation(FName ProfileName)

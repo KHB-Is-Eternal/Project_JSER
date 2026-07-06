@@ -8,6 +8,8 @@
 
 class UAbilitySystemComponent;
 class USkillMagnitudeCalculator;
+class UGameplayEffect;
+
 
 /** 피연산자(값) 타입 */
 UENUM(BlueprintType)
@@ -19,7 +21,9 @@ enum class ECalcOperandType : uint8
 	SourceTagStack		UMETA(DisplayName = "시전자 태그 스택 (Source Tag Stack)"),
 	TargetTagStack		UMETA(DisplayName = "타겟 태그 스택 (Target Tag Stack)"),
 	SubFormula			UMETA(DisplayName = "하위 수식 (Sub Formula / 괄호)"),
-	SetByCaller			UMETA(DisplayName = "SetByCaller 값 (SetByCaller)")
+	SetByCaller			UMETA(DisplayName = "SetByCaller 값 (SetByCaller)"),
+	SourceEffectStack   UMETA(DisplayName = "시전자 GE 스택 (Source GE Stack)"),
+	TargetEffectStack   UMETA(DisplayName = "타겟 GE 스택 (Target GE Stack)")
 };
 
 /** 연산자 타입 */
@@ -62,6 +66,10 @@ struct PROJECTER_API FCalcStep
 	// ECalcOperandType::SubFormula 일 때 사용
 	UPROPERTY(EditAnywhere, Instanced, BlueprintReadWrite, Category = "Calculation", meta=(EditCondition="OperandType==ECalcOperandType::SubFormula", EditConditionHides))
 	TObjectPtr<USkillMagnitudeCalculator> SubFormula;
+
+	// ECalcOperandType::SourceEffectStack 또는 TargetEffectStack 일 때 사용
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Calculation", meta=(EditCondition="OperandType==ECalcOperandType::SourceEffectStack || OperandType==ECalcOperandType::TargetEffectStack", EditConditionHides))
+	TSubclassOf<UGameplayEffect> EffectClass;
 };
 
 /**

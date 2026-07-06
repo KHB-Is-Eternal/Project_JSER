@@ -23,6 +23,7 @@ const TArray<FSkillExecutionPhase>& UBaseSkillConfig::GetExecutionPhases() const
 UActiveSkillConfig::UActiveSkillConfig()
 {
 	AbilityClass = USkillBase::StaticClass();
+	bAllowMovementDuringSkill = false;
 }
 
 UGameplayEffect* UActiveSkillConfig::CreateCostGameplayEffect(UObject* Outer)

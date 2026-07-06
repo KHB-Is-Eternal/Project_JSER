@@ -1,6 +1,8 @@
 #include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 #include "NiagaraComponent.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
+#include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
+#include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 
 void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 {
@@ -31,12 +33,23 @@ void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 		{
 			const float CurrentAlpha = VisionComp->GetVisibilityAlpha();
 			const bool bShouldBeVisible = (CurrentAlpha > 0.0f);
-			
+			const bool bCurrentlyVisible = NC->GetVisibleFlag();
+
 			if (bShouldBeVisible)
 			{
-				if (!NC->GetVisibleFlag())
+				if (!bCurrentlyVisible)
 				{
 					NC->SetVisibility(true);
+					NC->SetHiddenInGame(false);
+
+					if (AGCN_SummonedActor* SummonedActor = Cast<AGCN_SummonedActor>(Target))
+					{
+						if (SummonedActor->CollisionIndicatorComp)
+						{
+							SummonedActor->CollisionIndicatorComp->SetVisibility(true, true);
+							SummonedActor->CollisionIndicatorComp->SetHiddenInGame(false, true);
+						}
+					}
 				}
 
 				if (ManagedParticles[i].bTrackUntilSeen)
@@ -47,9 +60,19 @@ void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 			}
 			else
 			{
-				if (NC->GetVisibleFlag())
+				if (bCurrentlyVisible)
 				{
 					NC->SetVisibility(false);
+					NC->SetHiddenInGame(true);
+
+					if (AGCN_SummonedActor* SummonedActor = Cast<AGCN_SummonedActor>(Target))
+					{
+						if (SummonedActor->CollisionIndicatorComp)
+						{
+							SummonedActor->CollisionIndicatorComp->SetVisibility(false, true);
+							SummonedActor->CollisionIndicatorComp->SetHiddenInGame(true, true);
+						}
+					}
 				}
 			}
 		}

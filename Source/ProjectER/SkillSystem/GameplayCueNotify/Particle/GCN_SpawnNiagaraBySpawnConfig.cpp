@@ -160,6 +160,7 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 			 VisionTarget->FindComponentByClass<UVision_VisualComp>()->GetVisibilityAlpha() <= 0.0f))
 		{
 			SpawnedComponent->SetVisibility(false);
+			SpawnedComponent->SetHiddenInGame(true);
 		}
 
 		if (CullState == EVfxCullState::SpawnAndTrackVision || 

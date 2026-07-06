@@ -51,6 +51,7 @@ public:
 	virtual float GetBaseCooldownDuration(float InLevel) const { return 0.0f; }
 	virtual UAnimMontage* GetAnimMontage() const { return nullptr; }
 	virtual const TArray<FSkillExecutionPhase>& GetExecutionPhases() const;
+	virtual bool AllowMovementDuringSkill() const { return false; }
 
 	virtual UGameplayEffect* CreateCostGameplayEffect(UObject* Outer) { return nullptr; }
 	virtual FText BuildCostDescription(float InLevel = 1.0f) const { return FText::GetEmpty(); }
@@ -82,6 +83,7 @@ public:
 	virtual float GetBaseCooldownDuration(float InLevel) const override { return Data.BaseCoolTime.GetValueAtLevel(InLevel); }
 	virtual UAnimMontage* GetAnimMontage() const override { return Data.AnimMontage; }
 	virtual const TArray<FSkillExecutionPhase>& GetExecutionPhases() const override { return ExecutionPhases; }
+	virtual bool AllowMovementDuringSkill() const override { return bAllowMovementDuringSkill; }
 
 	virtual UGameplayEffect* CreateCostGameplayEffect(UObject* Outer) override;
 	virtual FText BuildCostDescription(float InLevel = 1.0f) const override;
@@ -89,6 +91,9 @@ public:
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Config")
 	TArray<FSkillExecutionPhase> ExecutionPhases;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Config")
+	bool bAllowMovementDuringSkill = false;
 };
 
 UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)

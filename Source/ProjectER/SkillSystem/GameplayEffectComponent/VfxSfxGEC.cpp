@@ -260,3 +260,24 @@ void UVfxSfxGEC::ExecuteEffects(UAbilitySystemComponent* ASC, const FGameplayEff
 		ASC->ExecuteGameplayCue(SoundConfig->CueTag, Params);
 	}
 }
+
+void UVfxSfxGEC::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+	Super::CollectNiagaraPaths(OutPaths);
+	if (TriggerVfx && !TriggerVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(TriggerVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	if (PeriodicVfx && !PeriodicVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(PeriodicVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	if (RemovedVfx && !RemovedVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(RemovedVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	if (MaxStackVfx && !MaxStackVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(MaxStackVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+}
