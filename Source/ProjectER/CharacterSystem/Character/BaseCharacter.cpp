@@ -1099,8 +1099,13 @@ void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 		static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
 		static const FGameplayTag ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
 		static const FGameplayTag BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+		static const FGameplayTag AllowMovementTag = FGameplayTag::RequestGameplayTag(FName("Skill.Option.AllowMovement"));
 
-		if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
+		if (AbilitySystemComponent->HasMatchingGameplayTag(AllowMovementTag))
+		{
+			// 이동 허용 태그가 있다면 시전/발동 상태이더라도 차단하지 않습니다.
+		}
+		else if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
 			AbilitySystemComponent->HasMatchingGameplayTag(ActiveTag))
 		{
 			return; // 시전/발동 중에는 이동 차단

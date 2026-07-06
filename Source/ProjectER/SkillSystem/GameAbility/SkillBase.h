@@ -134,6 +134,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
 	FGameplayTag BackswingTag;
 
+	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
+	FGameplayTag AllowMovementTag;
+
 	//UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
 	//FGameplayTag FailedOutOfRangeTag;
 
@@ -165,4 +168,6 @@ protected:
 	void Fallback_TriggerActiveTag(int32 TargetPhaseIndex);
 
 	void SetWaitEventBackswingTag();
+
+	void StopCharacterMove();
 };

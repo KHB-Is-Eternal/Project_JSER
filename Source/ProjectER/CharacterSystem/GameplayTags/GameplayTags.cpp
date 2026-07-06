@@ -450,6 +450,10 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Active, "Skill.Animation.Active", "Skill Active (Hit) State Tag");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Backswing, "Skill.Animation.Backswing", "Skill Backswing State Tag");
 		}
+		namespace Option
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(AllowMovement, "Skill.Option.AllowMovement", "Allows movement during casting/active phase");
+		}
 		namespace Data
 		{
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(CoolTime, "Skill.Data.CoolTime", "Cooldown Tag for SetByCaller");
