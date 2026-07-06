@@ -110,6 +110,12 @@ bool UNiagaraDataInterfaceOverlayTrigger::InitPerInstanceData(void* PerInstanceD
 		if (Comp)
 		{
 			InstData->SkeletalMeshComponent = Cast<USkeletalMeshComponent>(Comp->GetAttachParent());
+
+			// 컴포넌트 비활성화(Deactivate) 시 오버레이를 즉시 해제하기 위해 델리게이트 바인딩
+			if (!Comp->OnComponentDeactivated.IsAlreadyBound(this, &UNiagaraDataInterfaceOverlayTrigger::OnNiagaraComponentDeactivated))
+			{
+				Comp->OnComponentDeactivated.AddDynamic(this, &UNiagaraDataInterfaceOverlayTrigger::OnNiagaraComponentDeactivated);
+			}
 		}
 	}
 	return true;
@@ -249,6 +255,18 @@ void UNiagaraDataInterfaceOverlayTrigger::VMClearOverlayMaterial(FVectorVMExtern
 			{
 				SetOverlayMaterial_GameThread(MeshPtr, nullptr, false);
 			});
+		}
+	}
+}
+
+void UNiagaraDataInterfaceOverlayTrigger::OnNiagaraComponentDeactivated(UActorComponent* Component)
+{
+	if (UNiagaraComponent* NiagaraComp = Cast<UNiagaraComponent>(Component))
+	{
+		if (USkeletalMeshComponent* MeshComp = Cast<USkeletalMeshComponent>(NiagaraComp->GetAttachParent()))
+		{
+			// 게임 스레드에서 직접 오버레이 머티리얼을 즉시 해제
+			MeshComp->SetOverlayMaterial(nullptr);
 		}
 	}
 }
