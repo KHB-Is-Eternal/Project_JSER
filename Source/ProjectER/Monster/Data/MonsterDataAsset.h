@@ -199,6 +199,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
 	TMap<EItemRarity, float> RarityDropRates;
 
+	// [김현수 추가분] 레어도별 최대 드랍 가능 개수 제한 (0이거나 설정되지 않으면 무제한)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	TMap<EItemRarity, int32> MaxRarityDropCounts;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
 	TArray<FDropItemInfo> DropItemPool;
 

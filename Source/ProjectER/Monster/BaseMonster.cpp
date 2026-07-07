@@ -1086,6 +1086,9 @@ TArray<UBaseItemData*> ABaseMonster::GenerateGachaDrops() const
 		NormalizedRates.Add(Pair.Key, Pair.Value / TotalRarityRate);
 	}
 
+	// [김현수 추가분] 등급별 드랍 제한(Cap) 추적용 맵
+	TMap<EItemRarity, int32> DroppedRarityCounts;
+
 	for (int32 i = 0; i < LootCount; ++i)
 	{
 		// 2. 등급(Rarity) 굴림
@@ -1113,21 +1116,54 @@ TArray<UBaseItemData*> ABaseMonster::GenerateGachaDrops() const
 			}
 		}
 
-		// [옵션A] 만약 해당 등급의 풀이 비어있다면, 하위 등급으로 강등시켜서 재탐색 (Unique -> Rare -> Normal)
-		if (FilteredPool.Num() == 0)
+		// [김현수 추가분] 캡(Cap) 제한 검사
+		bool bIsCapped = false;
+		if (const int32* MaxCountPtr = MonsterData->MaxRarityDropCounts.Find(PickedRarity))
+		{
+			if (*MaxCountPtr > 0 && DroppedRarityCounts.FindOrAdd(PickedRarity) >= *MaxCountPtr)
+			{
+				bIsCapped = true;
+			}
+		}
+
+		// [옵션A] 만약 해당 등급의 풀이 비어있거나, 이미 제한(Cap)에 걸렸다면 하위 등급으로 강등
+		if (FilteredPool.Num() == 0 || bIsCapped)
 		{
 			// EItemRarity는 uint8 기반이므로 숫자가 작을수록 하위 등급
 			uint8 RarityInt = static_cast<uint8>(PickedRarity);
-			while (FilteredPool.Num() == 0 && RarityInt > 0)
+			bool bFoundValidDowngrade = false;
+
+			while (!bFoundValidDowngrade && RarityInt > 0)
 			{
 				RarityInt--; // 한 단계 강등
 				EItemRarity DowngradedRarity = static_cast<EItemRarity>(RarityInt);
 				
-				for (const FDropItemInfo& DropInfo : MonsterData->DropItemPool)
+				// 강등된 등급도 제한에 걸려있는지 확인
+				bool bDowngradeCapped = false;
+				if (const int32* MaxCountPtr = MonsterData->MaxRarityDropCounts.Find(DowngradedRarity))
 				{
-					if (DropInfo.Item && DropInfo.Item->ItemRarity == DowngradedRarity && DropInfo.Weight > 0.0f)
+					if (*MaxCountPtr > 0 && DroppedRarityCounts.FindOrAdd(DowngradedRarity) >= *MaxCountPtr)
 					{
-						FilteredPool.Add(DropInfo);
+						bDowngradeCapped = true;
+					}
+				}
+
+				if (!bDowngradeCapped)
+				{
+					FilteredPool.Empty();
+					for (const FDropItemInfo& DropInfo : MonsterData->DropItemPool)
+					{
+						if (DropInfo.Item && DropInfo.Item->ItemRarity == DowngradedRarity && DropInfo.Weight > 0.0f)
+						{
+							FilteredPool.Add(DropInfo);
+						}
+					}
+
+					// 강등된 등급에 유효한 아이템이 있다면 확정
+					if (FilteredPool.Num() > 0)
+					{
+						PickedRarity = DowngradedRarity;
+						bFoundValidDowngrade = true;
 					}
 				}
 			}
@@ -1151,6 +1187,7 @@ TArray<UBaseItemData*> ABaseMonster::GenerateGachaDrops() const
 				if (ItemRoll <= ItemAccum)
 				{
 					ResultDrops.Add(Info.Item);
+					DroppedRarityCounts.FindOrAdd(PickedRarity)++; // [김현수 추가분] 당첨된 최종 등급 카운트 증가
 					break;
 				}
 			}
