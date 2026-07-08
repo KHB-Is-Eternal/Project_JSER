@@ -27,6 +27,13 @@ void UVisionPlayerStateComp::GetLifetimeReplicatedProps(
 void UVisionPlayerStateComp::BeginPlay()
 {
     Super::BeginPlay();
+
+    // [Fix] 폰이 나중에 스폰되거나 Possess될 때 비전 채널을 자동으로 동기화하도록 델리게이트 등록
+    if (APlayerState* PS = Cast<APlayerState>(GetOwner()))
+    {
+        PS->OnPawnSet.AddUniqueDynamic(this, &UVisionPlayerStateComp::OnPawnSet);
+    }
+
     if (UWorld* World = GetWorld())
         World->GetTimerManager().SetTimerForNextTick(
             this, &UVisionPlayerStateComp::RefreshVisibility);
@@ -292,7 +299,6 @@ void UVisionPlayerStateComp::ReevaluateTargetVisibility(
             }
         }
     }
-
     VisualComp->SetVisible(bShouldBeVisible);
 }
 
@@ -330,4 +336,9 @@ void UVisionPlayerStateComp::RefreshVisibility()
         Evaluated.Num(),
         (uint8)TeamChannel,
         (int32)bAllReveal);
+}
+
+void UVisionPlayerStateComp::OnPawnSet(APlayerState* PlayerState, APawn* NewPawn, APawn* OldPawn)
+{
+    SyncPawnVisionChannel();
 }

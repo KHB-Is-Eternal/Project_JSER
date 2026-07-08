@@ -43,6 +43,7 @@ USkillBase::USkillBase()
 	CastingTag = ProjectER::Skill::Animation::Casting;
 	ActiveTag = ProjectER::Skill::Animation::Active;
 	BackswingTag = ProjectER::Skill::Animation::Backswing;
+	AllowMovementTag = ProjectER::Skill::Option::AllowMovement;
 	//FailedOutOfRangeTag = FGameplayTag::RequestGameplayTag(FName("State.Failed.OutOfRange"));
 	ActivationBlockedTags.AddTag(CastingTag);
 	ActivationBlockedTags.AddTag(ActiveTag);
@@ -249,10 +250,7 @@ void USkillBase::ExecuteSkill()
 	// 2. 권한 서버에서 처리할 공통 로직 (예: 이동 정지)
 	if (HasAuthority(&CurrentActivationInfo))
 	{
-		if (ABaseCharacter* Character = Cast<ABaseCharacter>(Avatar))
-		{
-			Character->StopMove();
-		}
+		StopCharacterMove();
 	}
 
 	// 3. 스킬 발동(Execute) 이벤트 발송
@@ -339,6 +337,7 @@ void USkillBase::ChangeSkillState(ESkillAbilityState NewState)
 	SetSkillTagCount(CastingTag, 0);
 	SetSkillTagCount(ActiveTag, 0);
 	SetSkillTagCount(BackswingTag, 0);
+	SetSkillTagCount(AllowMovementTag, 0);
 
 	switch (NewState)
 	{
@@ -348,6 +347,10 @@ void USkillBase::ChangeSkillState(ESkillAbilityState NewState)
 	default: break;
 	}
 
+	if (NewState != ESkillAbilityState::None && CachedConfig && CachedConfig->AllowMovementDuringSkill())
+	{
+		SetSkillTagCount(AllowMovementTag, 1);
+	}
 
 	CurrentState = NewState;
 }
@@ -386,9 +389,7 @@ void USkillBase::PlayAnimMontage()
 	PlayTask->OnCompleted.AddDynamic(this, &USkillBase::OnMontageCompleted);
 	PlayTask->ReadyForActivation();
 
-	ABaseCharacter* BaseCharacter = Cast<ABaseCharacter>(GetAvatar());
-	if (!IsValid(BaseCharacter)) return;
-	BaseCharacter->StopMove();
+	StopCharacterMove();
 }
 
 void USkillBase::SetupFallbackTimers()
@@ -802,6 +803,22 @@ void USkillBase::OnCancelAbility()
 void USkillBase::OnExecuteSkill_InClient()
 {
 
+}
+
+void USkillBase::StopCharacterMove()
+{
+	ABaseCharacter* BaseCharacter = Cast<ABaseCharacter>(GetAvatar());
+	if (!IsValid(BaseCharacter))
+	{
+		return;
+	}
+
+	if (CachedConfig && CachedConfig->AllowMovementDuringSkill())
+	{
+		return;
+	}
+
+	BaseCharacter->StopMove();
 }
 
 /*

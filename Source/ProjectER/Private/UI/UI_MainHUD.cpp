@@ -312,21 +312,21 @@ void UUI_MainHUD::NativeConstruct()
     // [김현수 추가분]Grid_item이 BindWidget으로 바인딩 안됐으면 직접 찾기
     if (!Grid_item)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not bound, trying to find manually..."));
+        //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not bound, trying to find manually..."));
         Grid_item = Cast<UUniformGridPanel>(GetWidgetFromName(TEXT("Grid_item")));
 
         if (Grid_item)
         {
-            UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item found manually!"));
+            //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item found manually!"));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not found even manually!"));
+            //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not found even manually!"));
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item already bound via BindWidget!"));
+        //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item already bound via BindWidget!"));
     }
 
     EnsureInventorySlotWidgets();

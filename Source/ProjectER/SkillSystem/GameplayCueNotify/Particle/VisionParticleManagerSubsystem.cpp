@@ -1,7 +1,8 @@
 #include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 #include "NiagaraComponent.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
-#include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
+#include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
+#include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 
 void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 {
@@ -30,13 +31,49 @@ void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 
 		if (UVision_VisualComp* VisionComp = Target->FindComponentByClass<UVision_VisualComp>())
 		{
-			float CurrentAlpha = VisionComp->GetVisibilityAlpha();
+			const float CurrentAlpha = VisionComp->GetVisibilityAlpha();
 			const bool bShouldBeVisible = (CurrentAlpha > 0.0f);
-			
-			// 상태가 다를 때만 업데이트 (SetVisibility 오버헤드 방지)
-			if (NC->IsVisible() != bShouldBeVisible)
+			const bool bCurrentlyVisible = NC->GetVisibleFlag();
+
+			if (bShouldBeVisible)
 			{
-				NC->SetVisibility(bShouldBeVisible);
+				if (!bCurrentlyVisible)
+				{
+					NC->SetVisibility(true);
+					NC->SetHiddenInGame(false);
+
+					if (AGCN_SummonedActor* SummonedActor = Cast<AGCN_SummonedActor>(Target))
+					{
+						if (SummonedActor->CollisionIndicatorComp)
+						{
+							SummonedActor->CollisionIndicatorComp->SetVisibility(true, true);
+							SummonedActor->CollisionIndicatorComp->SetHiddenInGame(false, true);
+						}
+					}
+				}
+
+				if (ManagedParticles[i].bTrackUntilSeen)
+				{
+					ManagedParticles.RemoveAtSwap(i);
+					continue;
+				}
+			}
+			else
+			{
+				if (bCurrentlyVisible)
+				{
+					NC->SetVisibility(false);
+					NC->SetHiddenInGame(true);
+
+					if (AGCN_SummonedActor* SummonedActor = Cast<AGCN_SummonedActor>(Target))
+					{
+						if (SummonedActor->CollisionIndicatorComp)
+						{
+							SummonedActor->CollisionIndicatorComp->SetVisibility(false, true);
+							SummonedActor->CollisionIndicatorComp->SetHiddenInGame(true, true);
+						}
+					}
+				}
 			}
 		}
 	}
@@ -47,12 +84,12 @@ TStatId UVisionParticleManagerSubsystem::GetStatId() const
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UVisionParticleManagerSubsystem, STATGROUP_Tickables);
 }
 
-void UVisionParticleManagerSubsystem::RegisterParticle(UNiagaraComponent* Particle, AActor* TargetActor)
+void UVisionParticleManagerSubsystem::RegisterParticle(UNiagaraComponent* Particle, AActor* TargetActor, bool bTrackUntilSeen)
 {
 	if (!IsValid(Particle) || !IsValid(TargetActor))
 	{
 		return;
 	}
 
-	ManagedParticles.Emplace(Particle, TargetActor);
+	ManagedParticles.Emplace(Particle, TargetActor, bTrackUntilSeen);
 }

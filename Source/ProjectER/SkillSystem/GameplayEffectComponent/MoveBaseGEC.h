@@ -150,4 +150,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Move|Animation",
 		meta = (EditCondition = "bAdjustMontageRate"))
 	float MaxPlayRate = 3.0f;
+
+public:
+	virtual void CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const override;
 };

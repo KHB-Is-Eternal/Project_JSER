@@ -77,8 +77,7 @@ protected:
 
 private:
 	// 이동 속도 변경값 적용
-	UFUNCTION()
-	void OnMoveSpeedChangedHandle(float OldSpeed, float NewSpeed);
+	void OnMoveSpeedChangedHandle(const FOnAttributeChangeData& Data);
 
 	void RewardMonsterXP(AActor* Player, FGameplayTag Tag, float Amount);
 

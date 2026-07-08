@@ -1,4 +1,4 @@
-#include "GameModeBase/GameMode/ER_InGameMode.h"
+﻿#include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Respawn/ER_RespawnSubsystem.h"
@@ -527,7 +527,22 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 	if (ABasePlayerController* ERPC = Cast<ABasePlayerController>(NewPlayer))
 	{
 		ERPC->Client_InGameInputMode();
-		ERPC->Client_StartPreload();
+		TArray<FSoftObjectPath> CharacterPaths;
+		if (AGameStateBase* GS = GetWorld()->GetGameState())
+		{
+			for (APlayerState* PS : GS->PlayerArray)
+			{
+				if (AER_PlayerState* ERPS = Cast<AER_PlayerState>(PS))
+				{
+					TSoftObjectPtr<UCharacterData> CharData = ERPS->GetSelectedCharacterData();
+					if (!CharData.IsNull())
+					{
+						CharacterPaths.AddUnique(CharData.ToSoftObjectPath());
+					}
+				}
+			}
+		}
+		ERPC->Client_StartPreload(CharacterPaths);
 	}
 
 	// 보존 데이터 제거
@@ -548,7 +563,22 @@ void AER_InGameMode::HandleStartingNewPlayer_Implementation(APlayerController* N
 	if (ABasePlayerController* PC = Cast<ABasePlayerController>(NewPlayer))
 	{
 		PC->Client_InGameInputMode();
-		PC->Client_StartPreload(); // 방에 들어온 클라이언트에게 에셋 로딩을 지시
+		TArray<FSoftObjectPath> CharacterPaths;
+		if (AGameStateBase* GS = GetWorld()->GetGameState())
+		{
+			for (APlayerState* PS : GS->PlayerArray)
+			{
+				if (AER_PlayerState* ERPS = Cast<AER_PlayerState>(PS))
+				{
+					TSoftObjectPtr<UCharacterData> CharData = ERPS->GetSelectedCharacterData();
+					if (!CharData.IsNull())
+					{
+						CharacterPaths.AddUnique(CharData.ToSoftObjectPath());
+					}
+				}
+			}
+		}
+		PC->Client_StartPreload(CharacterPaths); // 방에 들어온 클라이언트에게 에셋 로딩을 지시
 	}
 	UE_LOG(LogTemp, Warning, TEXT("[GM] HSNPlayer this=%p world=%p map=%s PI=%d/%d"),
 		this, GetWorld(), *GetWorld()->GetMapName(), PlayersInitialized, ExpectedPlayers);

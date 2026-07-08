@@ -1,4 +1,4 @@
-﻿#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
 
 #include "TopDownVision/Public/LineOfSight/VisionComps/Vision_VisualComp.h"
 #include "LineOfSight/Management/VisionGameStateComp.h"
@@ -58,6 +58,10 @@ bool ULOSVisionSubsystem::RegisterProvider(
             TEXT("RegisterProvider >> Null provider"));
         return false;
     }
+    if (!Provider->IsVisionProvider())
+    {
+        return false;
+    }
     if (InVisionChannel == EVisionChannel::None)
     {
         UE_LOG(LOSVisionSubsystem, Error,
@@ -105,9 +109,12 @@ void ULOSVisionSubsystem::UnregisterProvider(
         }
     }
 
-    UE_LOG(LOSVisionSubsystem, Warning,
-        TEXT("UnregisterProvider >> Could not find %s on channel %d"),
-        *Provider->GetOwner()->GetName(), (uint8)InVisionChannel);
+    if (Provider->IsVisionProvider())
+    {
+        UE_LOG(LOSVisionSubsystem, Warning,
+            TEXT("UnregisterProvider >> Could not find %s on channel %d"),
+            *Provider->GetOwner()->GetName(), (uint8)InVisionChannel);
+    }
 }
 
 TArray<UVision_VisualComp*> ULOSVisionSubsystem::GetProvidersForTeam(

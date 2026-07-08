@@ -144,9 +144,9 @@ void UVisibilityMeshComp::Initialize()
 {
     if (SkeletalMeshTargets.IsEmpty() && StaticMeshTargets.IsEmpty())
     {
-        UE_LOG(VisibilityMeshComp, Warning,
-            TEXT("[%s] UVisibilityMeshComp::Initialize >> No mesh targets."),
-            *TopDownVisionDebug::GetClientDebugName(GetOwner()));
+        // UE_LOG(VisibilityMeshComp, Warning,
+        //     TEXT("[%s] UVisibilityMeshComp::Initialize >> No mesh targets."),
+        //     *TopDownVisionDebug::GetClientDebugName(GetOwner()));
         return;
     }
 

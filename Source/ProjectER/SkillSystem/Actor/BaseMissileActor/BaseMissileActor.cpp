@@ -166,6 +166,11 @@ void ABaseMissileActor::InitializeMissile(
 				{
 					OnVfxHandshakeCompleted_Implementation(VfxActor);
 				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("ABaseMissileActor: Handshake Failed in InitializeMissile. (Registering as Pending on Host)"));
+					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);
+				}
 			}
 		}
 	}

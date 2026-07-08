@@ -146,6 +146,11 @@ void ABaseRangeOverlapEffectActor::InitializeEffectData(const TArray<FGameplayEf
 				{
 					OnVfxHandshakeCompleted_Implementation(VfxActor);
 				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("ABaseRangeOverlapEffectActor: Handshake Failed in InitializeEffectData. (Registering as Pending on Host)"));
+					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);
+				}
 			}
 		}
 	}

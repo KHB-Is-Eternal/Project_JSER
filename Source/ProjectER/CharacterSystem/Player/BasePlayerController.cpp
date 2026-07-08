@@ -1314,20 +1314,15 @@ void ABasePlayerController::Client_ReturnToMainMenu_Implementation(const FString
 	UGameplayStatics::OpenLevel(this, FName(TEXT("/Game/Level/Level_MainMenu")));
 }
 
-void ABasePlayerController::Client_StartPreload_Implementation()
+void ABasePlayerController::Client_StartPreload_Implementation(const TArray<FSoftObjectPath>& CharacterPaths)
 {
 	UE_LOG(LogTemp, Warning, TEXT("[Client] Client_StartPreload_Implementation called."));
-
-	//Client_OpenLoadingUI();
-
 	if (UGameInstance* GI = GetGameInstance())
 	{
 		if (UER_AssetPreloadSubsystem* PSS = GI->GetSubsystem<UER_AssetPreloadSubsystem>())
 		{
-			// 이벤트 바인딩
 			PSS->OnPreloadComplete.AddDynamic(this, &ABasePlayerController::OnPreloadComplete);
-			// 로드 요청
-			PSS->StartPreloadMonsterAssets();
+			PSS->StartPreloadAssets(CharacterPaths);
 		}
 	}
 }
@@ -2009,11 +2004,8 @@ void ABasePlayerController::setChatMessage(const FString& Message)
 
 void ABasePlayerController::OnEnterPressed()
 {
-	UE_LOG(LogTemp, Error, TEXT("1"));
-
 	if (ChatWidgetInstance)
 	{
-		UE_LOG(LogTemp, Error, TEXT("OnEnterPressed: Showing chat input"));
 		ChatWidgetInstance->SetChatInputVisible(true);		
 
 		// 입력 모드를 UI로 변경

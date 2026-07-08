@@ -46,6 +46,13 @@ void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* Range
 			MovementComp->MaxSpeed = Speed;
 			MovementComp->ProjectileGravityScale = this->GravityScale;
 			
+			// [Optimization] 투사체의 속도와 수명을 기반으로 네트워크 컬링 거리를 동적으로 계산합니다.
+			// (기본 15,000 유닛 유지, 그 이상 비행하는 장거리 투사체는 사거리 끝까지 보이도록 거리 확장)
+			float MaxTravelDistance = Speed * this->LifeSpan;
+			float CullDistance = FMath::Max(15000.0f, MaxTravelDistance + 2000.0f); // 2000 유닛 여유분
+			RangeActor->NetCullDistanceSquared = FMath::Square(CullDistance);
+
+			
 			// 컴포넌트를 액터 인스턴스에 등록
 			MovementComp->RegisterComponent();
 			RangeActor->AddInstanceComponent(MovementComp);

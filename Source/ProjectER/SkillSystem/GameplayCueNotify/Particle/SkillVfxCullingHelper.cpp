@@ -5,6 +5,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/World.h"
+#include "SkillSystem/Actor/BaseMissileActor/BaseMissileActor.h"
 
 constexpr float MaxParticleSpawnDistanceSq = 1000.0f * 1000.0f;
 
@@ -37,10 +38,35 @@ EVfxCullState USkillVfxCullingHelper::CheckVfxCulling(const AActor* TargetActor,
 		}
 	}
 
-	// --- 예외 2: EffectCauser에 ProjectileMovementComponent가 있으면 무조건 표시 ---
-	if (IsValid(EffectCauser) && EffectCauser->FindComponentByClass<UProjectileMovementComponent>())
+	// --- 예외 2: 발사체형 스킬 판정 (한 번 보이면 끝까지 보임 상태로 전이) ---
+	bool bIsProjectile = false;
+	if (IsValid(EffectCauser))
 	{
-		return EVfxCullState::SpawnAndIgnoreVision;
+		if (EffectCauser->IsA(ABaseMissileActor::StaticClass()))
+		{
+			bIsProjectile = true;
+		}
+		else if (const UProjectileMovementComponent* ProjComp = EffectCauser->FindComponentByClass<UProjectileMovementComponent>())
+		{
+			if (ProjComp->bAutoActivate || ProjComp->IsActive() || ProjComp->InitialSpeed > 0.0f)
+			{
+				bIsProjectile = true;
+			}
+		}
+	}
+	if (!bIsProjectile && IsValid(TargetActor))
+	{
+		if (TargetActor->IsA(ABaseMissileActor::StaticClass()))
+		{
+			bIsProjectile = true;
+		}
+		else if (const UProjectileMovementComponent* ProjComp = TargetActor->FindComponentByClass<UProjectileMovementComponent>())
+		{
+			if (ProjComp->bAutoActivate || ProjComp->IsActive() || ProjComp->InitialSpeed > 0.0f)
+			{
+				bIsProjectile = true;
+			}
+		}
 	}
 
 	// 2. 시야(Vision) 판정
@@ -50,15 +76,23 @@ EVfxCullState USkillVfxCullingHelper::CheckVfxCulling(const AActor* TargetActor,
 	{
 		if (UVision_VisualComp* VisionComp = VisionCheckActor->FindComponentByClass<UVision_VisualComp>())
 		{
+			const float CurrentAlpha = VisionComp->GetVisibilityAlpha();
 			// 시야 알파값이 0보다 크면 현재 내 시야에 보인다는 의미
-			if (VisionComp->GetVisibilityAlpha() > 0.0f)
+			if (CurrentAlpha > 0.0f)
 			{
-				return EVfxCullState::SpawnAndTrackVision;
+				return bIsProjectile ? EVfxCullState::SpawnAndTrackVisionUntilSeen : EVfxCullState::SpawnAndTrackVision;
 			}
 			else
 			{
 				// 시야 밖이라면 지속형/단발성에 따라 처리가 갈림
-				return bIsPersistent ? EVfxCullState::SpawnHidden : EVfxCullState::SkipSpawn;
+				if (bIsProjectile)
+				{
+					return bIsPersistent ? EVfxCullState::SpawnAndTrackVisionUntilSeen : EVfxCullState::SkipSpawn;
+				}
+				else
+				{
+					return bIsPersistent ? EVfxCullState::SpawnHidden : EVfxCullState::SkipSpawn;
+				}
 			}
 		}
 	}

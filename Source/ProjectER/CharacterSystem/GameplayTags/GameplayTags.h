@@ -456,6 +456,10 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Active);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Backswing);
 		}
+		namespace Option
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(AllowMovement);
+		}
 		namespace Data
 		{
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(CoolTime);
