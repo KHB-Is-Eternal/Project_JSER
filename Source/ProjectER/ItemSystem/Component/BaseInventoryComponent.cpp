@@ -332,6 +332,14 @@ FGameplayTag UBaseInventoryComponent::GetSetByCallerTagFromStatType(const EItemS
 		return ProjectER::Status::MaxStamina;
 	case EItemStatType::CriticalChance:
 		return ProjectER::Status::CritChance;
+	case EItemStatType::AttackRange:
+		return ProjectER::Status::AttackRange;
+	case EItemStatType::SkillAmp:
+		return ProjectER::Status::SkillAmp;
+	case EItemStatType::CooldownReduction:
+		return ProjectER::Status::CooldownReduction;
+	case EItemStatType::Tenacity:
+		return ProjectER::Status::Tenacity;
 	default:
 		return FGameplayTag();
 	}
