@@ -7,6 +7,8 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPreloadCompleteDelegate);
 
+class UAnimMontage;
+
 /**
  * 게임 인스턴스 전역에서 에셋 비동기 로드 및 메모리 유지를 담당하는 서브시스템.
  * 몬스터 메쉬가 끊김 없이 스폰되도록 미리 메모리에 올립니다.
@@ -47,6 +49,9 @@ private:
 	void OnLevelAssetsLoadedAsync();
 	void OnSkillAssetsLoadedAsync();
 	void OnNiagaraAssetsLoadedAsync();
+
+	/** 애니메이션 몽타주 내부의 SkillGameplayCue 노티파이로부터 나이아가라 시스템 경로를 안전하게 수집합니다. */
+	void CollectNiagaraPathsFromMontage(const UAnimMontage* InMontage, TArray<FSoftObjectPath>& OutPaths) const;
 
 protected:
 	// 활성화된 비동기 로딩 핸들

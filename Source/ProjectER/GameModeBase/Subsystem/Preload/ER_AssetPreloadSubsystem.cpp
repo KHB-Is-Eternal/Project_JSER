@@ -1,4 +1,4 @@
-﻿#include "GameModeBase/Subsystem/Preload/ER_AssetPreloadSubsystem.h"
+#include "GameModeBase/Subsystem/Preload/ER_AssetPreloadSubsystem.h"
 #include "Engine/AssetManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -15,6 +15,9 @@
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "NiagaraFunctionLibrary.h"
+#include "Animation/AnimMontage.h"
+#include "SkillSystem/AnimNotify/AnimNotify_SkillGameplayCue.h"
+#include "SkillSystem/AnimNotify/AnimNotifyState_SkillGameplayCue.h"
 
 
 
@@ -105,7 +108,7 @@ void UER_AssetPreloadSubsystem::OnLevelAssetsLoadedAsync()
 	PreloadedAssets.Append(LoadedLevelAssets);
 	AssetLoadHandle.Reset();
 
-	// 2단계: 플레이어 캐릭터의 SkillDataAsset 소프트 경로 수집
+	// 2단계: 플레이어 캐릭터의 SkillDataAsset 소프트 경로 및 캐릭터 몽타주 소프트 경로 수집
 	TArray<FSoftObjectPath> SkillPathsToLoad;
 
 	for (UObject* Asset : LoadedLevelAssets)
@@ -119,6 +122,15 @@ void UER_AssetPreloadSubsystem::OnLevelAssetsLoadedAsync()
 					SkillPathsToLoad.AddUnique(SkillPtr.ToSoftObjectPath());
 				}
 			}
+
+			// 캐릭터 몽타주 비동기 로딩 대상에 추가
+			for (const auto& Pair : CharData->CharacterMontages)
+			{
+				if (!Pair.Value.IsNull())
+				{
+					SkillPathsToLoad.AddUnique(Pair.Value.ToSoftObjectPath());
+				}
+			}
 		}
 		else if (const UMonsterDataAsset* MonsterData = Cast<UMonsterDataAsset>(Asset))
 		{
@@ -128,6 +140,15 @@ void UER_AssetPreloadSubsystem::OnLevelAssetsLoadedAsync()
 				if (MonsterSkill)
 				{
 					PreloadedAssets.AddUnique(MonsterSkill);
+				}
+			}
+
+			// 몬스터 몽타주도 하드 레퍼런스 상태이므로 GC 방지 배열에 등록
+			for (const auto& Pair : MonsterData->Montages)
+			{
+				if (Pair.Value)
+				{
+					PreloadedAssets.AddUnique(Pair.Value);
 				}
 			}
 		}
@@ -161,13 +182,44 @@ void UER_AssetPreloadSubsystem::OnSkillAssetsLoadedAsync()
 		AssetLoadHandle.Reset();
 	}
 
-	// 3단계: 로드된 모든 스킬(플레이어 + 몬스터 스킬)들로부터 나이아가라 파티클 경로 수집
+	// 3단계: 로드된 모든 스킬(플레이어 + 몬스터 스킬) 및 몽타주들로부터 나이아가라 파티클 경로 수집
 	TArray<FSoftObjectPath> NiagaraPathsToLoad;
 
 	for (UObject* Asset : PreloadedAssets)
 	{
+		// 1. 캐릭터 데이터가 소유한 고유 캐릭터 VFX 수집
+		if (const UCharacterData* CharData = Cast<UCharacterData>(Asset))
+		{
+			if (!CharData->BasicHitVFX.IsNull()) NiagaraPathsToLoad.AddUnique(CharData->BasicHitVFX.ToSoftObjectPath());
+			if (!CharData->ReviveVFX.IsNull()) NiagaraPathsToLoad.AddUnique(CharData->ReviveVFX.ToSoftObjectPath());
+			if (!CharData->LevelUpVFX.IsNull()) NiagaraPathsToLoad.AddUnique(CharData->LevelUpVFX.ToSoftObjectPath());
+			if (!CharData->DeathVFX.IsNull()) NiagaraPathsToLoad.AddUnique(CharData->DeathVFX.ToSoftObjectPath());
+			continue;
+		}
+
+		// 2. 비동기 로딩된 캐릭터 몽타주 및 몬스터 몽타주 분석
+		if (const UAnimMontage* Montage = Cast<UAnimMontage>(Asset))
+		{
+			CollectNiagaraPathsFromMontage(Montage, NiagaraPathsToLoad);
+			continue;
+		}
+
 		const USkillDataAsset* SkillData = Cast<USkillDataAsset>(Asset);
-		if (!SkillData || !SkillData->SkillConfig)
+		if (!SkillData)
+		{
+			continue;
+		}
+
+		// 스킬 설정 내의 몽타주 수집
+		if (SkillData->SkillConfig)
+		{
+			if (const UAnimMontage* SkillMontage = SkillData->SkillConfig->GetAnimMontage())
+			{
+				CollectNiagaraPathsFromMontage(SkillMontage, NiagaraPathsToLoad);
+			}
+		}
+
+		if (!SkillData->SkillConfig)
 		{
 			continue;
 		}
@@ -310,4 +362,33 @@ void UER_AssetPreloadSubsystem::HideLoadingScreen()
 	}
 
 	LoadingUIInstance = nullptr;
+}
+
+void UER_AssetPreloadSubsystem::CollectNiagaraPathsFromMontage(const UAnimMontage* InMontage, TArray<FSoftObjectPath>& OutPaths) const
+{
+	if (InMontage == nullptr)
+	{
+		return;
+	}
+
+	for (const FAnimNotifyEvent& Event : InMontage->Notifies)
+	{
+		if (Event.Notify != nullptr)
+		{
+			if (const UAnimNotify_SkillGameplayCue* SkillNotify = Cast<UAnimNotify_SkillGameplayCue>(Event.Notify))
+			{
+				if (SkillNotify->GetSpawnConfig() && !SkillNotify->GetSpawnConfig()->NiagaraSystem.IsNull())
+				{
+					OutPaths.AddUnique(SkillNotify->GetSpawnConfig()->NiagaraSystem.ToSoftObjectPath());
+				}
+			}
+			else if (const UAnimNotifyState_SkillGameplayCue* SkillNotifyState = Cast<UAnimNotifyState_SkillGameplayCue>(static_cast<UObject*>(Event.Notify)))
+			{
+				if (SkillNotifyState->GetSpawnConfig() && !SkillNotifyState->GetSpawnConfig()->NiagaraSystem.IsNull())
+				{
+					OutPaths.AddUnique(SkillNotifyState->GetSpawnConfig()->NiagaraSystem.ToSoftObjectPath());
+				}
+			}
+		}
+	}
 }
