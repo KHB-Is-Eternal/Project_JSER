@@ -210,6 +210,16 @@ void UER_AssetPreloadSubsystem::OnSkillAssetsLoadedAsync()
 			continue;
 		}
 
+		// 조준선(Indicator) 비동기 프리로드 연동 (데디케이티드 서버 환경 제외)
+		if (!IsRunningDedicatedServer())
+		{
+			const FSkillIndicatorConfig& IndicatorConfig = SkillData->GetIndicatorConfig();
+			if (!IndicatorConfig.IndicatorClass.IsNull())
+			{
+				NiagaraPathsToLoad.AddUnique(IndicatorConfig.IndicatorClass.ToSoftObjectPath());
+			}
+		}
+
 		// 스킬 설정 내의 몽타주 수집
 		if (SkillData->SkillConfig)
 		{
@@ -321,6 +331,9 @@ void UER_AssetPreloadSubsystem::OnNiagaraAssetsLoadedAsync()
 					);
 					if (TempComp)
 					{
+						// 무한 루프 파티클일 경우 메모리에 영구적으로 남아 틱 부하를 주는 것을 방지하기 위해 강제 비활성화합니다.
+						TempComp->Deactivate();
+						
 						PreSpawnCount++;
 					}
 				}

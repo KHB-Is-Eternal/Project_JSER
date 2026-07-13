@@ -73,6 +73,12 @@ void UGroundIndicatorComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+	// 가시성이 꺼져있거나 Hidden 상태라면 트레이스 및 트랜스폼 업데이트를 생략하여 렌더 파이프라인 오버헤드 방지
+	if (!IsVisible() || bHiddenInGame)
+	{
+		return;
+	}
+
 	USceneComponent* ParentComp = GetAttachParent();
 	if (!ParentComp)
 	{
@@ -106,6 +112,10 @@ void UGroundIndicatorComponent::EnsureIndicatorMeshCompExists()
 			IndicatorMeshComp->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
 			IndicatorMeshComp->SetGenerateOverlapEvents(false);
 			IndicatorMeshComp->CanCharacterStepUpOn = ECB_No;
+
+			// 바닥에 밀착되는 데칼용 렌더 메쉬이므로 그림자 생성 및 데칼 수신 차단 (렌더 최적화)
+			IndicatorMeshComp->SetCastShadow(false);
+			IndicatorMeshComp->bReceivesDecals = false;
 
 			// 만약 이 컴포넌트(스프링암) 자체가 이미 등록(Registered)된 상태라면, 자식 메쉬도 즉시 씬에 등록해 주어야 렌더링됩니다.
 			if (IsRegistered())
