@@ -15,6 +15,7 @@
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "NiagaraFunctionLibrary.h"
+#include "NiagaraComponent.h"
 #include "Animation/AnimMontage.h"
 #include "SkillSystem/AnimNotify/AnimNotify_SkillGameplayCue.h"
 #include "SkillSystem/AnimNotify/AnimNotifyState_SkillGameplayCue.h"
