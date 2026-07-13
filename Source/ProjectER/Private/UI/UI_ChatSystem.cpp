@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/UI_ChatSystem.h"
@@ -95,13 +95,16 @@ void UUI_ChatSystem::AddMessageToScrollBox(const FString& Message)
 		NewMessage->SetVisibility(ESlateVisibility::HitTestInvisible);
 
 		FTimerHandle TimerHandle;
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this, NewMessage]()
+		FTimerDelegate TimerDel;
+		TWeakObjectPtr<UTextBlock> WeakMessage = NewMessage;
+		TimerDel.BindWeakLambda(this, [this, WeakMessage]()
 			{
-				if (NewMessage && SB_TextScrollBox)
+				if (WeakMessage.IsValid() && SB_TextScrollBox)
 				{
-					SB_TextScrollBox->RemoveChild(NewMessage);
+					SB_TextScrollBox->RemoveChild(WeakMessage.Get());
 				}
-			}, 10.0f, false); // 10초뒤 채팅 삭제
+			});
+		GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDel, 10.0f, false); // 10초뒤 채팅 삭제
 
 
 		SB_TextScrollBox->AddChild(NewMessage);

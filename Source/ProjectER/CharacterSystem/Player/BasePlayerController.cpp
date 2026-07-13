@@ -114,7 +114,8 @@ void ABasePlayerController::BeginPlay()
 
 	// [김현수 추가분] HUDController 찾기
 	FTimerHandle TimerHandle;
-	GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
+	FTimerDelegate TimerDel;
+	TimerDel.BindWeakLambda(this, [this]()
 		{
 			TArray<UObject*> FoundControllers;
 			GetObjectsOfClass(UUI_HUDController::StaticClass(), FoundControllers, true, RF_NoFlags);
@@ -127,7 +128,8 @@ void ABasePlayerController::BeginPlay()
 			{
 				UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] HUDController not found yet"));
 			}
-		}, 0.5f, false);
+		});
+	GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDel, 0.5f, false);
 
 	if (IsLocalController())
 	{

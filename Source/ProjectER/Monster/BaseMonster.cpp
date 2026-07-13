@@ -700,7 +700,7 @@ void ABaseMonster::OnCooldown(FGameplayTag CooldownTag, float Cooldown)
 
 	GetWorld()->GetTimerManager().SetTimer(
 		TimerHandle,
-		FTimerDelegate::CreateLambda([this, CooldownTag]()
+		FTimerDelegate::CreateWeakLambda(this, [this, CooldownTag]()
 			{
 				RemoveCooldownTag(CooldownTag);
 			}),

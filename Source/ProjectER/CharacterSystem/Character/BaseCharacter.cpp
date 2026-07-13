@@ -1297,7 +1297,7 @@ void ABaseCharacter::RequestAsyncPath(const FVector& Destination)
 	NavSys->FindPathAsync(
 			FNavAgentProperties::DefaultProperties,
 			Query,
-			FNavPathQueryDelegate::CreateLambda([this, CapturedRequestID](uint32 InQueryID, ENavigationQueryResult::Type InResult, FNavPathSharedPtr InNavPath)
+			FNavPathQueryDelegate::CreateWeakLambda(this, [this, CapturedRequestID](uint32 InQueryID, ENavigationQueryResult::Type InResult, FNavPathSharedPtr InNavPath)
 			{
 				// StopMove 후 도착한 오래된 콜백은 무시
 				if (CapturedRequestID != CurrentPathRequestID) return;
