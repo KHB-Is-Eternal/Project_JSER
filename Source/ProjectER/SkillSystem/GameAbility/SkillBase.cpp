@@ -126,6 +126,7 @@ void USkillBase::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const
 	Super::OnGiveAbility(ActorInfo, Spec);
 
 	USkillDataAsset* DataAsset = Cast<USkillDataAsset>(Spec.SourceObject);
+	CachedDataAsset = DataAsset;
 	CachedConfig = IsValid(DataAsset) ? DataAsset->SkillConfig : nullptr;
 	DynamicCostGE = IsValid(CachedConfig) ? CachedConfig->CreateCostGameplayEffect(this) : nullptr;
 }
@@ -819,6 +820,11 @@ void USkillBase::StopCharacterMove()
 	}
 
 	BaseCharacter->StopMove();
+}
+
+USkillDataAsset* USkillBase::GetSkillDataAsset() const
+{
+	return CachedDataAsset.Get();
 }
 
 /*

@@ -122,6 +122,13 @@ protected:
 	/** 클라이언트로부터 직렬화되어 전달된 정확한 시전 시작 시간 (동기화 및 렉보상용) */
 	float SyncedActivationTime = 0.0f;
 
+	UFUNCTION(BlueprintPure, Category = "Skill")
+	USkillDataAsset* GetSkillDataAsset() const;
+
+protected:
+	/** 스킬 데이터 에셋 원본 포인터 캐싱 */
+	TWeakObjectPtr<class USkillDataAsset> CachedDataAsset;
+
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UBaseSkillConfig> CachedConfig;
 

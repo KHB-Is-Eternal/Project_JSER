@@ -39,6 +39,23 @@ struct FSkillTooltipData
     TObjectPtr<UTexture2D> SKillIcon;
 };
 
+USTRUCT(BlueprintType)
+struct FSkillIndicatorConfig
+{
+    GENERATED_BODY()
+
+    /** 조준 시 띄울 인디케이터 블루프린트 (소프트 레퍼런스) */
+    UPROPERTY(EditDefaultsOnly, Category = "Indicator")
+    TSoftClassPtr<class ASkillIndicatorActor> IndicatorClass;
+
+    /** 
+     * 조준선의 절대 크기 (FVector를 통해 길이, 폭, 높이를 개별적으로 통제) 
+     * 블루프린트 원본 크기와 무관하게, 데칼 컴포넌트의 실제 투영 크기(DecalSize)를 이 수치로 정확하게 고정(Set)시킵니다.
+     */
+    UPROPERTY(EditDefaultsOnly, Category = "Indicator")
+    FVector IndicatorSize = FVector(100.f, 100.f, 100.f);
+};
+
 class UAbilitySystemComponent;
 class USkillBase;
 class UBaseSkillConfig;
@@ -57,9 +74,13 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "Skill|UI")
 	UTexture2D* GetSkillIcon() const { return SKillIcon; }
-private:
-    
+
+    const FSkillIndicatorConfig& GetIndicatorConfig() const { return IndicatorConfig; }
+
 public:
+    UPROPERTY(EditDefaultsOnly, Category = "Indicator")
+    FSkillIndicatorConfig IndicatorConfig;
+
     UPROPERTY(EditDefaultsOnly, Instanced)
     TObjectPtr<UBaseSkillConfig> SkillConfig;
 

@@ -23,6 +23,7 @@ public:
 	bool TryGetMouseLocationInRange(FVector& OutLocation) const;
 	bool ConsumePendingExternalTargetLocation(FVector& OutLocation);
 	bool IsTargetLocationInRange(const FVector& InLocation) const;
+	FVector GetMouseLocation() const;
 protected:
 	virtual void ApplyExecutionEffects() override;
 	virtual void OnCancelAbility() override;
@@ -30,7 +31,6 @@ protected:
 	void RotateToLocation(const FVector& Location);
 	void SetWaitTargetTask();
 	void SetWaitExternalTargetEventTask();
-	FVector GetMouseLocation() const;
 	void SubmitExternalTargetLocation(const FVector& InLocation);
 	UFUNCTION()
 	void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle);

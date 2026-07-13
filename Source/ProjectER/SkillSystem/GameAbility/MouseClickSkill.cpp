@@ -14,6 +14,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "GameFramework/GameStateBase.h"
+#include "SkillSystem/SkillDataAsset.h"
 
 UMouseClickSkill::UMouseClickSkill()
 {
@@ -182,6 +183,20 @@ void UMouseClickSkill::SetWaitTargetTask()
 		{
 			CurrentMouseLocationTargetActor = MouseLocationTargetActor;
 			MouseLocationTargetActor->PrimaryPC = Cast<APlayerController>(GetActorInfo().PlayerController);
+
+			// 조준선 설정 및 최대 사거리 데이터 주입
+			USkillDataAsset* DataAsset = GetSkillDataAsset();
+			FSkillIndicatorConfig IndicatorConfig = DataAsset ? DataAsset->GetIndicatorConfig() : FSkillIndicatorConfig();
+
+			float MaxRange = 0.f;
+			UMouseClickSkillConfig* ClickConfig = Cast<UMouseClickSkillConfig>(CachedConfig);
+			if (IsValid(ClickConfig))
+			{
+				MaxRange = ClickConfig->GetRange();
+			}
+
+			MouseLocationTargetActor->Setup(IndicatorConfig, MaxRange);
+
 			WaitTargetTask->FinishSpawningActor(this, SpawnedActor);
 		}
 	}
