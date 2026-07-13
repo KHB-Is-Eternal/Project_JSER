@@ -76,14 +76,17 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
 
 	TWeakObjectPtr<UConstantForceMoveGEC const> WeakThis = this;
 	TWeakObjectPtr<AActor> WeakInstigator = Instigator;
+	
+	// FGameplayEffectSpec을 TSharedPtr로 래핑하여 람다 복사 시 무거운 구조체 복사를 방지
+	TSharedPtr<FGameplayEffectSpec> SharedGESpec = MakeShared<FGameplayEffectSpec>(GESpec);
 
 	FTimerHandle PostMoveTimer;
 	Instigator->GetWorld()->GetTimerManager().SetTimer(
     PostMoveTimer,
-    [WeakThis, WeakInstigator, StartLoc, ExpectedEndLoc, GESpecCopy = GESpec, PredictionKey]()
+    [WeakThis, WeakInstigator, StartLoc, ExpectedEndLoc, SharedGESpec, PredictionKey]()
     {
         // 1. 유효성 검사 (가장 먼저 수행)
-        if (!WeakThis.IsValid() || !WeakInstigator.IsValid())
+        if (!WeakThis.IsValid() || !WeakInstigator.IsValid() || !SharedGESpec.IsValid())
         {
             return;
         }
@@ -96,7 +99,7 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
         {
             // 지속 효과 제거 및 도착 효과 실행
             WeakThis->RemoveMoveCue(ASC, WeakThis->LoopVfxConfig, WeakThis->LoopSfxConfig);
-            WeakThis->ExecuteMoveCue(ASC, GESpecCopy, WeakThis->EndVfxConfig, WeakThis->EndSfxConfig, PredictionKey);
+            WeakThis->ExecuteMoveCue(ASC, *SharedGESpec, WeakThis->EndVfxConfig, WeakThis->EndSfxConfig, PredictionKey);
         }
 
         // 2. 벽 충돌 감지 로직
@@ -112,7 +115,7 @@ void UConstantForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction
                 FakeHit.Location = ActualEndLoc;
                 FakeHit.ImpactPoint = ActualEndLoc; // ImpactPoint도 채워주는 것이 안전합니다.
                 
-                WeakThis->HandleWallHit(InstigatorPtr, FakeHit, GESpecCopy);
+                WeakThis->HandleWallHit(InstigatorPtr, FakeHit, *SharedGESpec);
             }
         }
 

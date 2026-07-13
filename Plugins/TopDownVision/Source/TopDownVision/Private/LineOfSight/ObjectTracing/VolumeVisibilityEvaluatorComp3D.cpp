@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "LineOfSight/ObjectTracing/VolumeVisibilityEvaluatorComp3D.h"
@@ -271,11 +271,15 @@ void UVolumeVisibilityEvaluatorComp3D::OnVolumeOverlapEnd(
     UPrimitiveComponent* OtherComp,
     int32 OtherBodyIndex)
 {
-    ActiveVolumes.RemoveAll(
-        [OtherComp](const FVolumeShape& V)
+    struct FCompareVolumeComponent
+    {
+        const UPrimitiveComponent* TargetComp;
+        FORCEINLINE bool operator()(const FVolumeShape& V) const
         {
-            return V.Component.Get() == OtherComp;
-        });
+            return V.Component.Get() == TargetComp;
+        }
+    };
+    ActiveVolumes.RemoveAll(FCompareVolumeComponent{OtherComp});
 
     UE_LOG(LOSTrace, Log,
         TEXT("%s UVisibilityTargetComp::OnVolumeOverlapEnd >> [%s] left volume [%s] | active volumes=%d"),

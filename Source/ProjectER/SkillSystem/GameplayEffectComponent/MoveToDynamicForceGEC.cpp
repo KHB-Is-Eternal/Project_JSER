@@ -144,7 +144,7 @@ void UMoveToDynamicForceGEC::Execute(AActor* Instigator, const FVector& Directio
 						}
 					}
 				},
-				0.016f, // 대략 60fps 간격
+				0.033f, // 대략 30fps 간격으로 완화하여 간접 호출 틱 부하 절반 감소
 				true
 			);
 
