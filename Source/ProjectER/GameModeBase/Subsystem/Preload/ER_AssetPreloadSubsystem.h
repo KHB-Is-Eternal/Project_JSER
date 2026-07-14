@@ -28,6 +28,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ProjectER|Preload")
 	void StartPreloadMonsterAssets();
 
+	/**
+	 * 전달받은 캐릭터 데이터 경로들과 기존 몬스터 에셋들을 연계하여 다단계 비동기 로딩을 개시합니다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ProjectER|Preload")
+	void StartPreloadAssets(const TArray<FSoftObjectPath>& CharacterPaths);
+
 	// 로드가 완료되었을 때 알림을 보낼 델리게이트
 	UPROPERTY(BlueprintAssignable, Category = "ProjectER|Preload")
 	FOnPreloadCompleteDelegate OnPreloadComplete;
@@ -37,8 +43,10 @@ public:
 	void HideLoadingScreen();
 
 private:
-	// 비동기 로딩 핸들러 콜백
-	void OnMonsterAssetsLoadedAsync();
+	// 다단계 비동기 로딩 콜백
+	void OnLevelAssetsLoadedAsync();
+	void OnSkillAssetsLoadedAsync();
+	void OnNiagaraAssetsLoadedAsync();
 
 protected:
 	// 활성화된 비동기 로딩 핸들

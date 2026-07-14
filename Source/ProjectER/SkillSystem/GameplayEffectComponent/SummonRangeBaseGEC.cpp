@@ -3,6 +3,7 @@
 #include "Abilities/GameplayAbilityTypes.h"
 #include "GameplayEffectTypes.h"
 #include "AbilitySystemComponent.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemGlobals.h"
 #include "GameplayCueManager.h"
@@ -57,6 +58,23 @@ void USummonRangeBaseGEC::OnExecutePredictive(UAbilitySystemComponent* ASC, cons
 	if (ASC) PredictionKey = ASC->ScopedPredictionKey;
 
 	OnExecuteVFXCue(ASC, ContextHandle, GESpec, PredictionKey);
+}
+
+FSkillTooltipData USummonRangeBaseGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("범위 소환을 사용합니다."));
+
+	FString DetailStr = TEXT("범위 소환 : 특정 범위가 소환됩니다. 닿은 대상에게 효과를 부여합니다.");
+	
+	FText EffectsText = FormatAppliedEffects(Applied, Level);
+	if (!EffectsText.IsEmpty())
+	{
+		DetailStr += TEXT("\n") + EffectsText.ToString();
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
 }
 
 void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FGameplayEffectContextHandle& ContextHandle, const FGameplayEffectSpec& GESpec, FPredictionKey PredictionKey) const
@@ -186,7 +204,7 @@ void USummonRangeBaseGEC::InitializeActorData(ABaseRangeOverlapEffectActor* Acto
 		Actor->SetClientActivationTime(ErContext->ClientActivationTime);
 	}
 
-	InitializeRangeActor(Actor, ContextHandle.GetInstigator(), ContextHandle, VfxParams, SfxParams);
+	InitializeRangeActor(Actor, ContextHandle.GetInstigator(), ContextHandle, VfxParams, SfxParams, GESpec);
 	Actor->SetLifeSpan(this->LifeSpan);
 }
 
@@ -250,7 +268,7 @@ FGameplayCueParameters USummonRangeBaseGEC::BuildNiagaraCueParameters(const FGam
 	return CueParams;
 }
 
-void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
+void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters, const FGameplayEffectSpec& ParentSpec) const
 {
 	if (!IsValid(RangeActor) || !IsValid(Instigator))
 	{
@@ -272,27 +290,29 @@ void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* Ran
 			continue;
 		}
 
-		InitGEHandles.Add(CauserASC->MakeOutgoingSpec(TSubclassOf<UGameplayEffect>(EffectClass), Ability->GetAbilityLevel(), Context));
+		FGameplayEffectSpecHandle Spec = CauserASC->MakeOutgoingSpec(TSubclassOf<UGameplayEffect>(EffectClass), Ability->GetAbilityLevel(), Context);
+		UBaseGEC::InheritHitTags(ParentSpec, Spec);
+		InitGEHandles.Add(Spec);
 	}
 
 	// 강화 효과(SkillProc) 확인 및 전이
-	UBaseGEC::GetSkillProcEffects(CauserASC, Ability, RangeActor, Context, InitGEHandles);
+	UBaseGEC::GetSkillProcEffects(CauserASC, Ability, RangeActor, Context, InitGEHandles, true, &ParentSpec);
 
 	RangeActor->InitializeEffectData(InitGEHandles, Instigator, this->CollisionRadius, this->bHitOncePerTarget, nullptr, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
 	RangeActor->SetLifeSpan(this->LifeSpan);
 }
 
-void USummonRangeBaseGEC::SnapLocationToGround(FVector& InOutLocation, const AActor* Instigator) const
+bool USummonRangeBaseGEC::SnapLocationToGround(FVector& InOutLocation, const AActor* Instigator) const
 {
 	if (!this->bSnapToGround)
 	{
-		return;
+		return false;
 	}
 
 	UWorld* const World = IsValid(Instigator) ? Instigator->GetWorld() : nullptr;
 	if (!IsValid(World))
 	{
-		return;
+		return false;
 	}
 
 	FHitResult FloorHit;
@@ -317,7 +337,10 @@ void USummonRangeBaseGEC::SnapLocationToGround(FVector& InOutLocation, const AAc
 		}
 
 		InOutLocation.Z = FloorHit.Location.Z + FinalZOffset;
+		return true;
 	}
+
+	return false;
 }
 
 void USummonRangeBaseGEC::ApplyCommonSpawnOptions(FVector& InOutLocation, FRotator& InOutRotation, const AActor* Instigator) const
@@ -325,11 +348,22 @@ void USummonRangeBaseGEC::ApplyCommonSpawnOptions(FVector& InOutLocation, FRotat
 	// 1. 회전 오프셋 적용
 	InOutRotation += this->RotationOffset;
 
-	// 2. 위치 오프셋 적용 (최종 회전값 기준)
-	InOutLocation += InOutRotation.Quaternion().RotateVector(this->LocationOffset);
+	// 2. 위치 오프셋 계산 및 수평(XY) 오프셋만 가산
+	const FVector RotatedOffset = InOutRotation.Quaternion().RotateVector(this->LocationOffset);
+	InOutLocation.X += RotatedOffset.X;
+	InOutLocation.Y += RotatedOffset.Y;
 
-	// 3. 지면 스냅
-	SnapLocationToGround(InOutLocation, Instigator);
+	// 3. 원래 Z축 기준에서 지면 스냅
+	if (SnapLocationToGround(InOutLocation, Instigator))
+	{
+		// 지면 스냅에 성공한 경우: 찾은 지면 높이 Z에 로컬 Z 오프셋 누적
+		InOutLocation.Z += RotatedOffset.Z;
+	}
+	else
+	{
+		// 지면 스냅 실패 혹은 미사용 시: 원래 높이 Z에 로컬 Z 오프셋 누적
+		InOutLocation.Z += RotatedOffset.Z;
+	}
 }
 
 FTransform USummonRangeBaseGEC::ApplyCommonSpawnOptionsToTransform(const FTransform& InOriginTransform, const AActor* Instigator) const
@@ -340,4 +374,33 @@ FTransform USummonRangeBaseGEC::ApplyCommonSpawnOptionsToTransform(const FTransf
 	ApplyCommonSpawnOptions(TargetLocation, CombinedRotation, Instigator);
 
 	return FTransform(CombinedRotation, TargetLocation);
+}
+
+void USummonRangeBaseGEC::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+	Super::CollectNiagaraPaths(OutPaths);
+	if (RangeSpawnVfx && !RangeSpawnVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(RangeSpawnVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	if (HitTargetVfx && !HitTargetVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(HitTargetVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	for (const TSubclassOf<UBaseGameplayEffect>& GEClass : Applied)
+	{
+		if (GEClass)
+		{
+			if (const UBaseGameplayEffect* GE = GEClass->GetDefaultObject<UBaseGameplayEffect>())
+			{
+				for (const UGameplayEffectComponent* Component : GE->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						BaseGEC->CollectNiagaraPaths(OutPaths);
+					}
+				}
+			}
+		}
+	}
 }

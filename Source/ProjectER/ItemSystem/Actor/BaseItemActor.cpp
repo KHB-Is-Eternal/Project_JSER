@@ -92,7 +92,7 @@ void ABaseItemActor::RefreshVisualFromItemData()
 			{
 				if (UItemNameWidget* NameWidget = Cast<UItemNameWidget>(NameTagWidget->GetUserWidgetObject()))
 				{
-					NameWidget->SetItemName(ItemData->ItemName);
+					NameWidget->SetItemName(ItemData->ItemName, ItemData->GetRarityTextColor());
 				}
 			}
 

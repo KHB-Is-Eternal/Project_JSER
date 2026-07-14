@@ -24,7 +24,7 @@ public:
 	bool ConsumePendingExternalTargetLocation(FVector& OutLocation);
 	bool IsTargetLocationInRange(const FVector& InLocation) const;
 protected:
-	virtual void ExecuteSkill() override;
+	virtual void ApplyExecutionEffects() override;
 	virtual void OnCancelAbility() override;
 	bool IsInRange(const FVector& Location) const;
 	void RotateToLocation(const FVector& Location);

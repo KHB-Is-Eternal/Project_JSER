@@ -1,4 +1,5 @@
 #include "CharacterSystem/Player/BasePlayerController.h"
+#include "ItemSystem/UI/ItemCatalogWidget.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "CharacterSystem/Data/InputConfig.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
@@ -323,6 +324,12 @@ void ABasePlayerController::SetupInputComponent()
 		{
 			EnhancedInputComponent->BindAction(InputConfig->ChatEnterKey, ETriggerEvent::Started, this, &ABasePlayerController::OnEnterPressed);
 		}	
+
+		// 아이템 도감 토글 바인딩
+		if (InputConfig->CatalogKey)
+		{
+			EnhancedInputComponent->BindAction(InputConfig->CatalogKey, ETriggerEvent::Started, this, &ABasePlayerController::ToggleCatalog);
+		}
 	}
 }
 
@@ -1307,20 +1314,15 @@ void ABasePlayerController::Client_ReturnToMainMenu_Implementation(const FString
 	UGameplayStatics::OpenLevel(this, FName(TEXT("/Game/Level/Level_MainMenu")));
 }
 
-void ABasePlayerController::Client_StartPreload_Implementation()
+void ABasePlayerController::Client_StartPreload_Implementation(const TArray<FSoftObjectPath>& CharacterPaths)
 {
 	UE_LOG(LogTemp, Warning, TEXT("[Client] Client_StartPreload_Implementation called."));
-
-	//Client_OpenLoadingUI();
-
 	if (UGameInstance* GI = GetGameInstance())
 	{
 		if (UER_AssetPreloadSubsystem* PSS = GI->GetSubsystem<UER_AssetPreloadSubsystem>())
 		{
-			// 이벤트 바인딩
 			PSS->OnPreloadComplete.AddDynamic(this, &ABasePlayerController::OnPreloadComplete);
-			// 로드 요청
-			PSS->StartPreloadMonsterAssets();
+			PSS->StartPreloadAssets(CharacterPaths);
 		}
 	}
 }
@@ -2002,11 +2004,8 @@ void ABasePlayerController::setChatMessage(const FString& Message)
 
 void ABasePlayerController::OnEnterPressed()
 {
-	UE_LOG(LogTemp, Error, TEXT("1"));
-
 	if (ChatWidgetInstance)
 	{
-		UE_LOG(LogTemp, Error, TEXT("OnEnterPressed: Showing chat input"));
 		ChatWidgetInstance->SetChatInputVisible(true);		
 
 		// 입력 모드를 UI로 변경
@@ -2190,8 +2189,28 @@ void ABasePlayerController::Server_DropInventoryItem_Implementation(int32 SlotIn
 
 		if (!bIsTooClose)
 		{
-			SafeDropLocation = TestLocation;
-			break; // 빈 공간 찾음!
+			// 벽/장애물 체크: 플레이어 위치에서 TestLocation 사이에 장애물이 있는지 확인
+			FHitResult HitResult;
+			FCollisionQueryParams QueryParams;
+			QueryParams.AddIgnoredActor(PlayerPawn);
+
+			// 캐릭터의 눈높이나 약간 위에서부터 트레이스하여 바닥에 걸리지 않도록 함
+			FVector TraceStart = PawnLocation + FVector(0.f, 0.f, 50.f);
+			FVector TraceEnd = TestLocation + FVector(0.f, 0.f, 50.f);
+
+			bool bHitObstacle = GetWorld()->LineTraceSingleByChannel(
+				HitResult,
+				TraceStart,
+				TraceEnd,
+				ECC_WorldStatic,
+				QueryParams
+			);
+
+			if (!bHitObstacle)
+			{
+				SafeDropLocation = TestLocation;
+				break; // 빈 공간 및 장애물 없는 위치 찾음!
+			}
 		}
 
 		if (CurrentRadius == 0.f)
@@ -2936,4 +2955,41 @@ TArray<FCraftableItemPreviewData> ABasePlayerController::GetCraftableItemsForUI(
 	}
 
 	return Results;
+}
+
+void ABasePlayerController::ToggleCatalog()
+{
+	if (!CatalogWidgetClass) return;
+
+	if (IsValid(CatalogWidgetInstance))
+	{
+		if (CatalogWidgetInstance->GetVisibility() == ESlateVisibility::Visible || CatalogWidgetInstance->GetVisibility() == ESlateVisibility::SelfHitTestInvisible)
+		{
+			CatalogWidgetInstance->SetVisibility(ESlateVisibility::Collapsed);
+			
+			// 카탈로그를 닫을 때 입력 모드를 게임 전용으로 되돌릴 수 있지만, 다른 UI가 열려있는지 확인해야 합니다.
+			// FInputModeGameOnly InputMode;
+			// SetInputMode(InputMode);
+			// bShowMouseCursor = false;
+		}
+		else
+		{
+			CatalogWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+			
+			// 필요 시 마우스 커서를 보여줌
+			// FInputModeGameAndUI InputMode;
+			// InputMode.SetWidgetToFocus(CatalogWidgetInstance->TakeWidget());
+			// SetInputMode(InputMode);
+			// bShowMouseCursor = true;
+		}
+	}
+	else
+	{
+		CatalogWidgetInstance = CreateWidget<UItemCatalogWidget>(this, CatalogWidgetClass);
+		if (CatalogWidgetInstance)
+		{
+			CatalogWidgetInstance->AddToViewport(50); // 다른 UI 위로 표시하기 위한 ZOrder
+			CatalogWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+		}
+	}
 }

@@ -92,6 +92,9 @@ void UBaseDamageExecutionCalc::Execute_Implementation(const FGameplayEffectCusto
 		float CritMultiplier = 1.5f + (CriticalDamage / 100.0f);
         
 		TotalDamage *= CritMultiplier;
+
+		FGameplayEffectSpec* MutableSpec = const_cast<FGameplayEffectSpec*>(&Spec);
+		MutableSpec->DynamicGrantedTags.AddTag(ProjectER::Event::Action::Hit::BasicAttack::Critical);
 	}
 	
     // 방어력 적용 (100 / (100 + 방어력)) -> 방어력이 높을수록 데미지 감소

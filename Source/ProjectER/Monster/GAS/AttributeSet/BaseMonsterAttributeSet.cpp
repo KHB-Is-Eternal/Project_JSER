@@ -1,4 +1,4 @@
-﻿#include "Monster/GAS/AttributeSet/BaseMonsterAttributeSet.h"
+#include "Monster/GAS/AttributeSet/BaseMonsterAttributeSet.h"
 
 #include "Monster/BaseMonster.h"
 #include "Net/UnrealNetwork.h"
@@ -78,5 +78,5 @@ void UBaseMonsterAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHea
 void UBaseMonsterAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldHealth)
 {
 	Super::OnRep_MoveSpeed(OldHealth);
-	OnMoveSpeedChanged.Broadcast(OldHealth.GetBaseValue(), GetMoveSpeed());
+
 }

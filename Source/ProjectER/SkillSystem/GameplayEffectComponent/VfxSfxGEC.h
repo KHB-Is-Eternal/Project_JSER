@@ -55,4 +55,14 @@ public:
 	/** 제거(Removed) 시점에 실행할 사운드 */
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|SFX")
 	TObjectPtr<USkillSoundSpawnConfig> RemovedSound;
+
+	/** 최대 스택(Max Stack) 도달 시점에 실행할 VFX */
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|VFX")
+	TObjectPtr<USkillNiagaraSpawnConfig> MaxStackVfx;
+
+	/** 최대 스택(Max Stack) 도달 시점에 실행할 사운드 */
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "VfxSfx|SFX")
+	TObjectPtr<USkillSoundSpawnConfig> MaxStackSound;
+
+	virtual void CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const override;
 };

@@ -6,6 +6,7 @@
 #include "GameplayEffectComponent.h"
 #include "GameplayPrediction.h"
 #include "SkillSystem/Interfaces/SkillVisualDataProvider.h"
+#include "SkillSystem/SkillDataAsset.h"
 #include "BaseGEC.generated.h"
 
 /**
@@ -27,14 +28,17 @@ class PROJECTER_API UBaseGEC : public UGameplayEffectComponent, public ISkillVis
 public:
 	UBaseGEC();
 
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const;
 
+	static FText FormatAppliedEffects(const TArray<TSubclassOf<class UBaseGameplayEffect>>& Effects, int32 Level);
 
 protected:
 	virtual void OnGameplayEffectExecuted(FActiveGameplayEffectsContainer& ActiveGEContainer, FGameplayEffectSpec& GESpec, FPredictionKey& PredictionKey) const override;
 
 
+	static void GetSkillProcEffects(UAbilitySystemComponent* InstigatorASC, UGameplayAbility* InstigatorSkill,  AActor* InEffectCauser,  const FGameplayEffectContextHandle& CurrentContext,  TArray<FGameplayEffectSpecHandle>& OutSpecs, bool bDefaultConsume = true, const FGameplayEffectSpec* ParentSpec = nullptr);
 
-	static void GetSkillProcEffects(UAbilitySystemComponent* InstigatorASC, UGameplayAbility* InstigatorSkill,  AActor* InEffectCauser,  const FGameplayEffectContextHandle& CurrentContext,  TArray<FGameplayEffectSpecHandle>& OutSpecs, bool bDefaultConsume = true);
+	static void InheritHitTags(const FGameplayEffectSpec& ParentSpec, FGameplayEffectSpecHandle& ChildSpecHandle);
 
 public:
 
@@ -64,6 +68,9 @@ public:
 	virtual class USkillNiagaraSpawnConfig* GetAGCN_NiagaraConfig() const override { return nullptr; }
 	virtual class USkillSoundSpawnConfig* GetAGCN_SoundConfig() const override { return nullptr; }
 	virtual void SetupMovement(class UProjectileMovementComponent* Movement) const {}
+
+	/** 나이아가라 프리로드 경로 수집 */
+	virtual void CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const;
 
 protected:
 

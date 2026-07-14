@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -6,10 +6,12 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstance.h"
 #include "LineOfSight/VisionData.h"
+#include "LineOfSight/Grid/GridVisionAsyncTask.h"
 #include "MainVisionRTManager.generated.h"
 
 class UVision_VisualComp;
 class ULOSRequirementPoolSubsystem;
+class UGridVisionMap;
 
 /*
  * Composites all in-range LOS stamps onto CameraLocalRT each frame.
@@ -28,7 +30,11 @@ class TOPDOWNVISION_API UMainVisionRTManager : public UActorComponent
 public:
 	UMainVisionRTManager();
 
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
 protected:
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	virtual void BeginPlay() override;
 
 public:
@@ -47,38 +53,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category="LineOfSight")
 	UMaterialInstanceDynamic* GetLayeredMID() const { return LayeredLOSInterfaceMID; }
 
+	UFUNCTION(BlueprintCallable, Category="LineOfSight")
+	bool IsGridVisionEnabled() const { return bUseGridVision; }
+
 private:
-
-	UFUNCTION()
-	void DrawLOS_CPU(UCanvas* Canvas, int32 Width, int32 Height);
-
-
-	//New method
-	void DrawLOSStampsBatched(
-		UTextureRenderTarget2D* TargetRT,
-		const TArray<UVision_VisualComp*>& Providers,
-		const FLinearColor& Color);
-
-	void DrawLOSStamp(
-		UCanvas* Canvas,
-		const TArray<UVision_VisualComp*>& Providers,
-		const FLinearColor& Color);
-
-	void RenderLOS_GPU(
-		FRDGBuilder& GraphBuilder,
-		FRDGTextureRef LOSTexture);
-
-	bool ConvertWorldToRT(
-		const FVector& ProviderWorldLocation,
-		const float& ProviderVisionRange,
-		FVector2D& OutPixelPosition,
-		float& OutTileSize) const;
 
 	bool GetVisibleProviders(TArray<UVision_VisualComp*>& OutProviders) const;
 
 	bool ShouldRunClientLogic() const;
-
-	void ApplyFeatheredBlurToRT();
 
 	/** Lazy-cached pool subsystem — resolved once on first UpdateCameraLOS call. */
 	ULOSRequirementPoolSubsystem* GetPoolSubsystem() const;
@@ -89,40 +71,24 @@ protected:
 	bool bUseCPU = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	bool bDrawTextureRange = false;
+	bool bUseGridVision = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	int32 GridResolution = 256;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	float CameraVisionRange;
+	bool bDrawTextureRange = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	float MapWorldExtent = 20000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	float UpdateInterval = 0.033f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	UCanvasRenderTarget2D* CameraLocalRT = nullptr;
 
-#pragma region Blur
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	UCanvasRenderTarget2D* FeatheredRT = nullptr;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	UMaterialInterface* FeatherOutMaterial = nullptr;
-
-	UPROPERTY(Transient)
-	UMaterialInstanceDynamic* FeatherMID = nullptr;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
-	UMaterialInterface* BlurMaterial = nullptr;
-
-	UPROPERTY(Transient)
-	UMaterialInstanceDynamic* BlurMID = nullptr;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Blur")
-	float BlurRadiusPercent = 0.03f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Blur")
-	int BlurNumSamples = 32;
-
-	FVector2D CanvasSize = FVector2D{512.f, 512.f};
-
-#pragma endregion
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	UMaterialParameterCollection* PostProcessMPC = nullptr;
@@ -145,6 +111,14 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Vision")
 	UMaterialInstanceDynamic* LayeredLOSInterfaceMID = nullptr;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	float TemporalBlendSpeed = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Grid", meta=(EditCondition="bUseGridVision"))
+	float BlurSharpness = 3.0f;
+
+	float TimeSinceLastUpdate = 0.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	FName LayeredLOSTextureParam = TEXT("RenderTarget");
 
@@ -155,8 +129,14 @@ protected:
 
 private:
 	UPROPERTY(Transient)
+	TObjectPtr<UGridVisionMap> GridVisionMap = nullptr;
+
+	UPROPERTY(Transient)
 	TArray<TObjectPtr<UVision_VisualComp>> CachedValidProviders;
 
 	UPROPERTY(Transient)
 	mutable TObjectPtr<ULOSRequirementPoolSubsystem> CachedPoolSubsystem = nullptr;
+
+	// The background task processing grid vision
+	FAsyncTask<FGridVisionAsyncTask>* PendingGridTask = nullptr;
 };

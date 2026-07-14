@@ -6,7 +6,7 @@ void UGCN_SummonedRegistrySubsystem::RegisterVfxActor(AActor* Instigator, float 
 	if (!VfxActor) return;
 
 	// 1. 이미 기다리고 있는 판정 액터가 있는지 확인 (Late Binding)
-	float Tolerance = 0.5f;
+	float Tolerance = DefaultHandshakeTolerance;
 	float BestDelta = Tolerance;
 	FGCN_SummonedKey BestKey;
 	AActor* BestPendingActor = nullptr;
@@ -15,6 +15,13 @@ void UGCN_SummonedRegistrySubsystem::RegisterVfxActor(AActor* Instigator, float 
 	{
 		if (It.Key().Instigator == Instigator && It.Value().IsValid())
 		{
+			if (It.Key().ActivationTime == 0.0f || ActivationTime == 0.0f)
+			{
+				BestKey = It.Key();
+				BestPendingActor = It.Value().Get();
+				break;
+			}
+
 			float Delta = FMath::Abs(It.Key().ActivationTime - ActivationTime);
 			if (Delta < BestDelta)
 			{
@@ -86,13 +93,21 @@ bool UGCN_SummonedRegistrySubsystem::IsVfxActorRegistered(AActor* Instigator, fl
 
 AActor* UGCN_SummonedRegistrySubsystem::FindAndUnregisterVfxActorFuzzy(AActor* Instigator, float TargetTime, float Tolerance)
 {
-	// 1. 정확한 매칭 우선 시도
-	if (AActor* ExactMatch = GetAndUnregisterVfxActor(Instigator, TargetTime))
+	if (Tolerance < 0.0f)
 	{
-		return ExactMatch;
+		Tolerance = DefaultHandshakeTolerance;
 	}
 
-	// 2. Instigator 기준 최근접 시간 퍼지 매칭 (클라이언트-서버 시간 차이 보상)
+	// 1. 정확한 매칭 우선 시도 (TargetTime이 0.0f가 아닐 때만)
+	if (TargetTime > 0.0f)
+	{
+		if (AActor* ExactMatch = GetAndUnregisterVfxActor(Instigator, TargetTime))
+		{
+			return ExactMatch;
+		}
+	}
+
+	// 2. Instigator 기준 최근접 시간 퍼지 매칭 (클라이언트-서버 시간 차이 보상) + 와일드카드 매칭
 	float BestDelta = Tolerance;
 	FGCN_SummonedKey BestKey;
 	AActor* BestActor = nullptr;
@@ -101,6 +116,14 @@ AActor* UGCN_SummonedRegistrySubsystem::FindAndUnregisterVfxActorFuzzy(AActor* I
 	{
 		if (Pair.Key.Instigator == Instigator && Pair.Value.IsValid())
 		{
+			// Simulated Proxy 등에서 시전 시간을 모른 채(0.0f) 등록된 경우 와일드카드로 즉시 매칭
+			if (Pair.Key.ActivationTime == 0.0f || TargetTime == 0.0f)
+			{
+				BestKey = Pair.Key;
+				BestActor = Pair.Value.Get();
+				break;
+			}
+
 			float Delta = FMath::Abs(Pair.Key.ActivationTime - TargetTime);
 			if (Delta < BestDelta)
 			{

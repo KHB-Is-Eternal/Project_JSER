@@ -98,3 +98,39 @@ void URadialForceMoveGEC::Execute(AActor* Instigator, const FVector& Direction, 
 			false);
 	}
 }
+
+FSkillTooltipData URadialForceMoveGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	if (bIsPush)
+	{
+		Data.ShortDescription = FText::FromString(TEXT("대상을 밀쳐냅니다."));
+		FString DetailStr = TEXT("밀침 : 대상을 밀쳐냅니다.");
+		if (bDetectWallHit && WallHitApplied.Num() > 0)
+		{
+			DetailStr += TEXT("\n\n벽과 충돌 시 추가 효과가 적용됩니다.");
+			FText WallHitText = FormatAppliedEffects(WallHitApplied, Level);
+			if (!WallHitText.IsEmpty())
+			{
+				DetailStr += TEXT("\n") + WallHitText.ToString();
+			}
+		}
+		Data.DetailedDescription = FText::FromString(DetailStr);
+	}
+	else
+	{
+		Data.ShortDescription = FText::FromString(TEXT("대상을 당깁니다."));
+		FString DetailStr = TEXT("당김 : 대상을 당깁니다.");
+		if (bDetectWallHit && WallHitApplied.Num() > 0)
+		{
+			DetailStr += TEXT("\n\n벽과 충돌 시 추가 효과가 적용됩니다.");
+			FText WallHitText = FormatAppliedEffects(WallHitApplied, Level);
+			if (!WallHitText.IsEmpty())
+			{
+				DetailStr += TEXT("\n") + WallHitText.ToString();
+			}
+		}
+		Data.DetailedDescription = FText::FromString(DetailStr);
+	}
+	return Data;
+}

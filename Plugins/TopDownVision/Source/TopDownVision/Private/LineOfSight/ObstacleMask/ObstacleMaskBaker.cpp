@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "LineOfSight/ObstacleMask/ObstacleMaskBaker.h"
@@ -21,6 +21,7 @@
 AObstacleMaskBaker::AObstacleMaskBaker()
 {
 	PrimaryActorTick.bCanEverTick = false;
+	bIsEditorOnlyActor = true; // [최적화] 패키징 빌드 및 런타임에서 이 액터를 완전히 제외함
 
 	// root
 	USceneComponent* RootComp = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
@@ -41,6 +42,7 @@ AObstacleMaskBaker::AObstacleMaskBaker()
 	SceneCaptureComp->bCaptureEveryFrame = false;
 	SceneCaptureComp->bCaptureOnMovement = false;
 	SceneCaptureComp->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+	SceneCaptureComp->PrimaryComponentTick.bCanEverTick = false; // [최적화] 에디터 베이킹용이므로 게임 중 틱 완전 비활성화
 
 	// make it look down
 	SceneCaptureComp->SetWorldRotation(SceneCaptureWorldRotation);// add yaw rotation to match forward direction

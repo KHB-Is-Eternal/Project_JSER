@@ -14,6 +14,7 @@
 #include "SkillSystem/AbilityTask/AbilityTask_WaitGameplayEventSyn.h"
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
 #include "SkillSystem/SkillDataAsset.h"
+#include "SkillSystem/Calculator/SkillMagnitudeCalculator.h"
 #include "SkillSystem/SkillData.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "SkillSystem/GameplayEffect/GE_SharedCooldown.h"
@@ -23,6 +24,7 @@
 #include "GameModeBase/State/ER_PlayerState.h"
 
 #include "AbilitySystemLog.h" // GAS 관련 로그 확인용
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 #include "AbilitySystemGlobals.h" // [김현수 추가분] 태그 체크용
 
 #include "CharacterSystem/Player/BasePlayerController.h" // [김현수 추가분]
@@ -31,25 +33,27 @@
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
 #include "GameFramework/GameState.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
+#include "SkillSystem/AnimNotify/AnimNotify_AddTagSkillActive.h"
 
 USkillBase::USkillBase()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateYes;
-	CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
-	ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
-	BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+	CastingTag = ProjectER::Skill::Animation::Casting;
+	ActiveTag = ProjectER::Skill::Animation::Active;
+	BackswingTag = ProjectER::Skill::Animation::Backswing;
+	AllowMovementTag = ProjectER::Skill::Option::AllowMovement;
 	//FailedOutOfRangeTag = FGameplayTag::RequestGameplayTag(FName("State.Failed.OutOfRange"));
 	ActivationBlockedTags.AddTag(CastingTag);
 	ActivationBlockedTags.AddTag(ActiveTag);
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+	ActivationBlockedTags.AddTag(ProjectER::State::Life::Death);
+	ActivationBlockedTags.AddTag(ProjectER::State::Life::Down);
 	// Hard CC: 모든 스킬 차단
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Hard.Stun")));
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Hard.Airborne")));
+	ActivationBlockedTags.AddTag(ProjectER::State::Debuff::Hard::Stun);
+	ActivationBlockedTags.AddTag(ProjectER::State::Debuff::Hard::Airborne);
 	// Soft CC: 침묵은 스킬 사용 차단 (이동은 가능)
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Debuff.Soft.Silence")));
+	ActivationBlockedTags.AddTag(ProjectER::State::Debuff::Soft::Silence);
 	
 	CooldownGameplayEffectClass = UGE_SharedCooldown::StaticClass();
 }
@@ -61,12 +65,8 @@ void USkillBase::SetSkillTagCount(FGameplayTag Tag, int32 Count)
 
 void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
-	if (TriggerEventData)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[FastTrack] ActivateAbility Triggered by Event: %s"), *TriggerEventData->EventTag.ToString());
-	}
-
 	CurrentPhaseIndex = 0;
+	bHasFallbackTriggeredActive = false;
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
 	{
@@ -87,16 +87,33 @@ void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const 
 
 void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
+	ClearFallbackTimers();
 
 	if (bWasCancelled) {
 		OnCancelAbility();
 	}
 
+	// 1. 스킬 종료(End) Gameplay Event 발송
+	SendEndEvent();
+
 	if (ActorInfo && ActorInfo->OwnerActor.IsValid())
 	{
 		if (ABaseMonster* Monster = Cast<ABaseMonster>(ActorInfo->OwnerActor.Get()))
 		{
-			Monster->SendStateTreeEvent(ProjectER::Event::Action::SkillFinished);
+			// 몬스터의 StateTree에도 스킬 입력에 매핑되는 세부 종료 태그를 전송합니다.
+			const FGameplayTag InputTag = GetInputTag();
+			const FGameplayTag EndEventTag = ResolveSkillEventTag(
+				InputTag,
+				ProjectER::Event::Action::Skill::End::Q,
+				ProjectER::Event::Action::Skill::End::W,
+				ProjectER::Event::Action::Skill::End::E,
+				ProjectER::Event::Action::Skill::End::R,
+				ProjectER::Event::Action::Skill::End::Passive);
+
+			if (EndEventTag.IsValid())
+			{
+				Monster->SendStateTreeEvent(EndEventTag);
+			}
 		}
 	}
 
@@ -142,7 +159,7 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 
 		if (SpecHandle.IsValid())
 		{
-			float Duration = CachedConfig->Data.BaseCoolTime.GetValueAtLevel(GetAbilityLevel());
+			float Duration = CachedConfig->GetBaseCooldownDuration(GetAbilityLevel());
 			
 			// Skill Haste (스킬 가속) 반영
 			float Haste = ASC->GetNumericAttribute(UBaseAttributeSet::GetCooldownReductionAttribute());
@@ -150,8 +167,11 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 			Duration /= (1.0f + (FMath::Max(Haste, 0.0f) / 100.0f));
 			Duration = FMath::Max(Duration, 0.1f); // 최소 쿨타임 보장
 
-			SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Skill.Data.CoolTime")), Duration);
-			SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(CachedConfig->Data.CoolTimeTags);
+			SpecHandle.Data.Get()->SetSetByCallerMagnitude(ProjectER::Skill::Data::CoolTime, Duration);
+			if (const FGameplayTagContainer* CooldownTags = CachedConfig->GetCooldownTags())
+			{
+				SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(*CooldownTags);
+			}
 
 			ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, SpecHandle);
 		}
@@ -161,9 +181,9 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 const FGameplayTagContainer* USkillBase::GetCooldownTags() const
 {
 	// 데이터 에셋에 쿨타임 태그가 설정되어 있다면 그것을 우선적으로 반환합니다.
-	if (CachedConfig && CachedConfig->Data.CoolTimeTags.IsValid())
+	if (CachedConfig && CachedConfig->GetCooldownTags() && CachedConfig->GetCooldownTags()->IsValid())
 	{
-		return &CachedConfig->Data.CoolTimeTags;
+		return CachedConfig->GetCooldownTags();
 	}
 
 	return nullptr;
@@ -225,22 +245,18 @@ void USkillBase::ExecuteSkill()
 	}
 
 	// 1. 현재 페이즈의 자신 효과 적용
-	const TArray<FSkillExecutionPhase>& Phases = CachedConfig->GetExecutionPhases();
-	if (Phases.IsValidIndex(CurrentPhaseIndex))
-	{
-		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects);
-	}
+	ApplyExecutionEffects();
 
 	// 2. 권한 서버에서 처리할 공통 로직 (예: 이동 정지)
 	if (HasAuthority(&CurrentActivationInfo))
 	{
-		if (ABaseCharacter* Character = Cast<ABaseCharacter>(Avatar))
-		{
-			Character->StopMove();
-		}
+		StopCharacterMove();
 	}
 
-	// 3. 디버그 로그 및 클라이언트 전용 이벤트
+	// 3. 스킬 발동(Execute) 이벤트 발송
+	SendExecuteEvent();
+
+	// 4. 디버그 로그 및 클라이언트 전용 이벤트
 	if (ASC->IsNetMode(NM_Client))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[SkillBase] ExecuteSkill on Client. HasValidPredictionKey: %s"), 
@@ -250,6 +266,17 @@ void USkillBase::ExecuteSkill()
 	if (IsLocallyControlled())
 	{
 		OnExecuteSkill_InClient();
+	}
+}
+
+void USkillBase::ApplyExecutionEffects()
+{
+	const TArray<FSkillExecutionPhase>& Phases = CachedConfig->GetExecutionPhases();
+	if (Phases.IsValidIndex(CurrentPhaseIndex))
+	{
+		UAbilitySystemComponent* const ASC = GetASC();
+		//FGameplayEffectContextHandle ContextHandle = IsValid(ASC) ? ASC->MakeEffectContext() : FGameplayEffectContextHandle();
+		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects, Phases[CurrentPhaseIndex].MagnitudeCalculators);
 	}
 }
 
@@ -266,6 +293,13 @@ void USkillBase::OnSkillAnimationEventReceived(FGameplayEventData Payload)
 	}
 	else if (EventTag == ActiveTag)
 	{
+		// [수정] 폴백 타이머가 이미 개입하여 타격을 진행했다면, 
+		// 실제 몽타주 노티파이가 뒤늦게 도착하더라도 무시하여 다단히트 중복 타격을 방지합니다.
+		if (bHasFallbackTriggeredActive)
+		{
+			return; 
+		}
+
 		// [수정] 매 타격(Active) 시점마다 TryExecuteSkill을 호출하여 상태를 철저히 검증합니다.
 		if (!TryExecuteSkill())
 		{
@@ -303,6 +337,7 @@ void USkillBase::ChangeSkillState(ESkillAbilityState NewState)
 	SetSkillTagCount(CastingTag, 0);
 	SetSkillTagCount(ActiveTag, 0);
 	SetSkillTagCount(BackswingTag, 0);
+	SetSkillTagCount(AllowMovementTag, 0);
 
 	switch (NewState)
 	{
@@ -312,6 +347,10 @@ void USkillBase::ChangeSkillState(ESkillAbilityState NewState)
 	default: break;
 	}
 
+	if (NewState != ESkillAbilityState::None && CachedConfig && CachedConfig->AllowMovementDuringSkill())
+	{
+		SetSkillTagCount(AllowMovementTag, 1);
+	}
 
 	CurrentState = NewState;
 }
@@ -339,8 +378,10 @@ void USkillBase::OnMontageCompleted()
 
 void USkillBase::PlayAnimMontage()
 {
-	if (!IsValid(CachedConfig) || !IsValid(CachedConfig->Data.AnimMontage)) return;
-	UAbilityTask_PlayMontageAndWait* PlayTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(this, TEXT("SkillAnimation"), CachedConfig->Data.AnimMontage);
+	UAnimMontage* SkillMontage = CachedConfig->GetAnimMontage();
+	if (!IsValid(CachedConfig) || !IsValid(SkillMontage)) return;
+	FName TaskName = FName(*SkillMontage->GetName());
+    UAbilityTask_PlayMontageAndWait* PlayTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(this, TaskName, SkillMontage, 1.f, NAME_None, true, 1.f, 0.f, true);
 	if (!IsValid(PlayTask)) return;
 
 	PlayTask->OnInterrupted.AddDynamic(this, &USkillBase::OnMontageInterrupted);
@@ -348,9 +389,79 @@ void USkillBase::PlayAnimMontage()
 	PlayTask->OnCompleted.AddDynamic(this, &USkillBase::OnMontageCompleted);
 	PlayTask->ReadyForActivation();
 
-	ABaseCharacter* BaseCharacter = Cast<ABaseCharacter>(GetAvatar());
-	if (!IsValid(BaseCharacter)) return;
-	BaseCharacter->StopMove();
+	StopCharacterMove();
+}
+
+void USkillBase::SetupFallbackTimers()
+{
+	UAnimMontage* SkillMontage = CachedConfig ? CachedConfig->GetAnimMontage() : nullptr;
+	if (!IsValid(SkillMontage)) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	float MontageLength = SkillMontage->GetPlayLength();
+
+	// 1. 전체 종료 백업 타이머 (애니메이션 틱 문제로 OnCompleted가 안 불릴 경우 대비)
+	float FallbackEndTime = MontageLength + 0.25f;
+	World->GetTimerManager().SetTimer(FallbackEndTimerHandle, this, &USkillBase::CompleteFinishSkill, FallbackEndTime, false);
+
+	// 2. ActiveTag 백업 타이머 등록
+	int32 PhaseIndex = 0;
+	for (const FAnimNotifyEvent& NotifyEvent : SkillMontage->Notifies)
+	{
+		if (NotifyEvent.Notify && NotifyEvent.Notify->IsA(UAnimNotify_AddTagSkillActive::StaticClass()))
+		{
+			FTimerHandle ActiveTimer;
+			FTimerDelegate Delegate = FTimerDelegate::CreateUObject(this, &USkillBase::Fallback_TriggerActiveTag, PhaseIndex);
+			
+			float TriggerTime = NotifyEvent.GetTriggerTime() + 0.1f;
+			World->GetTimerManager().SetTimer(ActiveTimer, Delegate, TriggerTime, false);
+			
+			FallbackActiveTimerHandles.Add(ActiveTimer);
+			PhaseIndex++;
+		}
+	}
+	
+	MaxExpectedActiveCount = PhaseIndex;
+}
+
+void USkillBase::ClearFallbackTimers()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(FallbackEndTimerHandle);
+		for (FTimerHandle& Handle : FallbackActiveTimerHandles)
+		{
+			World->GetTimerManager().ClearTimer(Handle);
+		}
+	}
+	FallbackActiveTimerHandles.Empty();
+}
+
+void USkillBase::Fallback_TriggerActiveTag(int32 TargetPhaseIndex)
+{
+	if (!IsActive()) return;
+
+	if (CurrentPhaseIndex > TargetPhaseIndex) return;
+
+	// 폴백 타이머가 작동했음을 마킹. 이후에 도착하는 실제 애니메이션 Active 노티파이는 전부 무시됨.
+	bHasFallbackTriggeredActive = true;
+
+	if (!TryExecuteSkill()) return;
+
+	ChangeSkillState(ESkillAbilityState::Active);
+
+	if (UWorld* World = GetWorld())
+	{
+		if (AGameStateBase* GameState = World->GetGameState())
+		{
+			this->SyncedActivationTime = GameState->GetServerWorldTimeSeconds();
+		}
+	}
+
+	ExecuteSkill();
+	CurrentPhaseIndex++;
 }
 
 void USkillBase::SetWaitAnimationEvents()
@@ -386,31 +497,65 @@ void USkillBase::PrepareToActiveSkill()
 
 	SetWaitAnimationEvents();
 	PlayAnimMontage();
+	SetupFallbackTimers();
 	//if (IsLocallyControlled() || HasAuthority(&CurrentActivationInfo)) PlayAnimMontage();
 }
 
 void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, FGameplayEffectContextHandle ContextHandle)
 {
-	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, ContextHandle);
+	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, TArray<FSkillMagnitudeCalculation>(), ContextHandle);
+}
+
+void USkillBase::ApplyExcutionEffectToSelf(const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle)
+{
+	ApplyEffectToTargetInternal(GetASC(), SkillEffectDataAssets, Calculators, ContextHandle);
 }
 
 void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, FGameplayEffectContextHandle ContextHandle)
 {
+	ApplyEffectToTargetInternal(TargetASC, Effects, TArray<FSkillMagnitudeCalculation>(), ContextHandle);
+}
+
+void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC, const TArray<TSubclassOf<UBaseGameplayEffect>>& Effects, const TArray<FSkillMagnitudeCalculation>& Calculators, FGameplayEffectContextHandle ContextHandle)
+{
 	UAbilitySystemComponent* const SourceASC = GetASC();
 	AActor* const Avatar = GetAvatar();
 
-	if (!ensure(SourceASC) || !ensure(Avatar) || !IsValid(TargetASC) || Effects.Num() <= 0)
+	if (!ensure(SourceASC) || !ensure(Avatar) || !IsValid(TargetASC))
+	{
+		return;
+	}
+
+	TArray<TSubclassOf<UBaseGameplayEffect>> CombinedEffects = Effects;
+	for (const FSkillMagnitudeCalculation& CalcInfo : Calculators)
+	{
+		if (IsValid(CalcInfo.TargetGameplayEffect))
+		{
+			CombinedEffects.AddUnique(CalcInfo.TargetGameplayEffect);
+		}
+	}
+
+	if (CombinedEffects.IsEmpty())
 	{
 		return;
 	}
 
 	// 1. 컨텍스트 초기화 및 커스텀 데이터(시각 동기화) 주입
-	if (!ContextHandle.IsValid())
+	if (ContextHandle.IsValid() == false)
 	{
 		ContextHandle = SourceASC->MakeEffectContext();
+		ContextHandle.AddInstigator(Avatar, Avatar);
 	}
-	ContextHandle.AddInstigator(Avatar, Avatar);
-	ContextHandle.SetAbility(this);
+
+	if (ContextHandle.GetInstigator() == nullptr || ContextHandle.GetInstigator()->IsA<AER_PlayerState>())
+	{
+		ContextHandle.AddInstigator(Avatar, Avatar);
+	}
+
+	if (ContextHandle.GetAbility() == nullptr)
+	{
+		ContextHandle.SetAbility(this);
+	}
 
 	if(ContextHandle.HasOrigin() == false){
 		ContextHandle.AddOrigin(Avatar->GetActorLocation());
@@ -431,8 +576,11 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		}
 	}
 
+	// [Hook 1] 컨텍스트가 막 생성되고 Instigator 및 동기화 설정이 끝난 직후 호출
+	OnEffectContextCreated(ContextHandle);
+
 	// 2. 각 이팩트 순회하며 적용
-	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : Effects)
+	for (const TSubclassOf<UBaseGameplayEffect>& EffectClass : CombinedEffects)
 	{
 		if (!IsValid(EffectClass)) continue;
 
@@ -442,6 +590,33 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		
 		if (SpecHandle.IsValid())
 		{
+			// [Hook 2] 개별 이펙트의 Spec이 MakeOutgoingSpec으로 막 생성된 직후 호출
+			OnEffectSpecCreated(SpecHandle);
+
+			// 페이즈의 계산기들 중 현재 이펙트와 매칭되는 대상이 있으면 SetByCaller 주입
+			for (const FSkillMagnitudeCalculation& CalcInfo : Calculators)
+			{
+				if (CalcInfo.TargetGameplayEffect == EffectClass && CalcInfo.Calculator && CalcInfo.SetByCallerTag.IsValid())
+				{
+					float CalcValue = CalcInfo.Calculator->CalculateValue(SourceASC, TargetASC, SpecHandle.Data.Get());
+					SpecHandle.Data.Get()->SetSetByCallerMagnitude(CalcInfo.SetByCallerTag, CalcValue);
+				}
+			}
+
+			// 스킬 입력키에 맞는 피격 태그 추가
+			const FGameplayTag SkillHitTag = ResolveSkillEventTag(
+				GetInputTag(),
+				ProjectER::Event::Action::Hit::Skill::Q,
+				ProjectER::Event::Action::Hit::Skill::W,
+				ProjectER::Event::Action::Hit::Skill::E,
+				ProjectER::Event::Action::Hit::Skill::R,
+				ProjectER::Event::Action::Hit::Skill::Passive);
+
+			if (SkillHitTag.IsValid())
+			{
+				SpecHandle.Data.Get()->DynamicGrantedTags.AddTag(SkillHitTag);
+			}
+
 			// [GEC Hook] Phase 1, 2: 좌표 보정 및 클라이언트 예측 비주얼 생성
 			if (const UBaseGameplayEffect* GEInstance = Cast<UBaseGameplayEffect>(EffectClass->GetDefaultObject()))
 			{
@@ -463,6 +638,9 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 			}
 
 			// Phase 3: 최종 적용
+			// [Hook 3] 모든 처리(태그, 예측 등)가 끝나고 타겟에게 최종 적용되기 직전 호출
+			OnPreApplyEffectSpec(SpecHandle, TargetASC);
+
 			// [Fix] 서버에서 Target에게 예측 키를 강제로 전파하여 GEC까지 전달되도록 합니다.
 			// ScopedPK가 유실된 경우 Ability의 ActivationPK를 백업으로 사용하여 랜덤성을 해결합니다.
 			FPredictionKey BestPK = SourceASC->ScopedPredictionKey;
@@ -524,9 +702,72 @@ void USkillBase::CompleteFinishSkill()
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 }
 
-FGameplayTag USkillBase::GetInputTag()
+FGameplayTag USkillBase::GetInputTag() const
 {
-	return CachedConfig ? CachedConfig->Data.InputKeyTag : FGameplayTag();
+	return CachedConfig ? CachedConfig->GetInputKeyTag() : FGameplayTag();
+}
+
+void USkillBase::SendExecuteEvent() const
+{
+	const FGameplayTag EventTag = ResolveSkillEventTag(
+		GetInputTag(),
+		ProjectER::Event::Action::Skill::Execute::Q,
+		ProjectER::Event::Action::Skill::Execute::W,
+		ProjectER::Event::Action::Skill::Execute::E,
+		ProjectER::Event::Action::Skill::Execute::R,
+		ProjectER::Event::Action::Skill::Execute::Passive);
+
+	SendSkillEvent(EventTag);
+}
+
+void USkillBase::SendEndEvent() const
+{
+	const FGameplayTag EventTag = ResolveSkillEventTag(
+		GetInputTag(),
+		ProjectER::Event::Action::Skill::End::Q,
+		ProjectER::Event::Action::Skill::End::W,
+		ProjectER::Event::Action::Skill::End::E,
+		ProjectER::Event::Action::Skill::End::R,
+		ProjectER::Event::Action::Skill::End::Passive);
+
+	SendSkillEvent(EventTag);
+}
+
+FGameplayTag USkillBase::ResolveSkillEventTag(
+	const FGameplayTag& InputTag,
+	const FGameplayTag& QTag,
+	const FGameplayTag& WTag,
+	const FGameplayTag& ETag,
+	const FGameplayTag& RTag,
+	const FGameplayTag& PassiveTag) const
+{
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Q))       return QTag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::W))       return WTag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::E))       return ETag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::R))       return RTag;
+	if (InputTag.MatchesTag(ProjectER::Ability::Input::Skill::Passive)) return PassiveTag;
+	return FGameplayTag();
+}
+
+void USkillBase::SendSkillEvent(const FGameplayTag& EventTag) const
+{
+	if (!EventTag.IsValid())
+	{
+		return;
+	}
+
+	AActor* const Avatar = GetAvatar();
+	if (!IsValid(Avatar))
+	{
+		return;
+	}
+
+	FGameplayEventData Payload;
+	Payload.EventTag = GetInputTag();
+	Payload.Instigator = Avatar;
+	Payload.Target = Avatar;
+
+	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, EventTag, Payload);
 }
 
 bool USkillBase::IsValidRelationship(AActor* Instigator, AActor* Target, ETargetRelationship Relationship)
@@ -562,6 +803,22 @@ void USkillBase::OnCancelAbility()
 void USkillBase::OnExecuteSkill_InClient()
 {
 
+}
+
+void USkillBase::StopCharacterMove()
+{
+	ABaseCharacter* BaseCharacter = Cast<ABaseCharacter>(GetAvatar());
+	if (!IsValid(BaseCharacter))
+	{
+		return;
+	}
+
+	if (CachedConfig && CachedConfig->AllowMovementDuringSkill())
+	{
+		return;
+	}
+
+	BaseCharacter->StopMove();
 }
 
 /*

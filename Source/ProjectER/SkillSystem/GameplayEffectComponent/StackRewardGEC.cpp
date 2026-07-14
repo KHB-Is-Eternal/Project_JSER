@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "StackRewardGEC.h"
+#include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
@@ -9,6 +10,30 @@
 
 UStackRewardGEC::UStackRewardGEC()
 {
+}
+
+FSkillTooltipData UStackRewardGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("스택에 따라 보상을 획득합니다."));
+
+	FString DetailStr = TEXT("스택 보상 : 특정 스택 도달 시 보상 효과가 발동됩니다.");
+	for (const FStackRewardInfo& Reward : Rewards)
+	{
+		DetailStr += FString::Printf(TEXT("\n\n[%d 스택 달성 시]"), Reward.StackCount);
+		
+		TArray<TSubclassOf<UBaseGameplayEffect>> RewardEffects;
+		RewardEffects.Add(Reward.AppliedEffect);
+		
+		FText RewardText = FormatAppliedEffects(RewardEffects, Level);
+		if (!RewardText.IsEmpty())
+		{
+			DetailStr += TEXT("\n") + RewardText.ToString();
+		}
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
 }
 
 bool UStackRewardGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer &ActiveGEContainer, FActiveGameplayEffect &ActiveGE) const
@@ -57,6 +82,7 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 				{
 					FGameplayEffectContextHandle EffectContext = Effect->Spec.GetContext();
 					FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(RewardInfo.AppliedEffect, Effect->Spec.GetLevel(), EffectContext);
+					UBaseGEC::InheritHitTags(Effect->Spec, SpecHandle);
 					
 					if (SpecHandle.IsValid())
 					{
@@ -79,8 +105,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorVfxConfig.Get();
 
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorVfxConfig->CueTag, Params);
 						}
 					}
@@ -96,8 +122,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 						
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.TargetVfxConfig->CueTag, Params);
 						}
 					}
@@ -110,8 +136,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorSoundConfig.Get();
 
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorSoundConfig->CueTag, Params);
 						}
 					}
@@ -126,8 +152,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.TargetSoundConfig->CueTag, Params);
 						}
 					}

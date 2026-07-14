@@ -26,6 +26,7 @@ public:
 	UAdditionalEffectGEC();
 
 	virtual bool OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& ActiveGEContainer, FActiveGameplayEffect& ActiveGE) const override;
+	virtual FSkillTooltipData GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const override;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Additional|Logic")
 	TArray<TSubclassOf<UBaseGameplayEffect>> Bonus;
@@ -41,4 +42,7 @@ public:
 	/** 버프가 활성화되어 있는 동안 재생할 사운드 효과 */
 	UPROPERTY(EditDefaultsOnly, Category = "Additional|SFX")
 	TObjectPtr<USkillSoundSpawnConfig> ActiveSoundConfig;
+
+public:
+	virtual void CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const override;
 };

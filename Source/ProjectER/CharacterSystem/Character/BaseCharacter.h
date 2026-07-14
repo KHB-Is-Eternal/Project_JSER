@@ -133,7 +133,7 @@ protected:
 public:
 	// 레벨업 시 AttributeSet에서 호출
 	UFUNCTION(BlueprintCallable, Category = "GAS")
-	virtual void HandleLevelUp();
+	virtual void HandleLevelUp(float OldLevel, float NewLevel);
 	
 	UFUNCTION(BlueprintCallable, Category = "GAS")
 	float GetCharacterLevel() const;
@@ -161,6 +161,7 @@ protected:
 
 	void InitAbilitySystem(); // ASC 초기화
 	void InitAttributes(); // AttributeSet 초기화
+	void UpgradeAttributes(float OldLevel, float NewLevel); // 레벨업 시 델타 상승 적용
 	void InitVisuals(); // 메시, 애니메이션 로드
 	void InitPlayer(); // 플레이어(카메라 등) 로컬 초기화 통합 함수
 	
@@ -171,6 +172,10 @@ public:
 	// 스탯 초기화 이펙트 클래스
 	UPROPERTY(EditDefaultsOnly,Category = "GAS") 
 	TSubclassOf<UGameplayEffect> InitStatusEffectClass;
+	
+	// 레벨업 시 스탯 상승 처리를 위한 즉발성(Instant Additive) GE 클래스
+	UPROPERTY(EditDefaultsOnly, Category = "GAS")
+	TSubclassOf<UGameplayEffect> UpgradeStatusEffectClass;
 	
 	// 패시브 재생(Regen) 이펙트 클래스
 	UPROPERTY(EditDefaultsOnly, Category = "GAS|Life")

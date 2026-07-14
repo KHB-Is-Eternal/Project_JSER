@@ -1,9 +1,10 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
 #include "StateTree.h"
+#include "ItemSystem/Data/BaseItemData.h"
 #include "MonsterDataAsset.generated.h"
 
 class UGameplayAbility;
@@ -108,6 +109,20 @@ struct FMonsterDecalData
 };
 
 
+// [김현수 추가분] 개별 아이템 픽업(확률 조정)을 위한 구조체
+USTRUCT(BlueprintType)
+struct FDropItemInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TObjectPtr<UBaseItemData> Item;
+
+	// 기본 가중치 1.0f. 숫자가 클수록 동일 등급 내에서 더 자주 나옴. 0.0f면 등장 안 함.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin=0.0f))
+	float Weight = 1.0f;
+};
+
 // 몬스터 데이터
 UCLASS()
 class PROJECTER_API UMonsterDataAsset : public UPrimaryDataAsset
@@ -179,5 +194,22 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|Reward")
 	int Exp;
+
+	// [김현수 추가분] 개별 몬스터 드랍 테이블 가챠 연동용 변수
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	TMap<EItemRarity, float> RarityDropRates;
+
+	// [김현수 추가분] 레어도별 최대 드랍 가능 개수 제한 (0이거나 설정되지 않으면 무제한)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	TMap<EItemRarity, int32> MaxRarityDropCounts;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	TArray<FDropItemInfo> DropItemPool;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	int32 MinDropCount = 1;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	int32 MaxDropCount = 3;
 
 };

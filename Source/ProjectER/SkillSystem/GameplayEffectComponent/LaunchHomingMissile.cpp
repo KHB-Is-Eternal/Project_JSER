@@ -241,10 +241,12 @@ void ULaunchHomingMissile::InitializeActorData(ABaseMissileActor* Actor, const F
 		{
 			if (IsValid(EffectClass))
 			{
-				EffectSpecs.Add(CauserASC->MakeOutgoingSpec(EffectClass, GESpec.GetLevel(), ContextHandle));
+				FGameplayEffectSpecHandle Spec = CauserASC->MakeOutgoingSpec(EffectClass, GESpec.GetLevel(), ContextHandle);
+				UBaseGEC::InheritHitTags(GESpec, Spec);
+				EffectSpecs.Add(Spec);
 			}
 		}
-		UBaseGEC::GetSkillProcEffects(CauserASC, Ability, Actor, ContextHandle, EffectSpecs);
+		UBaseGEC::GetSkillProcEffects(CauserASC, Ability, Actor, ContextHandle, EffectSpecs, true, &GESpec);
 	}
 
 	// 명중 효과 파라미터 구성
@@ -265,6 +267,12 @@ void ULaunchHomingMissile::InitializeActorData(ABaseMissileActor* Actor, const F
 		InitialSpeed, MaxSpeed, HomingAccelerationMagnitude, ReachThreshold, bDestroyOnHit, Transform.GetRotation().GetForwardVector());
 	
 	Actor->SetLifeSpan(LifeSpan);
+
+	// [Optimization] 미사일의 속도와 수명을 기반으로 네트워크 컬링 거리를 동적으로 계산합니다.
+	float SpeedToUse = MaxSpeed > 0.f ? MaxSpeed : InitialSpeed;
+	float MaxTravelDistance = SpeedToUse * LifeSpan;
+	float CullDistance = FMath::Max(15000.0f, MaxTravelDistance + 2000.0f); // 2000 유닛 여유분
+	Actor->NetCullDistanceSquared = FMath::Square(CullDistance);
 }
 
 FTransform ULaunchHomingMissile::CalculateSpawnTransform(
@@ -316,3 +324,48 @@ AActor* ULaunchHomingMissile::GetTargetActorFromContainer(FActiveGameplayEffects
 	return ActiveGEContainer.Owner ? ActiveGEContainer.Owner->GetOwner() : nullptr;
 }
 
+FSkillTooltipData ULaunchHomingMissile::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("유도 투사체를 발사합니다."));
+
+	FString DetailStr = TEXT("유도 미사일 : 대상을 추적하는 유도 미사일을 날립니다.");
+	FText EffectsText = FormatAppliedEffects(Applied, Level);
+	if (!EffectsText.IsEmpty())
+	{
+		DetailStr += TEXT("\n") + EffectsText.ToString();
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}
+
+
+void ULaunchHomingMissile::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+	Super::CollectNiagaraPaths(OutPaths);
+	if (MissileVfx && !MissileVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(MissileVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	if (ImpactVfx && !ImpactVfx->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(ImpactVfx->NiagaraSystem.ToSoftObjectPath());
+	}
+	for (const TSubclassOf<UBaseGameplayEffect>& GEClass : Applied)
+	{
+		if (GEClass)
+		{
+			if (const UBaseGameplayEffect* GE = GEClass->GetDefaultObject<UBaseGameplayEffect>())
+			{
+				for (const UGameplayEffectComponent* Component : GE->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						BaseGEC->CollectNiagaraPaths(OutPaths);
+					}
+				}
+			}
+		}
+	}
+}

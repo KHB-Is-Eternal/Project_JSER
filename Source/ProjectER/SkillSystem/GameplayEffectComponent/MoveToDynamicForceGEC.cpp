@@ -196,3 +196,23 @@ void UMoveToDynamicForceGEC::Execute(AActor* Instigator, const FVector& Directio
 			false);
 	}
 }
+
+FSkillTooltipData UMoveToDynamicForceGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("대상을 추격하여 돌진합니다."));
+
+	FString DetailStr = TEXT("돌진 : 대상을 향해 빠르게 돌진합니다.");
+	if (bDetectWallHit && WallHitApplied.Num() > 0)
+	{
+		DetailStr += TEXT("\n\n벽과 충돌 시 추가 효과가 적용됩니다.");
+		FText WallHitText = FormatAppliedEffects(WallHitApplied, Level);
+		if (!WallHitText.IsEmpty())
+		{
+			DetailStr += TEXT("\n") + WallHitText.ToString();
+		}
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}

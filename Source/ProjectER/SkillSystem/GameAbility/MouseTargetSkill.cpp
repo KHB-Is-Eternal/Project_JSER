@@ -118,7 +118,7 @@ void UMouseTargetSkill::ExecuteSkill()
 		const TArray<TSubclassOf<UBaseGameplayEffect>>& EffectDataAssets = TargetPhases[CurrentPhaseIndex].TargetEffects;
 		if (EffectDataAssets.Num() > 0)
 		{
-			ApplyEffectsTarget(TargetActor, EffectDataAssets);
+			ApplyEffectsTarget(TargetActor, EffectDataAssets, TargetPhases[CurrentPhaseIndex].MagnitudeCalculators);
 		}
 	}
 }
@@ -335,7 +335,7 @@ void UMouseTargetSkill::RotateToTarget(AActor* Actor)
 	Avatar->SetActorRotation(NewRotation);
 }
 
-void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets)
+void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators)
 {
 	UMouseTargetSkillConfig* Config = Cast<UMouseTargetSkillConfig>(CachedConfig);
 	if (!Config) return;
@@ -359,7 +359,7 @@ void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TSu
 	ContextHandle.AddOrigin(TargetActor->GetActorLocation());
 
 	// 3. 부모 클래스의 통합 로직 호출
-	ApplyEffectToTargetInternal(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor), SkillEffectDataAssets, ContextHandle);
+	ApplyEffectToTargetInternal(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor), SkillEffectDataAssets, Calculators, ContextHandle);
 }
 
 void UMouseTargetSkill::CleanUpSkill()

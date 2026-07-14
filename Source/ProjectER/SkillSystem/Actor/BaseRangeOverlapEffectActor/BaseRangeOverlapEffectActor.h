@@ -31,6 +31,9 @@ public:
   UFUNCTION()
   void OnRep_InstigatorActor();
 
+  UFUNCTION()
+  void OnRep_PendingCollisionSize();
+
   void InitializeEffectData(
       const TArray<FGameplayEffectSpecHandle> &InEffectSpecHandles,
       AActor *InInstigatorActor, const FVector &InCollisionSize,
@@ -83,11 +86,14 @@ protected:
   UPROPERTY()
   bool bHitOncePerTarget = true;
 
-  UPROPERTY()
+  UPROPERTY(ReplicatedUsing = OnRep_PendingCollisionSize)
   FVector PendingCollisionSize = FVector::ZeroVector;
 
   UPROPERTY()
   bool bHasPendingCollisionSize = false;
+
+  UPROPERTY()
+  TWeakObjectPtr<class AGCN_SummonedActor> CachedSummonedGCN;
 
   UPROPERTY()
   TSet<TObjectPtr<AActor>> HitActors;
@@ -115,4 +121,8 @@ protected:
   /** 리플리케이션된 시전 시간 */
   UPROPERTY(Replicated)
   float ClientActivationTime;
+
+  /** 서버-클라이언트 간 시각 효과 매칭 시 허용 오차 시간 (초) */
+  UPROPERTY(EditDefaultsOnly, Category = "Summon|Network", meta = (ClampMin = "0.0", ClampMax = "5.0"))
+  float VfxHandshakeTolerance = 0.5f;
 };

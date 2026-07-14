@@ -3,6 +3,7 @@
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Sound/SkillSoundSpawnConfig.h"
 #include "AbilitySystemComponent.h"
+#include "CharacterSystem/GAS/ProjectERASC.h"
 #include "GameplayEffect.h"
 
 //////////////////////////////////////////////////////////////////////////
@@ -31,21 +32,26 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 			Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
 			Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
+			if (TargetASC->IsOwnerActorAuthoritative() || TargetASC->ScopedPredictionKey.IsLocalClientKey())
 			{
-				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 				TargetASC->AddGameplayCue(this->ActiveVfxConfig->CueTag, Params);
 			}
 
-				FGameplayTag CueTag = this->ActiveVfxConfig->CueTag;
-				ActiveGE.EventSet.OnEffectRemoved.AddLambda([TargetASC, CueTag](const FGameplayEffectRemovalInfo& RemovalInfo)
+			FGameplayTag CueTag = this->ActiveVfxConfig->CueTag;
+			TWeakObjectPtr<const USkillNiagaraSpawnConfig> WeakConfig = this->ActiveVfxConfig.Get();
+			ActiveGE.EventSet.OnEffectRemoved.AddLambda([TargetASC, CueTag, WeakConfig](const FGameplayEffectRemovalInfo& RemovalInfo)
+			{
+				UProjectERASC* CustomASC = Cast<UProjectERASC>(TargetASC);
+				ensureMsgf(CustomASC != nullptr, TEXT("OnEffectRemoved: ASC is not UProjectERASC! Check Blueprint CDO."));
+				if (CustomASC)
 				{
-					if (IsValid(TargetASC))
+					if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
 					{
-						FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
-						TargetASC->RemoveGameplayCue(CueTag);
+						CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
 					}
-				});
-			}
+				}
+			});
+		}
 
 		// 2. Sound 처리
 		if (IsValid(this->ActiveSoundConfig.Get()) && this->ActiveSoundConfig->CueTag.IsValid())
@@ -55,22 +61,68 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 			Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
 			Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
+			if (TargetASC->IsOwnerActorAuthoritative() || TargetASC->ScopedPredictionKey.IsLocalClientKey())
 			{
-				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 				TargetASC->AddGameplayCue(this->ActiveSoundConfig->CueTag, Params);
 			}
 
 			FGameplayTag CueTag = this->ActiveSoundConfig->CueTag;
-				ActiveGE.EventSet.OnEffectRemoved.AddLambda([TargetASC, CueTag](const FGameplayEffectRemovalInfo& RemovalInfo)
+			TWeakObjectPtr<const USkillSoundSpawnConfig> WeakConfig = this->ActiveSoundConfig.Get();
+			ActiveGE.EventSet.OnEffectRemoved.AddLambda([TargetASC, CueTag, WeakConfig](const FGameplayEffectRemovalInfo& RemovalInfo)
+			{
+				UProjectERASC* CustomASC = Cast<UProjectERASC>(TargetASC);
+				ensureMsgf(CustomASC != nullptr, TEXT("OnEffectRemoved: ASC is not UProjectERASC! Check Blueprint CDO."));
+				if (CustomASC)
 				{
-					if (IsValid(TargetASC))
+					if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
 					{
-						FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
-						TargetASC->RemoveGameplayCue(CueTag);
+						CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
 					}
-				});
+				}
+			});
 		}
 	}
 
 	return bResult;
+}
+
+FSkillTooltipData UAdditionalEffectGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("추가 효과를 준비합니다."));
+
+	FString DetailStr = TEXT("추가 효과 : 버프 활성화 중 다음 적중 시 추가 효과를 적용합니다.");
+	FText BonusText = FormatAppliedEffects(Bonus, Level);
+	if (!BonusText.IsEmpty())
+	{
+		DetailStr += TEXT("\n") + BonusText.ToString();
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
+}
+
+void UAdditionalEffectGEC::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+	Super::CollectNiagaraPaths(OutPaths);
+	if (ActiveVfxConfig && !ActiveVfxConfig->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(ActiveVfxConfig->NiagaraSystem.ToSoftObjectPath());
+	}
+	for (const TSubclassOf<UBaseGameplayEffect>& GEClass : Bonus)
+	{
+		if (GEClass)
+		{
+			if (const UBaseGameplayEffect* GE = GEClass->GetDefaultObject<UBaseGameplayEffect>())
+			{
+				for (const UGameplayEffectComponent* Component : GE->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						BaseGEC->CollectNiagaraPaths(OutPaths);
+					}
+				}
+			}
+		}
+	}
 }

@@ -119,37 +119,26 @@ void UMouseClickSkill::RotateToLocation(const FVector& Location)
 	Avatar->SetActorRotation(NewRotation);
 }
 
-void UMouseClickSkill::ExecuteSkill()
+void UMouseClickSkill::ApplyExecutionEffects()
 {
-	if (IsValid(CachedConfig) == false) return;
-	
 	const TArray<FSkillExecutionPhase>& Phases = CachedConfig->GetExecutionPhases();
-	if (!Phases.IsValidIndex(CurrentPhaseIndex)) return;
-
-	const TArray<TSubclassOf<UBaseGameplayEffect>>& ExecutionEffects = Phases[CurrentPhaseIndex].Effects;
-	if (ExecutionEffects.Num() <= 0) return;
-
-	AActor* Avatar = GetAvatarActorFromActorInfo();
-	if (IsValid(Avatar) == false) return;
-
-	UAbilitySystemComponent* InstigatorASC = GetAbilitySystemComponentFromActorInfo();
-	if (!IsValid(InstigatorASC)) return;
-
-	FGameplayEffectContext* EffectContext = TargetLocationEffectContext.Get();
-	if (EffectContext == nullptr || !EffectContext->HasOrigin())
+	if (Phases.IsValidIndex(CurrentPhaseIndex))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("ExecuteSkill::TargetLocationEffectContext has no valid origin"));
-		return;
-	}
-	EffectContext->SetAbility(this);
-	
-	ApplyExcutionEffectToSelf(ExecutionEffects, TargetLocationEffectContext);
-	ABaseCharacter* Character = Cast<ABaseCharacter>(Avatar);
-	if (Character) Character->StopMove();
+		const FGameplayEffectContext* EffectContext = TargetLocationEffectContext.Get();
+		FGameplayEffectContextHandle ContextToUse;
 
-	if (IsLocallyControlled())
-	{
-		OnExecuteSkill_InClient();
+		if (EffectContext && EffectContext->HasOrigin())
+		{
+			ContextToUse = TargetLocationEffectContext;
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ApplyExecutionEffects::TargetLocationEffectContext has no valid origin. Falling back to default context."));
+			UAbilitySystemComponent* const ASC = GetAbilitySystemComponentFromActorInfo();
+			ContextToUse = IsValid(ASC) ? ASC->MakeEffectContext() : FGameplayEffectContextHandle();
+		}
+
+		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects, ContextToUse);
 	}
 }
 
@@ -240,7 +229,9 @@ void UMouseClickSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle&
 	FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
 	ContextHandle.AddOrigin(Location);
 	ContextHandle.AddSourceObject(this);
-	TargetLocationEffectContext = ContextHandle;
+	ContextHandle.SetAbility(this);
+	ContextHandle.AddInstigator(Avatar, Avatar);
+	TargetLocationEffectContext = ContextHandle.Duplicate();
 
 	RotateToLocation(Location);
 	PrepareToActiveSkill();

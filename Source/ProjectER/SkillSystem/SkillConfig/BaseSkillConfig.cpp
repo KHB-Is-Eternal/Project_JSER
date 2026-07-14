@@ -1,25 +1,36 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
-#include "Skillsystem/GameAbility/SkillBase.h"
+#include "SkillSystem/GameAbility/SkillBase.h"
 #include "SkillSystem/GameAbility/MouseTargetSkill.h"
 #include "SkillSystem/GameAbility/MouseClickSkill.h"
 #include "SkillSystem/GameAbility/InstantSkill.h"
+#include "SkillSystem/GameAbility/WatchTagAbility_Instant.h"
+#include "SkillSystem/GameAbility/WatchTagAbility_Accumulate.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 UBaseSkillConfig::UBaseSkillConfig()
 {
 	AbilityClass = USkillBase::StaticClass();
 }
 
-UGameplayEffect* UBaseSkillConfig::CreateCostGameplayEffect(UObject* Outer)
+const TArray<FSkillExecutionPhase>& UBaseSkillConfig::GetExecutionPhases() const
 {
-    if (SkillCosts.Num() <= 0) {
-        //UE_LOG(LogTemp, Warning, TEXT("SkillCosts.Num() <= 0 true"));
+	static TArray<FSkillExecutionPhase> EmptyPhases;
+	return EmptyPhases;
+}
+
+UActiveSkillConfig::UActiveSkillConfig()
+{
+	AbilityClass = USkillBase::StaticClass();
+	bAllowMovementDuringSkill = false;
+}
+
+UGameplayEffect* UActiveSkillConfig::CreateCostGameplayEffect(UObject* Outer)
+{
+    if (SkillCosts.Num() <= 0)
+    {
         return nullptr;
-    }
-    else {
-        UE_LOG(LogTemp, Warning, TEXT("SkillCosts.Num() <= 0 false"));
     }
 
     // GE 인스턴스 생성 (Outer를 TransientPackage로 설정하여 관리)
@@ -40,7 +51,7 @@ UGameplayEffect* UBaseSkillConfig::CreateCostGameplayEffect(UObject* Outer)
     return NewCostGE;
 }
 
-FText UBaseSkillConfig::BuildCostDescription(float InLevel) const
+FText UActiveSkillConfig::BuildCostDescription(float InLevel) const
 {
     TArray<FString> CostTerms;
 
@@ -63,7 +74,6 @@ FText UBaseSkillConfig::BuildCostDescription(float InLevel) const
     return FText::GetEmpty();
 }
 
-
 UMouseTargetSkillConfig::UMouseTargetSkillConfig()
 {
 	AbilityClass = UMouseTargetSkill::StaticClass();
@@ -77,4 +87,20 @@ UMouseClickSkillConfig::UMouseClickSkillConfig()
 UInstantSkillConfig::UInstantSkillConfig()
 {
     AbilityClass = UInstantSkill::StaticClass();
+}
+
+UPassiveSkillConfig::UPassiveSkillConfig()
+{
+	// 패시브 클래스의 기본값은 별도로 매핑되므로 base에서는 StaticClass만 지정합니다.
+	AbilityClass = USkillBase::StaticClass();
+}
+
+UPassiveInstantSkillConfig::UPassiveInstantSkillConfig()
+{
+	AbilityClass = UWatchTagAbility_Instant::StaticClass();
+}
+
+UPassiveAccumulateSkillConfig::UPassiveAccumulateSkillConfig()
+{
+	AbilityClass = UWatchTagAbility_Accumulate::StaticClass();
 }

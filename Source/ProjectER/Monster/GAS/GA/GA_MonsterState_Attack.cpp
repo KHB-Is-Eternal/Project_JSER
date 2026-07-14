@@ -1,4 +1,4 @@
-﻿#include "Monster/GAS/GA/GA_MonsterState_Attack.h"
+#include "Monster/GAS/GA/GA_MonsterState_Attack.h"
 #include "Monster/BaseMonster.h"
 #include "Monster/GAS/AttributeSet/BaseMonsterAttributeSet.h"
 #include "AbilitySystemBlueprintLibrary.h"
@@ -6,6 +6,7 @@
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Monster/GAS/GE/GE_AddTag.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 UGA_MonsterState_Attack::UGA_MonsterState_Attack()
 {
@@ -130,6 +131,8 @@ void UGA_MonsterState_Attack::OnAttackHitEventReceived(FGameplayEventData Payloa
 		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Attack::OnAttackHitEventReceived : Not SpecHandle"));
 		return;
 	}
+
+	SpecHandle.Data.Get()->DynamicGrantedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit.BasicAttack")));
 
 	ContextHandle.AddInstigator(Monster, Monster);
 	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);

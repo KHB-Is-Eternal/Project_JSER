@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 public class ProjectER : ModuleRules
 {
@@ -35,9 +35,11 @@ public class ProjectER : ModuleRules
             //"UnrealEd",//for the editor function
             "Projects",// for plugin module (IPluginManager::Get())
             
-            "LevelSequence",// level sequence play
+            "LevelSequence",
             "MovieScene",
             "MovieSceneTracks",
+            "NetCore",
+            "SignificanceManager",
         });
         
         PrivateDependencyModuleNames.AddRange(new string[]

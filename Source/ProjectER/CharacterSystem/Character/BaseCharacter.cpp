@@ -49,6 +49,7 @@
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "LineOfSight/MainVisionRTManager.h"
 #include "LineOfSight/Management/VisionPlayerStateComp.h"
+#include "LineOfSight/VisionComps/Vision_VisualComp.h"
 
 // 길찾기 성능 프로파일링 — 콘솔: stat ProjectER_Pathfinding
 DECLARE_STATS_GROUP(TEXT("ProjectER_Pathfinding"), STATGROUP_ERPathfinding, STATCAT_Advanced);
@@ -117,6 +118,8 @@ ABaseCharacter::ABaseCharacter()
 
 	/* === 기본 컴포넌트 === */
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (마우스 타겟팅 감지)
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -159,6 +162,8 @@ ABaseCharacter::ABaseCharacter()
 	MinimapCaptureComponent->ProjectionType = ECameraProjectionMode::Orthographic;
 	MinimapCaptureComponent->OrthoWidth = 4500; // 이거로 미니맵 확대/축소 조절
 	MinimapCaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;	// 투명도 반영
+	MinimapCaptureComponent->bCaptureEveryFrame = false;
+	MinimapCaptureComponent->bCaptureOnMovement = false;
 
 	// 미니맵용 아이콘 만들기
 	MinimapIconMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MinimapIcon"));
@@ -197,6 +202,8 @@ ABaseCharacter::ABaseCharacter()
 
 	MinimapIconMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	MinimapLineMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	MinimapIconMesh->SetGenerateOverlapEvents(false); // [최적화] 불필요한 오버랩 연산 제거
+	MinimapLineMesh->SetGenerateOverlapEvents(false);
 
 	// HP Bar 생성
 	HP_MP_BarWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("HPBarWidget"));
@@ -560,7 +567,7 @@ bool ABaseCharacter::IsLocalPlayerPawn()
 	return IsLocallyControlled();
 }
 
-void ABaseCharacter::HandleLevelUp()
+void ABaseCharacter::HandleLevelUp(float OldLevel, float NewLevel)
 {
 	if (!HasAuthority()) return;
 	
@@ -575,25 +582,33 @@ void ABaseCharacter::HandleLevelUp()
 		AS = PS->GetAttributeSet();
 	}
 
-	float OldMaxHealth = 0.0f;
-	float OldMaxStamina = 0.0f;
-
-	if (AS)
-	{
-		OldMaxHealth = AS->GetMaxHealth();
-		OldMaxStamina = AS->GetMaxStamina();
-	}
-	
-	InitAttributes();
+	// 레벨업에 따른 델타 스탯 상승 적용 (Instant Additive)
+	UpgradeAttributes(OldLevel, NewLevel);
     
 	// 레벨업 시 체력/마나 회복
-	if (AS)
+	if (AS && HeroData)
 	{
-		// 스탯 상승량 계산
-		float HealthIncrease = AS->GetMaxHealth() - OldMaxHealth;
-		float StaminaIncrease = AS->GetMaxStamina() - OldMaxStamina;
+		float HealthIncrease = 0.0f;
+		float StaminaIncrease = 0.0f;
 
-		// 상승량이 0보다 크면 현재 스탯에 더해줌
+		// 곡선 테이블을 로드하여 이전 레벨과 새 레벨의 기본 스탯 차이만 계산 (임시 버프 유실 방지)
+		UCurveTable* CurveTable = HeroData->StatCurveTable.LoadSynchronous();
+		if (CurveTable)
+		{
+			FName HP_RowName = FName(*HeroData->StatusRowName.ToString().Append(TEXT("_MaxHealth")));
+			if (FRealCurve* Curve = CurveTable->FindCurve(HP_RowName, FString()))
+			{
+				HealthIncrease = Curve->Eval(NewLevel) - Curve->Eval(OldLevel);
+			}
+
+			FName Stamina_RowName = FName(*HeroData->StatusRowName.ToString().Append(TEXT("_MaxStamina")));
+			if (FRealCurve* Curve = CurveTable->FindCurve(Stamina_RowName, FString()))
+			{
+				StaminaIncrease = Curve->Eval(NewLevel) - Curve->Eval(OldLevel);
+			}
+		}
+
+		// 상승량만큼 현재 체력/마나 회복
 		if (HealthIncrease > 0.0f)
 		{
 			AS->SetHealth(AS->GetHealth() + HealthIncrease);
@@ -968,6 +983,59 @@ void ABaseCharacter::InitAttributes()
 	}
 }
 
+void ABaseCharacter::UpgradeAttributes(float OldLevel, float NewLevel)
+{
+	if (!AbilitySystemComponent.IsValid() || !HeroData || !UpgradeStatusEffectClass) return;
+
+	UCurveTable* CurveTable = HeroData->StatCurveTable.LoadSynchronous();
+	if (!CurveTable) return;
+
+	FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+	Context.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(UpgradeStatusEffectClass, NewLevel, Context);
+
+	if (SpecHandle.IsValid())
+	{
+		auto SetStatDelta = [&](FGameplayTag AttributeTag, FString RowSuffix)
+		{
+			FName RowName = FName(*HeroData->StatusRowName.ToString().Append(RowSuffix));
+
+			FRealCurve* Curve = CurveTable->FindCurve(RowName, FString());
+			if (Curve)
+			{
+				float OldValue = Curve->Eval(OldLevel);
+				float NewValue = Curve->Eval(NewLevel);
+				float Delta = NewValue - OldValue;
+
+				// GE Spec 값 주입 (SetByCaller)
+				SpecHandle.Data->SetSetByCallerMagnitude(AttributeTag, Delta);
+			}
+		};
+
+		// 각 스탯별 레벨업 상승량(Delta) 주입
+		SetStatDelta(ProjectER::Status::MaxLevel, TEXT("_MaxLevel"));
+		SetStatDelta(ProjectER::Status::MaxXP, TEXT("_MaxXp"));
+		SetStatDelta(ProjectER::Status::MaxHealth, TEXT("_MaxHealth"));
+		SetStatDelta(ProjectER::Status::HealthRegen, TEXT("_HealthRegen"));
+		SetStatDelta(ProjectER::Status::MaxStamina, TEXT("_MaxStamina"));
+		SetStatDelta(ProjectER::Status::StaminaRegen, TEXT("_StaminaRegen"));
+		SetStatDelta(ProjectER::Status::AttackPower, TEXT("_AttackPower"));
+		SetStatDelta(ProjectER::Status::AttackSpeed, TEXT("_AttackSpeed"));
+		SetStatDelta(ProjectER::Status::AttackRange, TEXT("_AttackRange"));
+		SetStatDelta(ProjectER::Status::SkillAmp, TEXT("_SkillAmp"));
+		SetStatDelta(ProjectER::Status::CritChance, TEXT("_CritChance"));
+		SetStatDelta(ProjectER::Status::CritDamage, TEXT("_CritDamage"));
+		SetStatDelta(ProjectER::Status::Defense, TEXT("_Defense"));
+		SetStatDelta(ProjectER::Status::MoveSpeed, TEXT("_MoveSpeed"));
+		SetStatDelta(ProjectER::Status::CooldownReduction, TEXT("_CooldownReduction"));
+		SetStatDelta(ProjectER::Status::Tenacity, TEXT("_Tenacity"));
+
+		// 적용 (Instant Additive)
+		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	}
+}
+
 void ABaseCharacter::InitVisuals()
 {
 	if (!HeroData) return;
@@ -1031,8 +1099,13 @@ void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 		static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
 		static const FGameplayTag ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
 		static const FGameplayTag BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+		static const FGameplayTag AllowMovementTag = FGameplayTag::RequestGameplayTag(FName("Skill.Option.AllowMovement"));
 
-		if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
+		if (AbilitySystemComponent->HasMatchingGameplayTag(AllowMovementTag))
+		{
+			// 이동 허용 태그가 있다면 시전/발동 상태이더라도 차단하지 않습니다.
+		}
+		else if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
 			AbilitySystemComponent->HasMatchingGameplayTag(ActiveTag))
 		{
 			return; // 시전/발동 중에는 이동 차단
@@ -1430,6 +1503,12 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 			
 			if (bWasActivated)
 			{
+				FGameplayEventData Payload;
+				Payload.EventTag = ProjectER::Event::Action::Attack;
+				Payload.Instigator = this;
+				Payload.Target = this;
+				UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(this, ProjectER::Event::Action::Attack, Payload);
+
 #if WITH_EDITOR
 				/*if (bShowDebug)
 				{
@@ -1686,6 +1765,7 @@ void ABaseCharacter::HandleDeath()
 		if (UBaseInventoryComponent* InvComp = FindComponentByClass<UBaseInventoryComponent>())
 		{
 			InvComp->ClearFoodHealEffects();
+			InvComp->ClearDrinkManaEffects();
 		}
 
 		if (AbilitySystemComponent.IsValid()) // 중복 사망 방지
@@ -1842,6 +1922,7 @@ void ABaseCharacter::HandleDown()
 		if (UBaseInventoryComponent* InvComp = FindComponentByClass<UBaseInventoryComponent>())
 		{
 			InvComp->ClearFoodHealEffects();
+			InvComp->ClearDrinkManaEffects();
 		}
 
 		if (AbilitySystemComponent.IsValid())
@@ -2405,64 +2486,31 @@ void ABaseCharacter::UpdateCraftingUIVisibility()
 		return;
 	}
 
-	// 2. 적이거나 중립일 때 1000거리 이상이면 가림
-	float Dist = FVector::Dist(this->GetActorLocation(), LocalChar->GetActorLocation());
-	if (Dist > 1000.f)
+	// 2. 시야(Vision) 플러그인 연동: UVision_VisualComp를 통해 가시성 확인
+	if (UVision_VisualComp* VisionComp = FindComponentByClass<UVision_VisualComp>())
 	{
-		CraftingWidgetComp->SetVisibility(false);
-		return;
-	}
-
-	// 3. 거리 1000 안쪽이면 시야(장애물) 라인트레이스 확인 (월드 스태틱만 감지)
-	TArray<FHitResult> HitResults;
-	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(this);
-	QueryParams.AddIgnoredActor(LocalChar);
-
-	FCollisionObjectQueryParams ObjectParams;
-	ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
-
-	// 중간에 겹치는 투명 볼륨(PCGVolume 등)을 통과하기 위해 MultiTrace 사용
-	bool bHit = GetWorld()->LineTraceMultiByObjectType(
-		HitResults,
-		LocalChar->GetActorLocation(),
-		this->GetActorLocation(),
-		ObjectParams,
-		QueryParams
-	);
-
-	bool bBlockedByWall = false;
-
-	if (bHit)
-	{
-		for (const FHitResult& Hit : HitResults)
+		// Vision 컴포넌트의 Alpha 값이 0.0f보다 크면 시야에 들어온 것
+		if (VisionComp->GetVisibilityAlpha() > 0.0f)
 		{
-			AActor* HitActor = Hit.GetActor();
-			
-			// 충돌한 액터가 '볼륨(Volume)' 클래스 계열이면 무시하고 통과시킴
-			if (HitActor && !HitActor->IsA<AVolume>())
-			{
-				bBlockedByWall = true;
-				
-				// 디버깅용 로그: 진짜 벽을 가린 녀석 출력
-				FString HitName = HitActor->GetName();
-				FString CompName = Hit.GetComponent() ? Hit.GetComponent()->GetName() : TEXT("UnknownComp");
-				UE_LOG(LogTemp, Warning, TEXT("[Crafting UI Visibility] Blocked by Actor: %s / Component: %s"), *HitName, *CompName);
-				
-				break; // 하나라도 진짜 벽에 막혔으면 더 검사할 필요 없음
-			}
+			CraftingWidgetComp->SetVisibility(true);
 		}
-	}
-
-	if (bBlockedByWall)
-	{
-		// 중간에 진짜 장애물(벽 등)이 있으면 가림
-		CraftingWidgetComp->SetVisibility(false);
+		else
+		{
+			CraftingWidgetComp->SetVisibility(false);
+		}
 	}
 	else
 	{
-		// 안 가려져 있으면 보임
-		CraftingWidgetComp->SetVisibility(true);
+		// 만약 Vision 컴포넌트가 없다면, 기존 방식(거리 1000 이내)을 기본값으로 사용
+		float Dist = FVector::Dist(this->GetActorLocation(), LocalChar->GetActorLocation());
+		if (Dist > 1000.f)
+		{
+			CraftingWidgetComp->SetVisibility(false);
+		}
+		else
+		{
+			CraftingWidgetComp->SetVisibility(true);
+		}
 	}
 }
 

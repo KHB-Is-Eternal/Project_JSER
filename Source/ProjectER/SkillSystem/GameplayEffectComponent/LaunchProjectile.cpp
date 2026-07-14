@@ -22,9 +22,9 @@ ULaunchProjectile::ULaunchProjectile()
 {
 }
 
-void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
+void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters, const FGameplayEffectSpec& ParentSpec) const
 {
-	Super::InitializeRangeActor(RangeActor, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
+	Super::InitializeRangeActor(RangeActor, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters, ParentSpec);
 
 	if (IsValid(RangeActor))
 	{
@@ -46,6 +46,13 @@ void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* Range
 			MovementComp->MaxSpeed = Speed;
 			MovementComp->ProjectileGravityScale = this->GravityScale;
 			
+			// [Optimization] 투사체의 속도와 수명을 기반으로 네트워크 컬링 거리를 동적으로 계산합니다.
+			// (기본 15,000 유닛 유지, 그 이상 비행하는 장거리 투사체는 사거리 끝까지 보이도록 거리 확장)
+			float MaxTravelDistance = Speed * this->LifeSpan;
+			float CullDistance = FMath::Max(15000.0f, MaxTravelDistance + 2000.0f); // 2000 유닛 여유분
+			RangeActor->NetCullDistanceSquared = FMath::Square(CullDistance);
+
+			
 			// 컴포넌트를 액터 인스턴스에 등록
 			MovementComp->RegisterComponent();
 			RangeActor->AddInstanceComponent(MovementComp);
@@ -57,6 +64,29 @@ void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* Range
 			MovementComp->Activate(true);
 		}
 	}
+}
+
+FSkillTooltipData ULaunchProjectile::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	if (bDestroyOnHit)
+	{
+		Data.ShortDescription = FText::FromString(TEXT("투사체를 발사합니다."));
+		Data.DetailedDescription = FText::FromString(TEXT("투사체 발사 : 전방으로 투사체를 날립니다."));
+	}
+	else
+	{
+		Data.ShortDescription = FText::FromString(TEXT("투과체를 발사합니다."));
+		Data.DetailedDescription = FText::FromString(TEXT("투과체 발사 : 전방으로 투과체를 날립니다."));
+	}
+
+	FText EffectsText = FormatAppliedEffects(Applied, Level);
+	if (!EffectsText.IsEmpty())
+	{
+		Data.DetailedDescription = FText::FromString(FString::Printf(TEXT("%s\n%s"), *Data.DetailedDescription.ToString(), *EffectsText.ToString()));
+	}
+
+	return Data;
 }
 
 FTransform ULaunchProjectile::CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const

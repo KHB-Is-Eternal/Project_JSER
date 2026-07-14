@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
@@ -6,6 +6,7 @@
 #include "GameplayTagContainer.h"
 #include "CharacterSystem/Interface/TargetableInterface.h"
 #include "Monster/Data/MonsterTags.h"
+#include "SignificanceManager.h"
 #include "BaseMonster.generated.h"
 
 class UGameplayAbility;
@@ -18,6 +19,7 @@ class UUserWidget;
 class UBaseMonsterAttributeSet;
 class UGameplayEffect;
 class ABaseCharacter;
+class UBaseItemData;
 class UMonsterDataAsset;
 class ULootableComponent;
 struct FOnAttributeChangeData;
@@ -68,12 +70,14 @@ protected:
 	virtual void PossessedBy(AController* newController) override;
 
 	virtual void BeginPlay() override;
-	
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	static float EvaluateSignificance(USignificanceManager::FManagedObjectInfo* ObjectInfo, const FTransform& Viewpoint);
+	static void PostEvaluateSignificance(USignificanceManager::FManagedObjectInfo* ObjectInfo, float OldSignificance, float NewSignificance, bool bFinal);
 
 private:
 	// 이동 속도 변경값 적용
-	UFUNCTION()
-	void OnMoveSpeedChangedHandle(float OldSpeed, float NewSpeed);
+	void OnMoveSpeedChangedHandle(const FOnAttributeChangeData& Data);
 
 	void RewardMonsterXP(AActor* Player, FGameplayTag Tag, float Amount);
 
@@ -83,7 +87,7 @@ private:
 private:
 
 	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UAbilitySystemComponent> ASC;
+	TObjectPtr<class UProjectERASC> ASC;
 
 	//UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UBaseMonsterAttributeSet> AttributeSet;
@@ -154,6 +158,9 @@ private:
 	void InitMonsterDataLoading(FPrimaryAssetId MonsterAssetId, float Level);
 
 	void OnMonsterDataLoaded(FPrimaryAssetId LoadedId, float Level);
+
+	// [김현수 추가분] 가챠 확률 계산 헬퍼 함수
+	TArray<UBaseItemData*> GenerateGachaDrops() const;
 
 	void InitGiveAbilities();
 
