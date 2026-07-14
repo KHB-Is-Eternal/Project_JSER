@@ -15,6 +15,7 @@ ABaseWardActor::ABaseWardActor()
 	MaxHealth = 3;
 	CurrentHealth = MaxHealth;
 	WardLifeSpan = 60.f;
+	VisionRadius = 800.f;
 
 	WardMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WardMesh"));
 	RootComponent = WardMesh;
@@ -28,9 +29,7 @@ ABaseWardActor::ABaseWardActor()
 	VisionEvaluatorComp = CreateDefaultSubobject<UVision_EvaluatorComp>(TEXT("VisionEvaluatorComp"));
 	VisionVisualComp = CreateDefaultSubobject<UVision_VisualComp>(TEXT("VisionVisualComp"));
 
-	// 풀 시스템을 사용할 경우를 대비하여 이벤트 바인딩
-	VisionVisualComp->OnTargetRevealed.AddDynamic(VisionVisualComp, &UVision_VisualComp::OnRevealed_EnterPool);
-	VisionVisualComp->OnTargetHidden.AddDynamic(VisionVisualComp, &UVision_VisualComp::OnHidden_ExitPool);
+	// (제거됨) 풀 시스템 바인딩 시도했던 유효하지 않은 함수 연결 제거
 
 	// 시야 시스템에서 타겟으로 감지될 수 있도록 태그 추가
 	Tags.Add(TEXT("VisionTarget"));
@@ -55,13 +54,18 @@ void ABaseWardActor::InitializeWardTeam(uint8 InTeamChannel)
 
 	if (VisionVisualComp)
 	{
-		// 와드의 팀을 설정하고 서브시스템에 등록(Initialize)합니다.
+		// 와드의 시야 반경과 팀을 설정하고 서브시스템에 등록(Initialize)합니다.
+		VisionVisualComp->SetVisionRange(VisionRadius);
 		VisionVisualComp->SetVisionChannel(static_cast<EVisionChannel>(InTeamChannel));
 		VisionVisualComp->Initialize();
 	}
 
-	if (VisionEvaluatorComp)
+	if (VisionEvaluatorComp && VisionVisualComp)
 	{
+		// 두 컴포넌트를 연결하고, 감지 반경을 시야 반경(Visual)과 동일하게 동기화시킵니다.
+		VisionEvaluatorComp->InitializeEvaluator(VisionVisualComp);
+		VisionEvaluatorComp->SyncDetectionRadius();
+		
 		// 자기 자신의 팀을 기준으로 안개 걷어낼 대상을 평가하도록 초기화
 		VisionEvaluatorComp->InitializeIfSameTeam();
 	}
@@ -72,12 +76,15 @@ void ABaseWardActor::OnRep_WardTeamChannel()
 	// 클라이언트 측에서 팀 정보가 동기화되면 초기화를 수행합니다.
 	if (VisionVisualComp)
 	{
+		VisionVisualComp->SetVisionRange(VisionRadius);
 		VisionVisualComp->SetVisionChannel(static_cast<EVisionChannel>(WardTeamChannel));
 		VisionVisualComp->Initialize();
 	}
 
-	if (VisionEvaluatorComp)
+	if (VisionEvaluatorComp && VisionVisualComp)
 	{
+		VisionEvaluatorComp->InitializeEvaluator(VisionVisualComp);
+		VisionEvaluatorComp->SyncDetectionRadius();
 		VisionEvaluatorComp->InitializeIfSameTeam();
 	}
 }
@@ -118,8 +125,7 @@ FVector ABaseWardActor::GetVisionOrigin() const
 
 float ABaseWardActor::GetVisionRadius() const
 {
-	// 시야 반경 800.f 하드코딩 (추후 프로퍼티 연동 가능)
-	return 800.f;
+	return VisionRadius;
 }
 
 void ABaseWardActor::GetVisibleActors(TArray<AActor*>& OutActors) const

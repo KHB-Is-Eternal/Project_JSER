@@ -59,6 +59,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ward|Stats")
 	float WardLifeSpan;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ward|Stats")
+	float VisionRadius;
+
 	// 와드의 팀 채널 저장 (클라이언트 동기화를 위해 ReplicatedUsing 사용)
 	UPROPERTY(ReplicatedUsing = OnRep_WardTeamChannel)
 	uint8 WardTeamChannel;
