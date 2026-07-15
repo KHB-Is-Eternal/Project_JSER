@@ -36,6 +36,7 @@ void AMouseLocationTargetActor::Setup(const FSkillIndicatorConfig& InConfig, flo
 void AMouseLocationTargetActor::StartTargeting(UGameplayAbility* Ability)
 {
 	Super::StartTargeting(Ability);
+	SetActorTickEnabled(true); // 틱 시동 강제화
 
 	// 로컬 플레이어 컨트롤러에서만 조준선 생성 (서버 리소스 방어)
 	const bool bIsLocal = PrimaryPC && PrimaryPC->IsLocalPlayerController();
@@ -52,7 +53,9 @@ void AMouseLocationTargetActor::StartTargeting(UGameplayAbility* Ability)
 			SpawnedIndicator = GetWorld()->SpawnActor<ASkillIndicatorActor>(SpawnClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
 			if (SpawnedIndicator != nullptr)
 			{
-				SpawnedIndicator->SetupIndicatorSize(IndicatorConfig.IndicatorSize);
+				SpawnedIndicator->SetupIndicator(IndicatorConfig.IndicatorSize);
+				SpawnedIndicator->SetLocationOffset(IndicatorConfig.LocationOffset);
+				SpawnedIndicator->SetRotationOffset(IndicatorConfig.RotationOffset);
 			}
 		}
 	}
@@ -102,8 +105,8 @@ void AMouseLocationTargetActor::Tick(float DeltaSeconds)
 			// 머터리얼의 동적 길이용 파라미터는 사거리 제한 내의 최종 유효 거리를 전달
 			float TargetDistance = (MaxRange > 0.f) ? FMath::Min(Distance, MaxRange) : Distance;
 
-			// 다형성 오버라이딩을 이용해 파생 클래스(Location, Direction)가 스스로 처리하도록 호출
-			SpawnedIndicator->UpdateIndicator(TargetLocation, Rotation, TargetDistance);
+			// 캐릭터의 위치 및 조준점 위치, 회전, 신축거리를 모두 패스 (인디케이터가 자율 제어)
+			SpawnedIndicator->UpdateIndicator(CharacterLoc, TargetLocation, Rotation, TargetDistance);
 		}
 	}
 }

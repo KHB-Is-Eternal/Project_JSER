@@ -3,69 +3,87 @@
 
 #include "SkillSystem/Actor/SkillIndicatorActor.h"
 #include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
-#include "Components/DecalComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 ASkillIndicatorActor::ASkillIndicatorActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = false;
 
-	GroundIndicatorComp = CreateDefaultSubobject<UGroundIndicatorComponent>(TEXT("GroundIndicatorComp"));
-	SetRootComponent(GroundIndicatorComp);
+	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	SetRootComponent(SceneRoot);
 
-	DecalComp = CreateDefaultSubobject<UDecalComponent>(TEXT("DecalComp"));
-	DecalComp->SetupAttachment(GroundIndicatorComp);
+	GroundIndicatorComp = CreateDefaultSubobject<UGroundIndicatorComponent>(TEXT("GroundIndicatorComp"));
+	GroundIndicatorComp->SetupAttachment(SceneRoot);
+
+	// 독립 조준선 액터로서 실시간 바닥 트래킹을 수행하도록 컴포넌트 옵션을 강제 설정
+	GroundIndicatorComp->SetTrackingDynamicGround(true);
 }
 
 void ASkillIndicatorActor::BeginPlay()
 {
+	// 에디터에서 할당한 머티리얼이 존재하면 동적 머티리얼 인스턴스(MID)를 자동 생성하여 내장 메쉬 0번 슬롯에 적용
+	if (GroundIndicatorComp != nullptr && IndicatorMaterial != nullptr)
+	{
+		IndicatorMID = UMaterialInstanceDynamic::Create(IndicatorMaterial, this);
+		if (IndicatorMID != nullptr)
+		{
+			GroundIndicatorComp->SetIndicatorMaterial(0, IndicatorMID);
+		}
+	}
+
 	Super::BeginPlay();
 }
 
-void ASkillIndicatorActor::SetupIndicatorSize(const FVector& InSize)
+void ASkillIndicatorActor::SetupIndicator(const FVector& InSize)
 {
-	if (DecalComp != nullptr)
+	if (GroundIndicatorComp != nullptr)
 	{
-		DecalComp->DecalSize = InSize;
+		// 데칼의 반경(Extent) 2배율 및 Plane 규격(100cm)을 환산하기 위해 50.f으로 나누어 적용
+		GroundIndicatorComp->SetIndicatorScale(InSize / 50.f);
 	}
 }
 
-void ASkillIndicatorActor::UpdateIndicator(const FVector& InTargetLocation, const FRotator& InTargetRotation, float InDistanceToTarget)
+void ASkillIndicatorActor::SetLocationOffset(const FVector& InOffset)
 {
+	LocationOffset = InOffset;
 }
 
-// ==========================================
-// ALocationIndicatorActor (위치 추적용)
-// ==========================================
-
-void ALocationIndicatorActor::SetupIndicatorSize(const FVector& InSize)
+void ASkillIndicatorActor::SetRotationOffset(const FRotator& InOffset)
 {
-	if (DecalComp != nullptr)
+	RotationOffset = InOffset;
+}
+
+void ASkillIndicatorActor::UpdateIndicator(
+	const FVector& InCharacterLocation, 
+	const FVector& InTargetLocation, 
+	const FRotator& InTargetRotation, 
+	float InDistanceToTarget)
+{
+	// 0. 회전 기준값 선행 계산 (로컬 오프셋 방향 산출용)
+	const FRotator BaseRotation = (RotationType == ESkillIndicatorRotationType::LookAtMouse) 
+		? (InTargetRotation + RotationOffset) 
+		: (FRotator::ZeroRotator + RotationOffset);
+
+	const FVector BaseLocation = (PositionType == ESkillIndicatorPositionType::Character) 
+		? InCharacterLocation 
+		: InTargetLocation;
+
+	// X: 전방, Y: 우측, Z: 상방 기준으로 로컬 오프셋을 월드 위치로 변환하여 더함
+	const FVector FinalLocation = BaseLocation + BaseRotation.RotateVector(LocationOffset);
+
+	// 1. 위치 동기화 (C++ 강제 보장, 블루프린트 오버라이딩에 영향 없음)
+	SetActorLocation(FinalLocation);
+
+	// 2. 회전 동기화 (C++ 강제 보장, 블루프린트 오버라이딩에 영향 없음)
+	SetActorRotation(BaseRotation);
+
+	// 틱 순서 어긋남 방지: 위치가 덮어씌워진 즉시 실시간으로 지면 밀착 높이를 즉각 갱신
+	if (GroundIndicatorComp != nullptr)
 	{
-		// 원형 장판 등은 가로세로 반경(Y, Z)을 덮어씁니다. X는 투영 깊이입니다.
-		DecalComp->DecalSize = FVector(DecalComp->DecalSize.X, InSize.Y, InSize.Z);
+		GroundIndicatorComp->UpdateGroundPosition();
 	}
-}
 
-void ALocationIndicatorActor::UpdateIndicator(const FVector& InTargetLocation, const FRotator& InTargetRotation, float InDistanceToTarget)
-{
-	SetActorLocation(InTargetLocation);
-}
-
-// ==========================================
-// ADirectionIndicatorActor (방향 추적용)
-// ==========================================
-
-void ADirectionIndicatorActor::SetupIndicatorSize(const FVector& InSize)
-{
-	if (DecalComp != nullptr)
-	{
-		// 방향 화살표 등은 길이(X)와 폭(Y)을 개별적으로 제어합니다.
-		DecalComp->DecalSize = FVector(InSize.X, InSize.Y, DecalComp->DecalSize.Z);
-	}
-}
-
-void ADirectionIndicatorActor::UpdateIndicator(const FVector& InTargetLocation, const FRotator& InTargetRotation, float InDistanceToTarget)
-{
-	SetActorRotation(InTargetRotation);
+	// 3. 블루프린트 전용 수축 업데이트 이벤트 호출 (비주얼 파라미터 제어 기회 제공)
+	BP_OnUpdateIndicator(InDistanceToTarget);
 }

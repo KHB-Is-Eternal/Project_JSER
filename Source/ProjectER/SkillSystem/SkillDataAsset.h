@@ -54,6 +54,14 @@ struct FSkillIndicatorConfig
      */
     UPROPERTY(EditDefaultsOnly, Category = "Indicator")
     FVector IndicatorSize = FVector(100.f, 100.f, 100.f);
+
+    /** 조준선 생성 시의 로컬 위치 오프셋 (X: 전방, Y: 우측, Z: 상방) */
+    UPROPERTY(EditDefaultsOnly, Category = "Indicator")
+    FVector LocationOffset = FVector::ZeroVector;
+
+    /** 아티스트가 제작한 텍스처 방향 오정렬을 보정하기 위한 회전 오프셋 */
+    UPROPERTY(EditDefaultsOnly, Category = "Indicator")
+    FRotator RotationOffset = FRotator::ZeroRotator;
 };
 
 class UAbilitySystemComponent;
