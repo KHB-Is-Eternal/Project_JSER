@@ -11,7 +11,7 @@ ABaseWardActor::ABaseWardActor()
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
 
-	WardTeamChannel = 0;
+	WardTeamChannel = 255; // EVisionChannel::None (255)로 초기화하여, 0(TeamA)이나 1(TeamB)로 변경 시 클라이언트에서 무조건 OnRep이 발생하도록 강제함
 	MaxHealth = 3;
 	CurrentHealth = MaxHealth;
 	WardLifeSpan = 60.f;
