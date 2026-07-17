@@ -79,6 +79,7 @@ private:
 
 	bool ApplyItemEffect(UUsableItemData* ItemData);
 	bool ApplyStatIncrease(UAbilitySystemComponent* ASC, UUsableItemData* ItemData);
+	bool ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsableItemData* ItemData);
 	bool EnqueueFoodHeal(UUsableItemData* ItemData);
 	void StartNextFoodHealEffect();
 	void EnsureInventoryArraysValid();

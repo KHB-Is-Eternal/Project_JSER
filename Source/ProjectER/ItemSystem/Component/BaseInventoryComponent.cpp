@@ -13,6 +13,8 @@
 #include "TimerManager.h"
 #include "ItemSystem/Actor/BaseItemActor.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
+#include "ItemSystem/Actor/BaseWardActor.h"
+#include "LineOfSight/Management/VisionPlayerStateComp.h"
 
 UBaseInventoryComponent::UBaseInventoryComponent()
 {
@@ -332,6 +334,14 @@ FGameplayTag UBaseInventoryComponent::GetSetByCallerTagFromStatType(const EItemS
 		return ProjectER::Status::MaxStamina;
 	case EItemStatType::CriticalChance:
 		return ProjectER::Status::CritChance;
+	case EItemStatType::AttackRange:
+		return ProjectER::Status::AttackRange;
+	case EItemStatType::SkillAmp:
+		return ProjectER::Status::SkillAmp;
+	case EItemStatType::CooldownReduction:
+		return ProjectER::Status::CooldownReduction;
+	case EItemStatType::Tenacity:
+		return ProjectER::Status::Tenacity;
 	default:
 		return FGameplayTag();
 	}
@@ -359,6 +369,8 @@ bool UBaseInventoryComponent::ApplyItemEffect(UUsableItemData* ItemData)
 		return EnqueueFoodHeal(ItemData);
 	case EItemEffectType::ManaOverTime:
 		return EnqueueDrinkMana(ItemData);
+	case EItemEffectType::PlaceWard:
+		return ApplyPlaceWard(ASC, ItemData);
 	default:
 		UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] ApplyItemEffect: Unknown effect type"));
 		return false;
@@ -427,6 +439,82 @@ bool UBaseInventoryComponent::ApplyStatIncrease(UAbilitySystemComponent* ASC, UU
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[BaseInventoryComponent] Applied item GE. StatTag: %s, Value: %.2f"), *StatTag.ToString(), ItemData->EffectValue);
+	return true;
+}
+
+bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsableItemData* ItemData)
+{
+	if (ASC == nullptr || ItemData == nullptr)
+	{
+		return false;
+	}
+
+	if (!ItemData->WardActorClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyPlaceWard: WardActorClass is not set for item %s"), *ItemData->ItemName.ToString());
+		return false;
+	}
+
+	AActor* const OwnerActor = GetOwner();
+	if (OwnerActor == nullptr)
+	{
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return false;
+	}
+
+	// 팀 시야 채널을 권위 소스(AER_PlayerState::TeamType)에서 먼저 해석한다.
+	// 플레이어 폰이 자기 시야 채널을 세팅하는 것과 동일 경로. 해석 실패 시 설치 취소.
+	ABaseCharacter* OwnerChar = Cast<ABaseCharacter>(OwnerActor);
+	if (OwnerChar == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyPlaceWard: Owner is not ABaseCharacter. Ward placement cancelled."));
+		return false;
+	}
+
+	// ETeamType -> EVisionChannel 매핑 (ABaseCharacter::ConvertTeamToVisionChannel와 동일 규칙).
+	// 해당 헬퍼가 protected라 public GetTeamType()으로 팀을 얻어 여기서 매핑한다.
+	EVisionChannel VisionChannel = EVisionChannel::None;
+	switch (OwnerChar->GetTeamType())
+	{
+	case ETeamType::Team_A: VisionChannel = EVisionChannel::TeamA; break;
+	case ETeamType::Team_B: VisionChannel = EVisionChannel::TeamB; break;
+	case ETeamType::Team_C: VisionChannel = EVisionChannel::TeamC; break;
+	default:                VisionChannel = EVisionChannel::None;  break;
+	}
+
+	if (VisionChannel == EVisionChannel::None)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyPlaceWard: failed to resolve team vision channel (None). Ward placement cancelled."));
+		return false;
+	}
+	const uint8 TeamChannel = static_cast<uint8>(VisionChannel);
+
+	// 채널 확정 후에만 스폰 (실패 시 orphan 액터 방지)
+	// TODO: 추후 플레이어 컨트롤러에서 마우스 커서 위치를 받아오는 방식으로 수정 예정 (BasePlayerController 수정 필요)
+	const FVector SpawnLocation = OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 150.f);
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = OwnerActor;
+	SpawnParams.Instigator = Cast<APawn>(OwnerActor);
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	AActor* SpawnedActor = World->SpawnActor<AActor>(ItemData->WardActorClass, SpawnLocation, FRotator::ZeroRotator, SpawnParams);
+	if (!SpawnedActor)
+	{
+		return false;
+	}
+
+	// Initialize team for ward
+	if (ABaseWardActor* WardActor = Cast<ABaseWardActor>(SpawnedActor))
+	{
+		WardActor->InitializeWardTeam(TeamChannel);
+	}
+
 	return true;
 }
 
