@@ -12,19 +12,24 @@ enum class EItemEffectType : uint8
 	None            UMETA(DisplayName = "None"),
 	IncreaseStat    UMETA(DisplayName = "Increase Stat"),
 	HealOverTime    UMETA(DisplayName = "Heal Over Time"),
-	ManaOverTime    UMETA(DisplayName = "Mana Over Time")
+	ManaOverTime    UMETA(DisplayName = "Mana Over Time"),
+	PlaceWard       UMETA(DisplayName = "Place Ward")
 };
 
 UENUM(BlueprintType)
 enum class EItemStatType : uint8
 {
-	AttackPower     UMETA(DisplayName = "Attack Power"),
-	Defense         UMETA(DisplayName = "Defense"),
-	AttackSpeed     UMETA(DisplayName = "Attack Speed"),
-	MoveSpeed       UMETA(DisplayName = "Move Speed"),
-	MaxHealth       UMETA(DisplayName = "Max Health"),
-	MaxMana         UMETA(DisplayName = "Max Mana"),
-	CriticalChance  UMETA(DisplayName = "CriticalChance")
+	AttackPower       UMETA(DisplayName = "Attack Power"),
+	Defense           UMETA(DisplayName = "Defense"),
+	AttackSpeed       UMETA(DisplayName = "Attack Speed"),
+	MoveSpeed         UMETA(DisplayName = "Move Speed"),
+	MaxHealth         UMETA(DisplayName = "Max Health"),
+	MaxMana           UMETA(DisplayName = "Max Mana"),
+	CriticalChance    UMETA(DisplayName = "CriticalChance"),
+	AttackRange       UMETA(DisplayName = "Attack Range"),
+	SkillAmp          UMETA(DisplayName = "Skill Amp"),
+	CooldownReduction UMETA(DisplayName = "Cooldown Reduction"),
+	Tenacity          UMETA(DisplayName = "Tenacity")
 };
 
 UCLASS(BlueprintType)
@@ -64,6 +69,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Effect", meta = (EditCondition = "EffectType == EItemEffectType::IncreaseStat", EditConditionHides))
 	TSoftClassPtr<UGameplayEffect> ItemStatEffectClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Effect", meta = (EditCondition = "EffectType == EItemEffectType::PlaceWard", EditConditionHides))
+	TSubclassOf<class ABaseWardActor> WardActorClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings")
 	bool bConsumable;
