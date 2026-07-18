@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbilityTargetActor.h"
 #include "SkillSystem/SkillDataAsset.h"
+#include "SkillSystem/SkillConfig/BaseSkillConfig.h"
 #include "MouseLocationTargetActor.generated.h"
 
 class ASkillIndicatorActor;
@@ -25,7 +26,8 @@ public:
 	bool TryConfirmMouseLocation();
 	bool SubmitExternalLocation(const FVector& InLocation);
 
-	void Setup(const FSkillIndicatorConfig& InConfig, float InMaxRange);
+	/** 방향 지시선 설정 및 최대 물리 사거리 주입 */
+	void Setup(const FSkillIndicatorConfig& InIndicatorConfig, float InMaxRange);
 
 protected:
 	UPROPERTY()

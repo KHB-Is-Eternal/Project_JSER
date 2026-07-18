@@ -46,6 +46,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Indicator")
 	void SetRotationOffset(const FRotator& InOffset);
 
+	/** 내부 동적 머티리얼 인스턴스(MID)를 안전하게 반환하는 Getter */
+	UFUNCTION(BlueprintPure, Category = "Indicator")
+	FORCEINLINE UMaterialInstanceDynamic* GetIndicatorMID() const { return IndicatorMID; }
+
 	/** 매 프레임 타겟 데이터를 갱신받아 행동하는 함수 (C++ 위치/회전 강제 보장) */
 	void UpdateIndicator(const FVector& InCharacterLocation, const FVector& InTargetLocation, const FRotator& InTargetRotation, float InDistanceToTarget);
 

@@ -39,8 +39,15 @@ void ASkillIndicatorActor::SetupIndicator(const FVector& InSize)
 {
 	if (GroundIndicatorComp != nullptr)
 	{
-		// 데칼의 반경(Extent) 2배율 및 Plane 규격(100cm)을 환산하기 위해 50.f으로 나누어 적용
+		// 다른 장판들의 원래 기획된 월드 스크린 크기를 보장하기 위해 50.f 스케일로 최종 복구
 		GroundIndicatorComp->SetIndicatorScale(InSize / 50.f);
+	}
+
+	if (IndicatorMID != nullptr)
+	{
+		IndicatorMID->SetScalarParameterValue(TEXT("SizeX"), InSize.X);
+		IndicatorMID->SetScalarParameterValue(TEXT("SizeY"), InSize.Y);
+		IndicatorMID->SetScalarParameterValue(TEXT("SizeZ"), InSize.Z);
 	}
 }
 
@@ -84,6 +91,12 @@ void ASkillIndicatorActor::UpdateIndicator(
 		GroundIndicatorComp->UpdateGroundPosition();
 	}
 
-	// 3. 블루프린트 전용 수축 업데이트 이벤트 호출 (비주얼 파라미터 제어 기회 제공)
+	// // 🌟 [안전장치] 머티리얼 인스턴스의 Length 파라미터 값을 C++에서 실시간으로 직접 강제 주입
+	// if (IndicatorMID != nullptr)
+	// {
+	// 	IndicatorMID->SetScalarParameterValue(TEXT("Length"), InDistanceToTarget);
+	// }
+
+	// 3. 블루프퍼린트 전용 수축 업데이트 이벤트 호출 (비주얼 파라미터 제어 기회 제공)
 	BP_OnUpdateIndicator(InDistanceToTarget);
 }
