@@ -68,6 +68,7 @@ public:
 	// UI 로직 내 호출을 위해 protected -> public 변경
 	// 키 입력 시, 어빌리티 호출
 	void AbilityInputTagPressed(FGameplayTag InputTag);
+	void AbilityManualInputTagPressed(FGameplayTag InputTag);
 	void AbilityInputTagReleased(FGameplayTag InputTag);
 	
 protected:

@@ -238,6 +238,18 @@ void ABasePlayerController::SetupInputComponent()
 			}
 		}
 
+		for (const FInputData& Action : InputConfig->ManualAbilityInputAction)
+		{
+			if (Action.InputAction && Action.InputTag.IsValid())
+			{
+				// Pressed 바인딩 (수동 조준 전용 핸들러 호출)
+				EnhancedInputComponent->BindAction(Action.InputAction, ETriggerEvent::Started, this, &ABasePlayerController::AbilityManualInputTagPressed, Action.InputTag);
+
+				// Released 바인딩 (릴리즈 핸들러 공유)
+				EnhancedInputComponent->BindAction(Action.InputAction, ETriggerEvent::Completed, this, &ABasePlayerController::AbilityInputTagReleased, Action.InputTag);
+			}
+		}
+
 		//Camera Control binding
 		
 		//   InputCameraPanX  (Axis1D) — A/D, Left/Right Arrow
@@ -1185,29 +1197,80 @@ void ABasePlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 		return; // 레벨업이 우선이므로 이후 공격 처리 로직은 실행하지 않음
 	}
 
+	// 마우스 커서 하단 위치/타겟 정보 획득
+	FHitResult CursorHit;
+	GetHitResultUnderCursor(MouseTraceChannel, false, CursorHit);
+
+	FGameplayEventData Payload;
+	Payload.EventTag = InputTag;
+	Payload.Instigator = ControlledPawn;
+	
+	// 스마트 캐스트: 마우스 위치/타겟 정보를 TargetData에 실어서 전달
+	if (CursorHit.bBlockingHit)
+	{
+		Payload.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(CursorHit);
+		Payload.Target = CursorHit.GetActor();
+	}
+
 	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
 	{
 		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
 		{
 			if (Spec.IsActive())
 			{
-				// [방법 2 핵심] 태그를 담은 이벤트를 어빌리티에 직접 쏩니다.
-				FGameplayEventData Payload;
-				Payload.EventTag = InputTag; // 전달할 태그
-				Payload.Instigator = this;   // 보낸 사람
-
-				// 활성화된 어빌리티에게 이벤트를 전달합니다.
+				// 활성화된 어빌리티에게 이벤트 전달
 				ASC->HandleGameplayEvent(InputTag, &Payload);
-				UE_LOG(LogTemp, Log, TEXT("Gameplay Event Sent: %s"), *InputTag.ToString());
+				UE_LOG(LogTemp, Log, TEXT("Gameplay Event Sent (Active): %s"), *InputTag.ToString());
 			}
 			else
 			{
-				ASC->TryActivateAbility(Spec.Handle);
+				// 🌟 TriggerAbilityFromGameplayEvent로 즉시 시전 데이터 주입 실행
+				ASC->TriggerAbilityFromGameplayEvent(Spec.Handle, ASC->AbilityActorInfo.Get(), InputTag, &Payload, *ASC);
 			}
+			break;
 		}
 	}
+}
 
-	// GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, FString::Printf(TEXT("Input Tag Pressed: %s"), *InputTag.ToString()));
+void ABasePlayerController::AbilityManualInputTagPressed(FGameplayTag InputTag)
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn) return;
+
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn);
+	if (!ASC) return;
+
+	// // ctrl 눌려 있을 경우 스킬 레벨업 처리 _ mpyi
+	// if (IsInputKeyDown(EKeys::LeftControl))
+	// {
+	// 	OnSkillLevelUp(InputTag);
+	// 	return;
+	// }
+
+	FGameplayEventData Payload;
+	Payload.EventTag = InputTag;
+	Payload.Instigator = ControlledPawn;
+	
+	// 수동 조준(노멀 캐스트): Payload.TargetData와 Target을 의도적으로 비운 채로 실행하여 조준 상태 진입 유도
+	Payload.TargetData = FGameplayAbilityTargetDataHandle();
+	Payload.Target = nullptr;
+
+	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	{
+		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
+		{
+			if (Spec.IsActive())
+			{
+				ASC->HandleGameplayEvent(InputTag, &Payload);
+			}
+			else
+			{
+				// 🌟 TriggerAbilityFromGameplayEvent로 실행하되, 데이터가 비어있어 조준선 모드로 진입
+				ASC->TriggerAbilityFromGameplayEvent(Spec.Handle, ASC->AbilityActorInfo.Get(), InputTag, &Payload, *ASC);
+			}
+			break;
+		}
+	}
 }
 
 void ABasePlayerController::AbilityInputTagReleased(FGameplayTag InputTag)

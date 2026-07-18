@@ -51,6 +51,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Abilitiy", meta = (TitleProperty = "InputTag"))
 	TArray<FInputData> AbilityInputAction;
 
+	// 수동 조준 및 범위 확인용 스킬 입력 (Alt 조합 등)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Abilitiy", meta = (TitleProperty = "InputTag"))
+	TArray<FInputData> ManualAbilityInputAction;
+
 
 
 	//Camera Control input
