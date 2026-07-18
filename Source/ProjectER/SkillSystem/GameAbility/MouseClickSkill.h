@@ -24,9 +24,15 @@ public:
 	bool ConsumePendingExternalTargetLocation(FVector& OutLocation);
 	bool IsTargetLocationInRange(const FVector& InLocation) const;
 	FVector GetMouseLocation() const;
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
+
 protected:
+	virtual void ExecuteSmartCast(const FGameplayEventData& EventData) override;
+	virtual void StartIndicatorMode(bool bIsManual) override;
+
 	virtual void ApplyExecutionEffects() override;
 	virtual void OnCancelAbility() override;
+	void ClearRangeIndicator();
 	bool IsInRange(const FVector& Location) const;
 	void RotateToLocation(const FVector& Location);
 	void SetWaitTargetTask();
@@ -47,5 +53,9 @@ protected:
 	TOptional<FVector> PendingExternalTargetLocation;
 	FGameplayEffectContextHandle TargetLocationEffectContext;
 	FGameplayTag ExternalTargetLocationEventTag;
+
+	UPROPERTY()
+	TWeakObjectPtr<class UGroundIndicatorComponent> ActiveRangeIndicatorComp;
+
 private:
 };

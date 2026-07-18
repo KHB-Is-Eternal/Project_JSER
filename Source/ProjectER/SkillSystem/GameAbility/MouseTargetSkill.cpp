@@ -10,6 +10,8 @@
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "SkillSystem/GameplayAbilityTargetActor/TargetActor.h"
+#include "SkillSystem/Actor/SkillIndicatorActor.h"
+#include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
@@ -28,8 +30,8 @@ void UMouseTargetSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	// 1. 이벤트 데이터 기반 즉시 실행 (Fast Track)
-	// ShouldAbilityRespondToEvent에서 이미 사거리/타겟 검증이 완료되었으므로 타겟 유무만 확인합니다.
+	bool bHasValidTarget = false;
+
 	if (TriggerEventData)
 	{
 		AActor* TargetActor = nullptr;
@@ -52,14 +54,48 @@ void UMouseTargetSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 		if (IsValid(TargetActor))
 		{
-			AffectedActor = TargetActor;
-			RotateToTarget(TargetActor);
-			PrepareToActiveSkill();
-			return;
+			bHasValidTarget = true;
+			if (IsTargetActorInRange(TargetActor))
+			{
+				ExecuteSmartCast(*TriggerEventData);
+				return;
+			}
 		}
 	}
 
-	// 2. 이벤트 데이터가 없는 일반 케이스 (마우스 입력 대기)
+	const bool bIsManual = (TriggerEventData != nullptr && !bHasValidTarget);
+	StartIndicatorMode(bIsManual);
+}
+
+void UMouseTargetSkill::ExecuteSmartCast(const FGameplayEventData& EventData)
+{
+	AActor* TargetActor = nullptr;
+
+	if (EventData.TargetData.IsValid(0))
+	{
+		TArray<AActor*> TargetActors = UAbilitySystemBlueprintLibrary::GetActorsFromTargetData(EventData.TargetData, 0);
+		if (TargetActors.Num() > 0)
+		{
+			TargetActor = TargetActors[0];
+		}
+	}
+
+	if (!IsValid(TargetActor) && IsValid(EventData.Target))
+	{
+		TargetActor = const_cast<AActor*>(EventData.Target.Get());
+	}
+
+	if (IsValid(TargetActor))
+	{
+		AffectedActor = TargetActor;
+		RotateToTarget(TargetActor);
+		PrepareToActiveSkill();
+	}
+}
+
+void UMouseTargetSkill::StartIndicatorMode(bool bIsManual)
+{
+	Super::StartIndicatorMode(bIsManual);
 	SetWaitExternalTargetEventTask();
 	SetWaitTargetTask();
 }
@@ -89,11 +125,19 @@ bool UMouseTargetSkill::ShouldAbilityRespondToEvent(const FGameplayAbilityActorI
 		TargetActor = const_cast<AActor*>(Payload->Target.Get());
 	}
 
-	// 타겟이 있는 경우 개별 검증 수행
+	// 타겟이 있는 경우 사거리 및 관계 검증
 	if (IsValid(TargetActor))
 	{
 		if (!IsTargetActorInRange(TargetActor))
 		{
+			// 플레이어는 사거리 밖이어도 어빌리티 진입을 허용합니다.
+			// ActivateAbility에서 조준선(인디케이터) 대기 모드로 폴백합니다.
+			if (ActorInfo->PlayerController.IsValid())
+			{
+				return true;
+			}
+
+			// 몬스터(AI)는 사거리 밖이면 즉시 시전 거부합니다.
 			UE_LOG(LogTemp, Warning, TEXT("[MouseTargetSkill] Rejected: Target out of range or invalid relationship."));
 			return false;
 		}
@@ -156,13 +200,39 @@ void UMouseTargetSkill::SetWaitTargetTask()
 		{
 			CurrentTargetActor = MyTargetActor;
 			MyTargetActor->PrimaryPC = Cast<APlayerController>(GetActorInfo().PlayerController);
+
+			// 🌟 UMouseTargetSkillConfig에 세팅된 조준선 설정(사거리 포함)을 타겟 액터에 주입
+			USkillDataAsset* DataAsset = GetSkillDataAsset();
+			UMouseTargetSkillConfig* Config = Cast<UMouseTargetSkillConfig>(CachedConfig);
+
+			FSkillRangeConfig TargetRangeConfig;
+			if (Config != nullptr)
+			{
+				TargetRangeConfig = Config->GetRangeConfig();
+			}
+
+			FSkillIndicatorConfig SetupIndicatorConfig;
+			if (DataAsset != nullptr)
+			{
+				SetupIndicatorConfig = DataAsset->GetIndicatorConfig();
+			}
+			MyTargetActor->Setup(SetupIndicatorConfig, TargetRangeConfig.Range);
+
+			// 🌟 동적으로 캐릭터 발밑에 사거리 장판 생성
+			AActor* Avatar = GetAvatarActorFromActorInfo();
+			if (Avatar != nullptr)
+			{
+				ActiveRangeIndicatorComp = TargetRangeConfig.MakeGroundIndicatorComponent(Avatar);
+			}
+
 			WaitTargetTask->FinishSpawningActor(this, SpawnedActor);
 		}
 	}
 
 	WaitTargetTask->ReadyForActivation();
 
-	if (IsLocallyControlled())
+	// 수동 조준(Alt 입력)인 상태에서는 즉시 컨펌하지 않고 대기 모드를 유지합니다.
+	if (!bIsManualAiming && IsLocallyControlled())
 	{
 		if (IsValid(MyTargetActor)) {
 			MyTargetActor->TryConfirmMouseTarget();
@@ -210,6 +280,8 @@ bool UMouseTargetSkill::ConsumePendingExternalTargetActor(AActor*& OutTargetActo
 
 void UMouseTargetSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle)
 {
+	ClearRangeIndicator();
+
 	TArray<AActor*> TargetActors = UAbilitySystemBlueprintLibrary::GetActorsFromTargetData(DataHandle, 0);
 
 	if (TargetActors.Num() <= 0)
@@ -366,4 +438,24 @@ void UMouseTargetSkill::CleanUpSkill()
 {
 	CurrentTargetActor = nullptr;
 	AffectedActor = nullptr;
+
+	ClearRangeIndicator();
 }
+
+void UMouseTargetSkill::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
+{
+	ClearRangeIndicator();
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+void UMouseTargetSkill::ClearRangeIndicator()
+{
+	if (ActiveRangeIndicatorComp.IsValid())
+	{
+		ActiveRangeIndicatorComp->SetVisibility(false);
+		ActiveRangeIndicatorComp->UnregisterComponent();
+		ActiveRangeIndicatorComp->DestroyComponent();
+		ActiveRangeIndicatorComp = nullptr;
+	}
+}
+

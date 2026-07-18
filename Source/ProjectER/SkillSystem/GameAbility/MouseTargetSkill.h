@@ -25,6 +25,9 @@ public:
 	AActor* GetTargetUnderCursorInRange();
 	bool IsTargetActorInRange(AActor* InTargetActor) const;
 protected:
+	virtual void ExecuteSmartCast(const FGameplayEventData& EventData) override;
+	virtual void StartIndicatorMode(bool bIsManual) override;
+
 	virtual void ExecuteSkill() override;
 	virtual void CompleteFinishSkill() override;
 	virtual void OnCancelAbility() override;
@@ -37,6 +40,7 @@ protected:
 	void RotateToTarget(AActor* Actor);
 	void ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators);
 	void CleanUpSkill();
+	void ClearRangeIndicator();
 
 	UFUNCTION()
 	void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle);
@@ -44,6 +48,8 @@ protected:
 	void OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataHandle);
 	UFUNCTION()
 	void OnExternalTargetActorReceived(FGameplayEventData Payload);
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
+
 private:
 
 public:
@@ -53,5 +59,9 @@ protected:
 	TWeakObjectPtr<ATargetActor> CurrentTargetActor;
 	TWeakObjectPtr<AActor> PendingExternalTargetActor;
 	FGameplayTag ExternalTargetActorEventTag;
+
+	UPROPERTY()
+	TWeakObjectPtr<class UGroundIndicatorComponent> ActiveRangeIndicatorComp;
+
 private:
 };

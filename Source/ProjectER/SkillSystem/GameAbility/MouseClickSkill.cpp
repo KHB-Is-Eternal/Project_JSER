@@ -15,6 +15,8 @@
 #include "AbilitySystemComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "SkillSystem/SkillDataAsset.h"
+#include "SkillSystem/Actor/SkillIndicatorActor.h"
+#include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 
 UMouseClickSkill::UMouseClickSkill()
 {
@@ -25,25 +27,38 @@ void UMouseClickSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle, 
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	// 1. 이벤트 데이터 기반 즉시 실행 (Fast Track)
-	// ShouldAbilityRespondToEvent에서 이미 사거리 검증이 완료되었으므로 데이터 유무만 확인합니다.
 	if (TriggerEventData && TriggerEventData->TargetData.IsValid(0))
 	{
 		const FVector Location = TriggerEventData->TargetData.Get(0)->GetEndPoint();
-		
-		// 타겟팅 이펙트 컨텍스트 생성 및 위치 저장
-		FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
-		ContextHandle.AddOrigin(Location);
-		ContextHandle.AddSourceObject(this);
-		TargetLocationEffectContext = ContextHandle;
-
-		// 즉시 실행으로 분기
-		RotateToLocation(Location);
-		PrepareToActiveSkill();
-		return;
+		if (IsInRange(Location))
+		{
+			ExecuteSmartCast(*TriggerEventData);
+			return;
+		}
 	}
 
-	// 2. 이벤트 데이터가 없는 일반 케이스 (마우스 입력 대기)
+	const bool bIsManual = (TriggerEventData != nullptr && !TriggerEventData->TargetData.IsValid(0));
+	StartIndicatorMode(bIsManual);
+}
+
+void UMouseClickSkill::ExecuteSmartCast(const FGameplayEventData& EventData)
+{
+	const FVector Location = EventData.TargetData.Get(0)->GetEndPoint();
+	
+	// 타겟팅 이펙트 컨텍스트 생성 및 위치 저장
+	FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
+	ContextHandle.AddOrigin(Location);
+	ContextHandle.AddSourceObject(this);
+	TargetLocationEffectContext = ContextHandle;
+
+	// 즉시 실행으로 분기
+	RotateToLocation(Location);
+	PrepareToActiveSkill();
+}
+
+void UMouseClickSkill::StartIndicatorMode(bool bIsManual)
+{
+	Super::StartIndicatorMode(bIsManual);
 	SetWaitExternalTargetEventTask();
 	SetWaitTargetTask();
 }
@@ -60,6 +75,14 @@ bool UMouseClickSkill::ShouldAbilityRespondToEvent(const FGameplayAbilityActorIn
 	{
 		if (!IsInRange(Location))
 		{
+			// 플레이어는 사거리 밖이어도 어빌리티 진입을 허용합니다.
+			// ActivateAbility에서 조준선(인디케이터) 대기 모드로 폴백합니다.
+			if (ActorInfo->PlayerController.IsValid())
+			{
+				return true;
+			}
+
+			// 몬스터(AI)는 사거리 밖이면 즉시 시전 거부합니다.
 			UE_LOG(LogTemp, Warning, TEXT("[MouseClickSkill] Rejected: Location out of range."));
 			return false;
 		}
@@ -148,6 +171,9 @@ void UMouseClickSkill::OnCancelAbility()
 {
 	TargetLocationEffectContext = FGameplayEffectContextHandle();
 	CurrentMouseLocationTargetActor = nullptr;
+
+	ClearRangeIndicator();
+
 	Super::OnCancelAbility();
 }
 
@@ -186,16 +212,27 @@ void UMouseClickSkill::SetWaitTargetTask()
 
 			// 조준선 설정 및 최대 사거리 데이터 주입
 			USkillDataAsset* DataAsset = GetSkillDataAsset();
-			FSkillIndicatorConfig IndicatorConfig = DataAsset ? DataAsset->GetIndicatorConfig() : FSkillIndicatorConfig();
-
-			float MaxRange = 0.f;
 			UMouseClickSkillConfig* ClickConfig = Cast<UMouseClickSkillConfig>(CachedConfig);
+			
+			FSkillRangeConfig FinalRangeConfig;
 			if (IsValid(ClickConfig))
 			{
-				MaxRange = ClickConfig->GetRange();
+				FinalRangeConfig = ClickConfig->GetRangeConfig();
 			}
 
-			MouseLocationTargetActor->Setup(IndicatorConfig, MaxRange);
+			FSkillIndicatorConfig SetupIndicatorConfig;
+			if (DataAsset != nullptr)
+			{
+				SetupIndicatorConfig = DataAsset->GetIndicatorConfig();
+			}
+			MouseLocationTargetActor->Setup(SetupIndicatorConfig, FinalRangeConfig.Range);
+
+			// 🌟 동적으로 캐릭터 발밑에 사거리 장판 생성
+			AActor* Avatar = GetAvatarActorFromActorInfo();
+			if (Avatar != nullptr)
+			{
+				ActiveRangeIndicatorComp = FinalRangeConfig.MakeGroundIndicatorComponent(Avatar);
+			}
 
 			WaitTargetTask->FinishSpawningActor(this, SpawnedActor);
 		}
@@ -210,16 +247,22 @@ void UMouseClickSkill::SetWaitTargetTask()
 		return;
 	}
 
-	APlayerController* PlayerController = Cast<APlayerController>(GetActorInfo().PlayerController.Get());
-	const bool bCanUseMouseConfirm = IsLocallyControlled() && IsValid(PlayerController) && PlayerController->IsLocalPlayerController();
-	if (bCanUseMouseConfirm)
+	// 수동 조준(Alt 입력)인 상태에서는 즉시 컨펌하지 않고 장판 대기 모드를 유지합니다.
+	if (!bIsManualAiming)
 	{
-		MouseLocationTargetActor->TryConfirmMouseLocation();
+		APlayerController* PlayerController = Cast<APlayerController>(GetActorInfo().PlayerController.Get());
+		const bool bCanUseMouseConfirm = IsLocallyControlled() && IsValid(PlayerController) && PlayerController->IsLocalPlayerController();
+		if (bCanUseMouseConfirm)
+		{
+			MouseLocationTargetActor->TryConfirmMouseLocation();
+		}
 	}
 }
 
 void UMouseClickSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle) 
 {
+	ClearRangeIndicator();
+
 	if (!DataHandle.IsValid(0) /*|| !CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo) */ ) return;
 
 	FVector Location = FVector::ZeroVector;
@@ -325,3 +368,21 @@ FVector UMouseClickSkill::GetMouseLocation() const
 	}
 	return Avatar->GetActorLocation();
 }
+
+void UMouseClickSkill::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
+{
+	ClearRangeIndicator();
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+void UMouseClickSkill::ClearRangeIndicator()
+{
+	if (ActiveRangeIndicatorComp.IsValid())
+	{
+		ActiveRangeIndicatorComp->SetVisibility(false);
+		ActiveRangeIndicatorComp->UnregisterComponent();
+		ActiveRangeIndicatorComp->DestroyComponent();
+		ActiveRangeIndicatorComp = nullptr;
+	}
+}
+
