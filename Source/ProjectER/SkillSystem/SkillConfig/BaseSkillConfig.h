@@ -6,6 +6,7 @@
 #include "UObject/Object.h"
 #include "SkillSystem/SkillData.h"
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "SkillSystem/SkillDataAsset.h"
 #include "BaseSkillConfig.generated.h"
 
 class USkillBase;
@@ -96,6 +97,29 @@ protected:
 	bool bAllowMovementDuringSkill = false;
 };
 
+/** 조준 사거리 수치 및 개별 방향/궤적 조준선(인디케이터) 설정 구조체 */
+USTRUCT(BlueprintType)
+struct FSkillRangeConfig
+{
+	GENERATED_BODY()
+
+public:
+	FSkillRangeConfig();
+
+	/** 스킬 시전 유효 최대 사거리 (cm) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Range")
+	float Range = 0.f;
+
+	/** 사거리 장판용 머티리얼 설정 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Range")
+	TSoftObjectPtr<class UMaterialInterface> IndicatorMaterial;
+
+	/** 이 설정을 기반으로 캐릭터 발밑에 동적 UGroundIndicatorComponent를 생성 및 셋업해 주는 헬퍼 함수 */
+	class UGroundIndicatorComponent* MakeGroundIndicatorComponent(class AActor* InOwner) const;
+};
+
+
+
 UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)
 class PROJECTER_API UMouseTargetSkillConfig : public UActiveSkillConfig
 {
@@ -103,12 +127,14 @@ class PROJECTER_API UMouseTargetSkillConfig : public UActiveSkillConfig
 
 public:
 	UMouseTargetSkillConfig();
-	FORCEINLINE float GetRange() const { return Range; }
+	FORCEINLINE float GetRange() const { return RangeConfig.Range; }
+	FORCEINLINE const FSkillRangeConfig& GetRangeConfig() const { return RangeConfig; }
 	FORCEINLINE ETargetRelationship GetApplyTo() const { return ApplyTo; }
 	FORCEINLINE const TArray<FTargetExecutionPhase>& GetTargetPhases() const { return TargetPhases; }
 protected:
-	UPROPERTY(EditDefaultsOnly, Category = "Config", meta = (AllowPrivateAccess = "true"))
-	float Range;
+	/** 사거리 및 조준선 궤적 통합 설정 */
+	UPROPERTY(EditDefaultsOnly, Category = "Config")
+	FSkillRangeConfig RangeConfig;
 
 	/** 이 스킬이 적용될 대상 (Enemy: 적, Friend: 아군) */
 	UPROPERTY(EditDefaultsOnly, Category = "Config")
@@ -125,10 +151,12 @@ class PROJECTER_API UMouseClickSkillConfig : public UActiveSkillConfig
 
 public:
 	UMouseClickSkillConfig();
-	FORCEINLINE float GetRange() const { return Range; }
+	FORCEINLINE float GetRange() const { return RangeConfig.Range; }
+	FORCEINLINE const FSkillRangeConfig& GetRangeConfig() const { return RangeConfig; }
 protected:
-	UPROPERTY(EditDefaultsOnly, Category = "Config", meta = (AllowPrivateAccess = "true"))
-	float Range;
+	/** 사거리 및 조준선 궤적 통합 설정 */
+	UPROPERTY(EditDefaultsOnly, Category = "Config")
+	FSkillRangeConfig RangeConfig;
 };
 
 UCLASS(BlueprintType, EditInlineNew, DefaultToInstanced)

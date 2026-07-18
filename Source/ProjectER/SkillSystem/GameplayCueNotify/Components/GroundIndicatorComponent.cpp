@@ -39,6 +39,18 @@ void UGroundIndicatorComponent::BeginPlay()
 	}
 }
 
+void UGroundIndicatorComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
+{
+	// NewObject로 동적 생성된 자식 메쉬는 부모 파괴 시 자동으로 정리되지 않으므로 명시적으로 직접 파괴합니다.
+	if (IndicatorMeshComp && IndicatorMeshComp->IsRegistered())
+	{
+		IndicatorMeshComp->DestroyComponent();
+		IndicatorMeshComp = nullptr;
+	}
+
+	Super::OnComponentDestroyed(bDestroyingHierarchy);
+}
+
 void UGroundIndicatorComponent::UpdateGroundPosition()
 {
 	USceneComponent* ParentComp = GetAttachParent();

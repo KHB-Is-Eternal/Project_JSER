@@ -23,6 +23,7 @@ protected:
 
 public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 
 	/** 특정 본(소켓)에 부착되어 매 프레임 상하 위치 보정(트레이스)이 필요한지 여부를 설정합니다. */
 	void SetTrackingDynamicGround(bool bInTracking) { bIsTrackingDynamicGround = bInTracking; }

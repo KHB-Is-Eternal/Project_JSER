@@ -3,6 +3,7 @@
 
 #include "SkillSystem/SkillDataAsset.h"
 #include "GameplayEffect.h"
+#include "SkillSystem/Actor/SkillIndicatorActor.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayAbilitySpec.h"
 #include "GameAbility/SkillBase.h"
