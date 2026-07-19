@@ -4,7 +4,7 @@
 
 #include "SkillSystem/GameplayAbilityTargetActor/MouseLocationTargetActor.h"
 #include "SkillSystem/GameAbility/MouseClickSkill.h"
-#include "SkillSystem/Actor/SkillIndicatorActor.h"
+#include "SkillSystem/GameAbility/InstantSkill.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Engine/World.h"
@@ -28,9 +28,8 @@ AMouseLocationTargetActor::AMouseLocationTargetActor()
 	bReplicates = false;
 }
 
-void AMouseLocationTargetActor::Setup(const FSkillIndicatorConfig& InIndicatorConfig, float InMaxRange)
+void AMouseLocationTargetActor::Setup(float InMaxRange)
 {
-	IndicatorConfig = InIndicatorConfig;
 	MaxRange = InMaxRange;
 }
 
@@ -38,28 +37,6 @@ void AMouseLocationTargetActor::StartTargeting(UGameplayAbility* Ability)
 {
 	Super::StartTargeting(Ability);
 	SetActorTickEnabled(true);
-
-	const bool bIsLocal = PrimaryPC && PrimaryPC->IsLocalPlayerController();
-	if (bIsLocal)
-	{
-		// 🌟 1) 마우스 방향/궤적 지시 조준선 스폰
-		TSubclassOf<ASkillIndicatorActor> DirectionSpawnClass = IndicatorConfig.IndicatorClass.LoadSynchronous();
-		if (DirectionSpawnClass != nullptr)
-		{
-			FActorSpawnParameters SpawnParams;
-			SpawnParams.Owner = this;
-			SpawnParams.Instigator = Cast<APawn>(Ability->GetAvatarActorFromActorInfo());
-			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-			SpawnedIndicator = GetWorld()->SpawnActor<ASkillIndicatorActor>(DirectionSpawnClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
-			if (SpawnedIndicator != nullptr)
-			{
-				SpawnedIndicator->SetupIndicator(IndicatorConfig.IndicatorSize);
-				SpawnedIndicator->SetLocationOffset(IndicatorConfig.LocationOffset);
-				SpawnedIndicator->SetRotationOffset(IndicatorConfig.RotationOffset);
-			}
-		}
-	}
 }
 
 void AMouseLocationTargetActor::ConfirmTargetingAndContinue()
@@ -99,29 +76,23 @@ void AMouseLocationTargetActor::Tick(float DeltaSeconds)
 
 		FRotator Rotation = UKismetMathLibrary::FindLookAtRotation(CharacterLoc, TargetLocation);
 		float TargetDistance = (CurrentMaxRange > 0.f) ? FMath::Min(Distance, CurrentMaxRange) : Distance;
-
-		// 🌟 1) 방향선 업데이트 (마우스 위치 추적 및 신축)
-		if (SpawnedIndicator != nullptr)
-		{
-			SpawnedIndicator->UpdateIndicator(CharacterLoc, TargetLocation, Rotation, TargetDistance);
-		}
 	}
 }
 
 void AMouseLocationTargetActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	// 인디케이터 액터들 소멸 보장
-	if (SpawnedIndicator != nullptr)
-	{
-		SpawnedIndicator->Destroy();
-		SpawnedIndicator = nullptr;
-	}
-
 	Super::EndPlay(EndPlayReason);
 }
 
 bool AMouseLocationTargetActor::TryConfirmMouseLocation()
 {
+	// 1. 인스턴트 스킬인 경우 위치 검사 없이 즉시 확인 처리
+	if (UInstantSkill* InstantSkill = Cast<UInstantSkill>(OwningAbility))
+	{
+		TargetDataReadyDelegate.Broadcast(FGameplayAbilityTargetDataHandle());
+		return true;
+	}
+
 	UMouseClickSkill* MouseClickSkill = Cast<UMouseClickSkill>(OwningAbility);
 	if (!IsValid(MouseClickSkill)) return false;
 

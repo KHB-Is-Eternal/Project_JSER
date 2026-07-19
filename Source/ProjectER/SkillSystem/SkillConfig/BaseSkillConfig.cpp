@@ -21,6 +21,7 @@ const TArray<FSkillExecutionPhase>& UBaseSkillConfig::GetExecutionPhases() const
 	return EmptyPhases;
 }
 
+
 UActiveSkillConfig::UActiveSkillConfig()
 {
 	AbilityClass = USkillBase::StaticClass();

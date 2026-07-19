@@ -34,6 +34,10 @@
 #include "GameFramework/GameState.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 #include "SkillSystem/AnimNotify/AnimNotify_AddTagSkillActive.h"
+#include "SkillSystem/Actor/SkillIndicatorActor.h"
+#include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
+#include "SkillSystem/GameplayAbilityTargetActor/MouseLocationTargetActor.h"
+#include "SkillSystem/GameplayAbilityTargetActor/TargetActor.h"
 
 USkillBase::USkillBase()
 {
@@ -117,6 +121,7 @@ void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGame
 		}
 	}
 
+	ClearIndicators();
 	ChangeSkillState(ESkillAbilityState::None);
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
@@ -553,6 +558,14 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 		ContextHandle.AddInstigator(Avatar, Avatar);
 	}
 
+	// if (GEngine)
+	// {
+	// 	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
+	// 		FString::Printf(TEXT("[Server] TargetData %s / Instigator %s"),
+	// 			*ContextHandle.GetEffectCauser()->GetName(),
+	// 			*ContextHandle.GetInstigator()->GetName()));
+	// }
+
 	if (ContextHandle.GetAbility() == nullptr)
 	{
 		ContextHandle.SetAbility(this);
@@ -846,5 +859,151 @@ void USkillBase::NotifyActivationFailed(const FGameplayTag& ReasonTag, const FSt
 			UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(GetAvatar(), ReasonTag, Payload);
 		}
 	}
+	}
 }
 */
+
+void USkillBase::SetWaitTargetTask()
+{
+	TSubclassOf<AGameplayAbilityTargetActor> TargetActorClass = GetTargetActorClass();
+
+	if (TargetActorClass != nullptr)
+	{
+		UAbilityTask_WaitTargetData* WaitTargetTask = UAbilityTask_WaitTargetData::WaitTargetData(
+			this,
+			TEXT("WaitTargetTask"),
+			EGameplayTargetingConfirmation::UserConfirmed,
+			TargetActorClass
+		);
+
+		WaitTargetTask->ValidData.AddDynamic(this, &USkillBase::OnTargetDataReady);
+		WaitTargetTask->Cancelled.AddDynamic(this, &USkillBase::OnTargetCancelled);
+
+		AGameplayAbilityTargetActor* SpawnedActor = nullptr;
+		if (WaitTargetTask->BeginSpawningActor(this, TargetActorClass, SpawnedActor))
+		{
+			CurrentTargetActor = SpawnedActor;
+			SpawnedActor->PrimaryPC = Cast<APlayerController>(GetActorInfo().PlayerController);
+
+			if (AMouseLocationTargetActor* MLActor = Cast<AMouseLocationTargetActor>(SpawnedActor))
+			{
+				MLActor->Setup(GetMaxRange());
+			}
+			else if (ATargetActor* TActor = Cast<ATargetActor>(SpawnedActor))
+			{
+				TActor->Setup(GetMaxRange());
+			}
+
+			WaitTargetTask->FinishSpawningActor(this, SpawnedActor);
+		}
+
+		WaitTargetTask->ReadyForActivation();
+
+		if (!bIsManualAiming && IsLocallyControlled())
+		{
+			if (AMouseLocationTargetActor* MLActor = Cast<AMouseLocationTargetActor>(SpawnedActor))
+			{
+				MLActor->TryConfirmMouseLocation();
+			}
+			else if (ATargetActor* TActor = Cast<ATargetActor>(SpawnedActor))
+			{
+				TActor->TryConfirmMouseTarget();
+			}
+		}
+	}
+	else
+	{
+		// 즉발 등 타겟 액터가 없는 경우
+		if (!bIsManualAiming)
+		{
+			OnTargetDataReady(FGameplayAbilityTargetDataHandle());
+		}
+	}
+
+	SpawnIndicators();
+}
+
+void USkillBase::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle)
+{
+	ClearIndicators();
+}
+
+void USkillBase::OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataHandle)
+{
+	CurrentTargetActor = nullptr;
+	ClearIndicators();
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+}
+
+void USkillBase::SpawnIndicators()
+{
+	USkillDataAsset* DataAsset = GetSkillDataAsset();
+	AActor* Avatar = GetAvatarActorFromActorInfo();
+	if (!IsValid(DataAsset) || !IsValid(Avatar) || !IsValid(CachedConfig)) return;
+
+	float Range = GetMaxRange();
+
+	// 방향 지시선 스폰
+	const FSkillIndicatorConfig& IndicatorConfig = DataAsset->GetIndicatorConfig();
+	TSubclassOf<ASkillIndicatorActor> DirectionSpawnClass = IndicatorConfig.IndicatorClass.LoadSynchronous();
+	if (DirectionSpawnClass != nullptr)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = Avatar;
+		SpawnParams.Instigator = Cast<APawn>(Avatar);
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		ActiveDirectionIndicator = GetWorld()->SpawnActor<ASkillIndicatorActor>(DirectionSpawnClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+		if (ActiveDirectionIndicator != nullptr)
+		{
+			ActiveDirectionIndicator->InitializeIndicator(Avatar, Range);
+			ActiveDirectionIndicator->SetupIndicator(IndicatorConfig.IndicatorSize);
+			ActiveDirectionIndicator->SetLocationOffset(IndicatorConfig.LocationOffset);
+			ActiveDirectionIndicator->SetRotationOffset(IndicatorConfig.RotationOffset);
+		}
+	}
+	// 바닥 사거리 장판 스폰
+	if (CachedConfig)
+	{
+		if (const FSkillRangeConfig* RangeConfig = CachedConfig->GetRangeConfig())
+		{
+			bool bIgnoreRange = false;
+			if (const UMouseClickSkillConfig* ClickConfig = Cast<UMouseClickSkillConfig>(CachedConfig))
+			{
+				bIgnoreRange = ClickConfig->IgnoreRangeLimit();
+			}
+
+			if (!bIgnoreRange)
+			{
+				ActiveRangeIndicatorComp = RangeConfig->MakeGroundIndicatorComponent(Avatar);
+			}
+		}
+	}
+}
+
+void USkillBase::ClearIndicators()
+{
+	if (ActiveDirectionIndicator != nullptr)
+	{
+		ActiveDirectionIndicator->Destroy();
+		ActiveDirectionIndicator = nullptr;
+	}
+
+	if (ActiveRangeIndicatorComp.IsValid())
+	{
+		ActiveRangeIndicatorComp->DestroyComponent();
+		ActiveRangeIndicatorComp.Reset();
+	}
+}
+
+float USkillBase::GetMaxRange() const
+{
+	if (CachedConfig)
+	{
+		if (const FSkillRangeConfig* RangeConfig = CachedConfig->GetRangeConfig())
+		{
+			return RangeConfig->Range;
+		}
+	}
+	return 0.f;
+}

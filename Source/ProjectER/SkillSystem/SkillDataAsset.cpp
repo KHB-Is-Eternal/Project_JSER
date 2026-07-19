@@ -72,7 +72,6 @@ FSkillTooltipData USkillDataAsset::GetSkillTooltipData(int32 InLevel) const
 	{
 		AllEffects.Append(Phase.Effects);
 	}
-
 	if (const UMouseTargetSkillConfig* TargetConfig = Cast<UMouseTargetSkillConfig>(SkillConfig))
 	{
 		for (const FTargetExecutionPhase& TargetPhase : TargetConfig->GetTargetPhases())

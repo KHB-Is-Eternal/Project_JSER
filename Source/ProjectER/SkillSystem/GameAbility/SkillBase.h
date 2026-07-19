@@ -181,4 +181,25 @@ protected:
 	void SetWaitEventBackswingTag();
 
 	void StopCharacterMove();
+
+	virtual TSubclassOf<class AGameplayAbilityTargetActor> GetTargetActorClass() const { return nullptr; }
+
+	UFUNCTION()
+	virtual void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle);
+
+	UFUNCTION()
+	virtual void OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataHandle);
+
+	void SetWaitTargetTask();
+	void SpawnIndicators();
+	void ClearIndicators();
+	float GetMaxRange() const;
+
+	UPROPERTY()
+	TWeakObjectPtr<class UGroundIndicatorComponent> ActiveRangeIndicatorComp;
+
+	UPROPERTY()
+	TObjectPtr<class ASkillIndicatorActor> ActiveDirectionIndicator;
+	
+	TWeakObjectPtr<class AGameplayAbilityTargetActor> CurrentTargetActor;
 };

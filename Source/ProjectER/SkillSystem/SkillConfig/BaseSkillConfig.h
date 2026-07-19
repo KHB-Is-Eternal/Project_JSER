@@ -28,6 +28,27 @@ public:
 	FScalableFloat CostValue;
 };
 
+/** 조준 사거리 수치 및 개별 방향/궤적 조준선(인디케이터) 설정 구조체 */
+USTRUCT(BlueprintType)
+struct FSkillRangeConfig
+{
+	GENERATED_BODY()
+
+public:
+	FSkillRangeConfig();
+
+	/** 스킬 시전 유효 최대 사거리 (cm) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Range")
+	float Range = 0.f;
+
+	/** 사거리 장판용 머티리얼 설정 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Range")
+	TSoftObjectPtr<class UMaterialInterface> IndicatorMaterial;
+
+	/** 이 설정을 기반으로 캐릭터 발밑에 동적 UGroundIndicatorComponent를 생성 및 셋업해 주는 헬퍼 함수 */
+	class UGroundIndicatorComponent* MakeGroundIndicatorComponent(class AActor* InOwner) const;
+};
+
 /**
  * 프로젝트 내 모든 스킬/패시브 설정의 최상위 공통 베이스 클래스입니다.
  * USkillBase 및 USkillDataAsset과의 결합도를 낮추기 위해 다형성 가상 인터페이스를 제공합니다.
@@ -56,6 +77,11 @@ public:
 
 	virtual UGameplayEffect* CreateCostGameplayEffect(UObject* Outer) { return nullptr; }
 	virtual FText BuildCostDescription(float InLevel = 1.0f) const { return FText::GetEmpty(); }
+
+	// ==========================================
+	// 다형성 가상 인터페이스 (Virtual Getters) - 조준선 및 사거리용 추가
+	// ==========================================
+	virtual const FSkillRangeConfig* GetRangeConfig() const { return nullptr; }
 };
 
 /**
@@ -97,26 +123,6 @@ protected:
 	bool bAllowMovementDuringSkill = false;
 };
 
-/** 조준 사거리 수치 및 개별 방향/궤적 조준선(인디케이터) 설정 구조체 */
-USTRUCT(BlueprintType)
-struct FSkillRangeConfig
-{
-	GENERATED_BODY()
-
-public:
-	FSkillRangeConfig();
-
-	/** 스킬 시전 유효 최대 사거리 (cm) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Range")
-	float Range = 0.f;
-
-	/** 사거리 장판용 머티리얼 설정 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Range")
-	TSoftObjectPtr<class UMaterialInterface> IndicatorMaterial;
-
-	/** 이 설정을 기반으로 캐릭터 발밑에 동적 UGroundIndicatorComponent를 생성 및 셋업해 주는 헬퍼 함수 */
-	class UGroundIndicatorComponent* MakeGroundIndicatorComponent(class AActor* InOwner) const;
-};
 
 
 
@@ -128,9 +134,11 @@ class PROJECTER_API UMouseTargetSkillConfig : public UActiveSkillConfig
 public:
 	UMouseTargetSkillConfig();
 	FORCEINLINE float GetRange() const { return RangeConfig.Range; }
-	FORCEINLINE const FSkillRangeConfig& GetRangeConfig() const { return RangeConfig; }
 	FORCEINLINE ETargetRelationship GetApplyTo() const { return ApplyTo; }
 	FORCEINLINE const TArray<FTargetExecutionPhase>& GetTargetPhases() const { return TargetPhases; }
+	
+	// 가상 함수 오버라이드
+	virtual const FSkillRangeConfig* GetRangeConfig() const override { return &RangeConfig; }
 protected:
 	/** 사거리 및 조준선 궤적 통합 설정 */
 	UPROPERTY(EditDefaultsOnly, Category = "Config")
@@ -151,11 +159,18 @@ class PROJECTER_API UMouseClickSkillConfig : public UActiveSkillConfig
 
 public:
 	UMouseClickSkillConfig();
-	FORCEINLINE float GetRange() const { return RangeConfig.Range; }
-	FORCEINLINE const FSkillRangeConfig& GetRangeConfig() const { return RangeConfig; }
+	FORCEINLINE float GetRange() const { return bIgnoreRangeLimit ? 0.f : RangeConfig.Range; }
+	FORCEINLINE bool IgnoreRangeLimit() const { return bIgnoreRangeLimit; }
+
+	// 가상 함수 오버라이드
+	virtual const FSkillRangeConfig* GetRangeConfig() const override { return &RangeConfig; }
 protected:
-	/** 사거리 및 조준선 궤적 통합 설정 */
+	/** 사거리를 검사하지 않는 글로벌 시전 또는 발사체 스킬 모드 여부 */
 	UPROPERTY(EditDefaultsOnly, Category = "Config")
+	bool bIgnoreRangeLimit = false;
+
+	/** 사거리 및 조준선 궤적 통합 설정 */
+	UPROPERTY(EditDefaultsOnly, Category = "Config", meta = (EditCondition = "!bIgnoreRangeLimit", EditConditionHides))
 	FSkillRangeConfig RangeConfig;
 };
 

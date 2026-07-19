@@ -15,8 +15,6 @@
 #include "AbilitySystemComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "SkillSystem/SkillDataAsset.h"
-#include "SkillSystem/Actor/SkillIndicatorActor.h"
-#include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 
 UMouseClickSkill::UMouseClickSkill()
 {
@@ -75,8 +73,6 @@ bool UMouseClickSkill::ShouldAbilityRespondToEvent(const FGameplayAbilityActorIn
 	{
 		if (!IsInRange(Location))
 		{
-			// 플레이어는 사거리 밖이어도 어빌리티 진입을 허용합니다.
-			// ActivateAbility에서 조준선(인디케이터) 대기 모드로 폴백합니다.
 			if (ActorInfo->PlayerController.IsValid())
 			{
 				return true;
@@ -104,21 +100,25 @@ bool UMouseClickSkill::TryGetMouseLocationInRange(FVector& OutLocation) const
 
 bool UMouseClickSkill::IsInRange(const FVector& Location) const
 {
-	AActor* Avatar = GetAvatarActorFromActorInfo();
-	if (IsValid(Avatar) == false) {
-		//UE_LOG(LogTemp, Warning, TEXT("IsInRange ::IsValid(Avatar) == false"));
+	UMouseClickSkillConfig* Config = Cast<UMouseClickSkillConfig>(CachedConfig);
+	if (IsValid(Config) == false) {
 		return false;
 	}
 
-	UMouseClickSkillConfig* Config = Cast<UMouseClickSkillConfig>(CachedConfig);
-	if (IsValid(Config) == false) {
-		//UE_LOG(LogTemp, Warning, TEXT("IsInRange ::IsValid(Config) == false"));
+	// 사거리 제한을 무시하도록 설정되어 있다면 무조건 참 반환
+	if (Config->IgnoreRangeLimit())
+	{
+		return true;
+	}
+
+	AActor* Avatar = GetAvatarActorFromActorInfo();
+	if (IsValid(Avatar) == false) {
 		return false;
 	}
 
 	const FVector InstigatorLocation = Avatar->GetActorLocation();
 	const float DistanceSquared = FVector::DistSquaredXY(Location, InstigatorLocation);
-	const float RangeWithBuffer = Config->GetRange();
+	const float RangeWithBuffer = GetMaxRange();
 
 	return DistanceSquared <= FMath::Square(RangeWithBuffer + 50.0f); // 50.0f 버퍼 적용
 }
@@ -170,10 +170,6 @@ void UMouseClickSkill::ApplyExecutionEffects()
 void UMouseClickSkill::OnCancelAbility()
 {
 	TargetLocationEffectContext = FGameplayEffectContextHandle();
-	CurrentMouseLocationTargetActor = nullptr;
-
-	ClearRangeIndicator();
-
 	Super::OnCancelAbility();
 }
 
@@ -188,82 +184,16 @@ void UMouseClickSkill::SetWaitExternalTargetEventTask()
 	WaitEventTask->ReadyForActivation();
 }
 
-void UMouseClickSkill::SetWaitTargetTask()
+TSubclassOf<class AGameplayAbilityTargetActor> UMouseClickSkill::GetTargetActorClass() const
 {
-	UAbilityTask_WaitTargetData* WaitTargetTask = UAbilityTask_WaitTargetData::WaitTargetData(
-		this,
-		TEXT("WaitMouseLocationTargetTask"),
-		EGameplayTargetingConfirmation::UserConfirmed,
-		AMouseLocationTargetActor::StaticClass()
-	);
-
-	WaitTargetTask->ValidData.AddDynamic(this, &UMouseClickSkill::OnTargetDataReady);
-	WaitTargetTask->Cancelled.AddDynamic(this, &UMouseClickSkill::OnTargetCancelled);
-
-	AGameplayAbilityTargetActor* SpawnedActor = nullptr;
-	AMouseLocationTargetActor* MouseLocationTargetActor = nullptr;
-	if (WaitTargetTask->BeginSpawningActor(this, AMouseLocationTargetActor::StaticClass(), SpawnedActor))
-	{
-		MouseLocationTargetActor = Cast<AMouseLocationTargetActor>(SpawnedActor);
-		if (MouseLocationTargetActor)
-		{
-			CurrentMouseLocationTargetActor = MouseLocationTargetActor;
-			MouseLocationTargetActor->PrimaryPC = Cast<APlayerController>(GetActorInfo().PlayerController);
-
-			// 조준선 설정 및 최대 사거리 데이터 주입
-			USkillDataAsset* DataAsset = GetSkillDataAsset();
-			UMouseClickSkillConfig* ClickConfig = Cast<UMouseClickSkillConfig>(CachedConfig);
-			
-			FSkillRangeConfig FinalRangeConfig;
-			if (IsValid(ClickConfig))
-			{
-				FinalRangeConfig = ClickConfig->GetRangeConfig();
-			}
-
-			FSkillIndicatorConfig SetupIndicatorConfig;
-			if (DataAsset != nullptr)
-			{
-				SetupIndicatorConfig = DataAsset->GetIndicatorConfig();
-			}
-			MouseLocationTargetActor->Setup(SetupIndicatorConfig, FinalRangeConfig.Range);
-
-			// 🌟 동적으로 캐릭터 발밑에 사거리 장판 생성
-			AActor* Avatar = GetAvatarActorFromActorInfo();
-			if (Avatar != nullptr)
-			{
-				ActiveRangeIndicatorComp = FinalRangeConfig.MakeGroundIndicatorComponent(Avatar);
-			}
-
-			WaitTargetTask->FinishSpawningActor(this, SpawnedActor);
-		}
-	}
-
-	WaitTargetTask->ReadyForActivation();
-
-	FVector PendingLocation = FVector::ZeroVector;
-	if (ConsumePendingExternalTargetLocation(PendingLocation))
-	{
-		MouseLocationTargetActor->SubmitExternalLocation(PendingLocation);
-		return;
-	}
-
-	// 수동 조준(Alt 입력)인 상태에서는 즉시 컨펌하지 않고 장판 대기 모드를 유지합니다.
-	if (!bIsManualAiming)
-	{
-		APlayerController* PlayerController = Cast<APlayerController>(GetActorInfo().PlayerController.Get());
-		const bool bCanUseMouseConfirm = IsLocallyControlled() && IsValid(PlayerController) && PlayerController->IsLocalPlayerController();
-		if (bCanUseMouseConfirm)
-		{
-			MouseLocationTargetActor->TryConfirmMouseLocation();
-		}
-	}
+	return AMouseLocationTargetActor::StaticClass();
 }
 
 void UMouseClickSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle) 
 {
-	ClearRangeIndicator();
+	Super::OnTargetDataReady(DataHandle);
 
-	if (!DataHandle.IsValid(0) /*|| !CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo) */ ) return;
+	if (!DataHandle.IsValid(0)) return;
 
 	FVector Location = FVector::ZeroVector;
 	const FGameplayAbilityTargetData* TargetData = DataHandle.Get(0);
@@ -297,8 +227,7 @@ void UMouseClickSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle&
 
 void UMouseClickSkill::OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataHandle)
 {
-	CurrentMouseLocationTargetActor = nullptr;
-	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+	Super::OnTargetCancelled(DataHandle);
 }
 
 void UMouseClickSkill::OnExternalTargetLocationReceived(FGameplayEventData Payload)
@@ -320,9 +249,9 @@ void UMouseClickSkill::SubmitExternalTargetLocation(const FVector& InLocation)
 		return;
 	}
 
-	if (CurrentMouseLocationTargetActor.IsValid())
+	if (AMouseLocationTargetActor* MouseLocationTargetActor = Cast<AMouseLocationTargetActor>(CurrentTargetActor.Get()))
 	{
-		CurrentMouseLocationTargetActor->SubmitExternalLocation(InLocation);
+		MouseLocationTargetActor->SubmitExternalLocation(InLocation);
 		return;
 	}
 
@@ -371,18 +300,22 @@ FVector UMouseClickSkill::GetMouseLocation() const
 
 void UMouseClickSkill::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
-	ClearRangeIndicator();
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
-void UMouseClickSkill::ClearRangeIndicator()
+void UMouseClickSkill::ExecuteSkill()
 {
-	if (ActiveRangeIndicatorComp.IsValid())
-	{
-		ActiveRangeIndicatorComp->SetVisibility(false);
-		ActiveRangeIndicatorComp->UnregisterComponent();
-		ActiveRangeIndicatorComp->DestroyComponent();
-		ActiveRangeIndicatorComp = nullptr;
-	}
+	Super::ExecuteSkill();
+}
+
+void UMouseClickSkill::CompleteFinishSkill()
+{
+	Super::CompleteFinishSkill();
+}
+
+void UMouseClickSkill::CleanUpSkill()
+{
+	PendingExternalTargetLocation.Reset();
+	AffectedActor = nullptr;
 }
 
