@@ -316,8 +316,9 @@ bool USummonRangeBaseGEC::SnapLocationToGround(FVector& InOutLocation, const AAc
 	}
 
 	FHitResult FloorHit;
-	FVector TraceEnd = InOutLocation;
-	TraceEnd.Z -= 1000.0f;
+	// 시작점을 기준 좌표보다 10m 위로 설정하여 지형에 묻히는 경우를 대비하고, 아래로 30m까지 검출하도록 범위를 확장합니다.
+	const FVector TraceStart = InOutLocation + FVector(0.0f, 0.0f, 1000.0f);
+	const FVector TraceEnd = TraceStart - FVector(0.0f, 0.0f, 3000.0f);
 
 	FCollisionQueryParams QueryParams;
 	if (IsValid(Instigator))
@@ -325,7 +326,7 @@ bool USummonRangeBaseGEC::SnapLocationToGround(FVector& InOutLocation, const AAc
 		QueryParams.AddIgnoredActor(Instigator);
 	}
 
-	if (World->LineTraceSingleByChannel(FloorHit, InOutLocation, TraceEnd, this->GroundTraceChannel, QueryParams))
+	if (World->LineTraceSingleByChannel(FloorHit, TraceStart, TraceEnd, this->GroundTraceChannel, QueryParams))
 	{
 		InOutLocation.X = FloorHit.Location.X;
 		InOutLocation.Y = FloorHit.Location.Y;
