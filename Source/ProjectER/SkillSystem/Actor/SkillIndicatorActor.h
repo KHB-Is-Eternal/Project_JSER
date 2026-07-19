@@ -8,6 +8,7 @@
 
 class UGroundIndicatorComponent;
 class UMaterialInstanceDynamic;
+class APlayerController;
 
 UENUM(BlueprintType)
 enum class ESkillIndicatorPositionType : uint8
@@ -19,8 +20,9 @@ enum class ESkillIndicatorPositionType : uint8
 UENUM(BlueprintType)
 enum class ESkillIndicatorRotationType : uint8
 {
-	None,        // 회전 없음 (기본값)
-	LookAtMouse  // 시전자 -> 마우스 조준점을 바라보도록 회전
+	None,            // 회전 없음 (기본값)
+	LookAtMouse,     // 시전자 -> 마우스 조준점을 바라보도록 회전
+	CharacterForward // 캐릭터의 현재 정면(바라보는 방향)을 기준으로 회전 고정
 };
 
 UCLASS()
@@ -33,8 +35,11 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 
 public: 
+	/** 어빌리티에서 초기화 정보를 주입받아 자율 틱을 시작하도록 설정합니다. */
+	void InitializeIndicator(AActor* InAvatar, float InMaxRange);
 	/** 내장 메쉬 크기를 다이렉트로 대입하는 함수 (C++ 강제 보장) */
 	virtual void SetupIndicator(const FVector& InSize);
 
@@ -85,4 +90,13 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Indicator Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UMaterialInstanceDynamic> IndicatorMID;
+
+protected:
+	UPROPERTY()
+	TObjectPtr<AActor> AvatarActor;
+
+	UPROPERTY()
+	TObjectPtr<APlayerController> PC;
+
+	float MaxRange = 0.f;
 };

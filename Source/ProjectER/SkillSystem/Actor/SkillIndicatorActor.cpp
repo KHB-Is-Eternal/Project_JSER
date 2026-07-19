@@ -4,10 +4,11 @@
 #include "SkillSystem/Actor/SkillIndicatorActor.h"
 #include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Kismet/KismetMathLibrary.h"
 
 ASkillIndicatorActor::ASkillIndicatorActor()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = false;
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
@@ -33,6 +34,59 @@ void ASkillIndicatorActor::BeginPlay()
 	}
 
 	Super::BeginPlay();
+}
+
+void ASkillIndicatorActor::InitializeIndicator(AActor* InAvatar, float InMaxRange)
+{
+	AvatarActor = InAvatar;
+	MaxRange = InMaxRange;
+	
+	if (AvatarActor != nullptr)
+	{
+		PC = Cast<APlayerController>(AvatarActor->GetInstigatorController());
+	}
+}
+
+void ASkillIndicatorActor::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	if (!IsValid(AvatarActor) || !IsValid(PC)) return;
+
+	FVector CharacterLoc = AvatarActor->GetActorLocation();
+	FVector WorldLoc, WorldDir;
+
+	if (PC->DeprojectMousePositionToWorld(WorldLoc, WorldDir))
+	{
+		FVector PlaneNormal = FVector::UpVector;
+		float Denominator = FVector::DotProduct(WorldDir, PlaneNormal);
+
+		FVector MouseLoc = CharacterLoc; // Fallback
+		if (FMath::Abs(Denominator) > KINDA_SMALL_NUMBER)
+		{
+			float T = FVector::DotProduct(CharacterLoc - WorldLoc, PlaneNormal) / Denominator;
+			MouseLoc = WorldLoc + WorldDir * T;
+		}
+
+		MouseLoc.Z = CharacterLoc.Z;
+
+		FVector Dir = MouseLoc - CharacterLoc;
+		float Distance = Dir.Size();
+		Dir.Normalize();
+
+		FVector TargetLocation = MouseLoc;
+		const float CurrentMaxRange = MaxRange;
+
+		if (CurrentMaxRange > 0.f && Distance > CurrentMaxRange)
+		{
+			TargetLocation = CharacterLoc + Dir * CurrentMaxRange;
+		}
+
+		FRotator Rotation = UKismetMathLibrary::FindLookAtRotation(CharacterLoc, TargetLocation);
+		float TargetDistance = (CurrentMaxRange > 0.f) ? FMath::Min(Distance, CurrentMaxRange) : Distance;
+
+		UpdateIndicator(CharacterLoc, TargetLocation, Rotation, TargetDistance);
+	}
 }
 
 void ASkillIndicatorActor::SetupIndicator(const FVector& InSize)
@@ -68,9 +122,19 @@ void ASkillIndicatorActor::UpdateIndicator(
 	float InDistanceToTarget)
 {
 	// 0. 회전 기준값 선행 계산 (로컬 오프셋 방향 산출용)
-	const FRotator BaseRotation = (RotationType == ESkillIndicatorRotationType::LookAtMouse) 
-		? (InTargetRotation + RotationOffset) 
-		: (FRotator::ZeroRotator + RotationOffset);
+	FRotator BaseRotation = FRotator::ZeroRotator;
+	if (RotationType == ESkillIndicatorRotationType::LookAtMouse)
+	{
+		BaseRotation = InTargetRotation + RotationOffset;
+	}
+	else if (RotationType == ESkillIndicatorRotationType::CharacterForward && IsValid(AvatarActor))
+	{
+		BaseRotation = AvatarActor->GetActorRotation() + RotationOffset;
+	}
+	else
+	{
+		BaseRotation = FRotator::ZeroRotator + RotationOffset;
+	}
 
 	const FVector BaseLocation = (PositionType == ESkillIndicatorPositionType::Character) 
 		? InCharacterLocation 
