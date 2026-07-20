@@ -129,6 +129,9 @@ void UGroundIndicatorComponent::EnsureIndicatorMeshCompExists()
 			IndicatorMeshComp->SetCastShadow(false);
 			IndicatorMeshComp->bReceivesDecals = false;
 
+			// 미니맵 씬캡처에는 찍히지 않도록 제외
+			IndicatorMeshComp->SetHiddenInSceneCapture(true);
+
 			// 만약 이 컴포넌트(스프링암) 자체가 이미 등록(Registered)된 상태라면, 자식 메쉬도 즉시 씬에 등록해 주어야 렌더링됩니다.
 			if (IsRegistered())
 			{
