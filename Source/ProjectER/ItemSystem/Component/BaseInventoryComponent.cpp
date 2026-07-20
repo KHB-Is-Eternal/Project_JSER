@@ -28,6 +28,18 @@ void UBaseInventoryComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	EnsureInventoryArraysValid();
+
+	// 서버 권한에서만 시작 아이템 지급 (클라이언트 중복 추가 방지)
+	if (const AActor* Owner = GetOwner(); Owner && Owner->HasAuthority())
+	{
+		for (UBaseItemData* Item : StartingItems)
+		{
+			if (Item)
+			{
+				AddItem(Item);
+			}
+		}
+	}
 }
 
 void UBaseInventoryComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
