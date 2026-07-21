@@ -1,22 +1,51 @@
 #include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 #include "NiagaraComponent.h"
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
 #include "SkillSystem/GameplayCueNotify/AGCN_SummonedActor.h"
 #include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 
-void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
+void UVisionParticleManagerSubsystem::RegisterParticle(UNiagaraComponent* Particle, AActor* TargetActor, bool bTrackUntilSeen)
 {
-	Super::Tick(DeltaTime);
-
-	// [Optimization] 10 FPS 제한 (0.1초마다 실행)
-	TickAccumulator += DeltaTime;
-	if (TickAccumulator < 0.1f)
+	if (!IsValid(Particle) || !IsValid(TargetActor))
 	{
 		return;
 	}
-	// 초과분을 남기지 않고 0으로 초기화하여 정확히 프레임을 건너뛰게 함
-	TickAccumulator = 0.0f;
 
+	// 등록 시점에 현재 시야 상태를 즉시 반영 (폴링 제거로 다음 틱 보정이 없으므로 여기서 확정)
+	const bool bVisible = IsTargetVisibleToLocalPlayer(TargetActor);
+	ApplyParticleVisibility(Particle, TargetActor, bVisible);
+
+	// "한 번 보이면 끝까지 보임" 추적은 이미 보이는 순간 완료
+	if (bVisible && bTrackUntilSeen)
+	{
+		return;
+	}
+
+	UVision_VisualComp* VisionComp = TargetActor->FindComponentByClass<UVision_VisualComp>();
+	if (!IsValid(VisionComp))
+	{
+		// 이벤트 소스가 없으면 시야 상태가 변할 수 없으므로 추적하지 않음 (미부착 경고는 질의 API가 담당)
+		return;
+	}
+
+	ManagedParticles.Emplace(Particle, TargetActor, bTrackUntilSeen);
+
+	if (!BoundVisionComps.Contains(VisionComp))
+	{
+		VisionComp->OnTargetRevealed.AddDynamic(this, &UVisionParticleManagerSubsystem::OnVisionStateChanged);
+		VisionComp->OnTargetHidden.AddDynamic(this, &UVisionParticleManagerSubsystem::OnVisionStateChanged);
+		BoundVisionComps.Add(VisionComp);
+	}
+}
+
+void UVisionParticleManagerSubsystem::OnVisionStateChanged()
+{
+	RefreshManagedParticles();
+}
+
+void UVisionParticleManagerSubsystem::RefreshManagedParticles()
+{
 	for (int32 i = ManagedParticles.Num() - 1; i >= 0; --i)
 	{
 		UNiagaraComponent* NC = ManagedParticles[i].ParticleComp.Get();
@@ -29,67 +58,41 @@ void UVisionParticleManagerSubsystem::Tick(float DeltaTime)
 			continue;
 		}
 
-		if (UVision_VisualComp* VisionComp = Target->FindComponentByClass<UVision_VisualComp>())
+		const bool bShouldBeVisible = IsTargetVisibleToLocalPlayer(Target);
+		const bool bCurrentlyVisible = NC->GetVisibleFlag();
+
+		if (bShouldBeVisible != bCurrentlyVisible)
 		{
-			const float CurrentAlpha = VisionComp->GetVisibilityAlpha();
-			const bool bShouldBeVisible = (CurrentAlpha > 0.0f);
-			const bool bCurrentlyVisible = NC->GetVisibleFlag();
+			ApplyParticleVisibility(NC, Target, bShouldBeVisible);
+		}
 
-			if (bShouldBeVisible)
-			{
-				if (!bCurrentlyVisible)
-				{
-					NC->SetVisibility(true);
-					NC->SetHiddenInGame(false);
-
-					if (AGCN_SummonedActor* SummonedActor = Cast<AGCN_SummonedActor>(Target))
-					{
-						if (SummonedActor->CollisionIndicatorComp)
-						{
-							SummonedActor->CollisionIndicatorComp->SetVisibility(true, true);
-							SummonedActor->CollisionIndicatorComp->SetHiddenInGame(false, true);
-						}
-					}
-				}
-
-				if (ManagedParticles[i].bTrackUntilSeen)
-				{
-					ManagedParticles.RemoveAtSwap(i);
-					continue;
-				}
-			}
-			else
-			{
-				if (bCurrentlyVisible)
-				{
-					NC->SetVisibility(false);
-					NC->SetHiddenInGame(true);
-
-					if (AGCN_SummonedActor* SummonedActor = Cast<AGCN_SummonedActor>(Target))
-					{
-						if (SummonedActor->CollisionIndicatorComp)
-						{
-							SummonedActor->CollisionIndicatorComp->SetVisibility(false, true);
-							SummonedActor->CollisionIndicatorComp->SetHiddenInGame(true, true);
-						}
-					}
-				}
-			}
+		if (bShouldBeVisible && ManagedParticles[i].bTrackUntilSeen)
+		{
+			ManagedParticles.RemoveAtSwap(i);
 		}
 	}
 }
 
-TStatId UVisionParticleManagerSubsystem::GetStatId() const
+bool UVisionParticleManagerSubsystem::IsTargetVisibleToLocalPlayer(const AActor* Target) const
 {
-	RETURN_QUICK_DECLARE_CYCLE_STAT(UVisionParticleManagerSubsystem, STATGROUP_Tickables);
+	if (const ULOSVisionSubsystem* VisionSubsystem = GetWorld()->GetSubsystem<ULOSVisionSubsystem>())
+	{
+		return VisionSubsystem->IsActorVisibleToLocalPlayer(Target);
+	}
+	return true;
 }
 
-void UVisionParticleManagerSubsystem::RegisterParticle(UNiagaraComponent* Particle, AActor* TargetActor, bool bTrackUntilSeen)
+void UVisionParticleManagerSubsystem::ApplyParticleVisibility(UNiagaraComponent* Particle, AActor* Target, bool bVisible)
 {
-	if (!IsValid(Particle) || !IsValid(TargetActor))
-	{
-		return;
-	}
+	Particle->SetVisibility(bVisible);
+	Particle->SetHiddenInGame(!bVisible);
 
-	ManagedParticles.Emplace(Particle, TargetActor, bTrackUntilSeen);
+	if (AGCN_SummonedActor* SummonedActor = Cast<AGCN_SummonedActor>(Target))
+	{
+		if (SummonedActor->CollisionIndicatorComp)
+		{
+			SummonedActor->CollisionIndicatorComp->SetVisibility(bVisible, true);
+			SummonedActor->CollisionIndicatorComp->SetHiddenInGame(!bVisible, true);
+		}
+	}
 }

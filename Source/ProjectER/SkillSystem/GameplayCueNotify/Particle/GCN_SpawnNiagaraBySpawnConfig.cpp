@@ -7,7 +7,6 @@
 #include "SkillSystem/GameplayCueNotify/Particle/SkillVfxCullingHelper.h"
 #include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
-#include "LineOfSight/VisionComps/Vision_VisualComp.h"
 
 #include "Engine/Blueprint.h"
 #include "AbilitySystemStats.h"
@@ -154,16 +153,8 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 	{
 		const AActor* VisionTarget = IsValid(MyTarget) ? MyTarget : SourceActor;
 
-		if (CullState == EVfxCullState::SpawnHidden || 
-			(CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen && 
-			 IsValid(VisionTarget) && VisionTarget->FindComponentByClass<UVision_VisualComp>() && 
-			 VisionTarget->FindComponentByClass<UVision_VisualComp>()->GetVisibilityAlpha() <= 0.0f))
-		{
-			SpawnedComponent->SetVisibility(false);
-			SpawnedComponent->SetHiddenInGame(true);
-		}
-
-		if (CullState == EVfxCullState::SpawnAndTrackVision || 
+		// 초기 숨김 처리는 RegisterParticle이 등록 시점에 시야 상태로 확정함 (006 합-1/합-2)
+		if (CullState == EVfxCullState::SpawnAndTrackVision ||
 			CullState == EVfxCullState::SpawnHidden || 
 			CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen)
 		{

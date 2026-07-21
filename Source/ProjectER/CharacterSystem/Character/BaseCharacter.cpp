@@ -47,8 +47,9 @@
 #include "UI/UI_HP_Bar.h" // HP바 위젯용
 
 #include "GameModeBase/State/ER_PlayerState.h"
+#include "GlobalUtil/StaticGlobalUtils.h"
 #include "LineOfSight/MainVisionRTManager.h"
-#include "LineOfSight/Management/VisionPlayerStateComp.h"
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
 
 // 길찾기 성능 프로파일링 — 콘솔: stat ProjectER_Pathfinding
@@ -524,34 +525,13 @@ void ABaseCharacter::Server_SetTeamID_Implementation(ETeamType NewTeamID)
 	OnRep_TeamID();
 }
 
-EVisionChannel ABaseCharacter::ConvertTeamToVisionChannel(ETeamType InTeamType)
-{
-	switch (InTeamType)
-	{
-		case ETeamType::None:
-		return EVisionChannel::None;
-		
-		case ETeamType::Team_A:
-		return EVisionChannel::TeamA;
-		
-		case ETeamType::Team_B:
-		return EVisionChannel::TeamB;
-		
-		case ETeamType::Team_C:
-		return EVisionChannel::TeamC;
-
-		default:
-		return EVisionChannel::None;
-	}
-}
-
 EVisionChannel ABaseCharacter::GetVisionChannelFromPlayerStateComp()
 {
 	if (const AER_PlayerState* ERPS = GetPlayerState<AER_PlayerState>())
 	{
-		return ConvertTeamToVisionChannel( ERPS->GetTeamType());
+		return UStaticGlobalUtils::ConvertTeamToVisionChannel( ERPS->GetTeamType());
 	}
-	
+
 	//failed to get the vision channel -> return none
 	return EVisionChannel::None;
 }
@@ -2389,20 +2369,6 @@ void ABaseCharacter::UpdateMinimapVisuals(FLinearColor n_teamColor)
 	*/
 }
 
-EVisionChannel ABaseCharacter::GetVisionChannelFromVisionPlayerStateComp()
-{
-	if (APlayerState* PC=GetPlayerState())
-	{
-		if (UVisionPlayerStateComp* PVC=PC->FindComponentByClass<UVisionPlayerStateComp>())
-		{
-			return PVC->GetTeamChannel();
-		}
-	}
-
-	//failed to get the vision channel
-	return EVisionChannel::None;
-}
-
 void ABaseCharacter::InitPlayer()
 {
 	// UI 초기화 (로컬 플레이어 전용 로직이 내부에 있음)
@@ -2466,14 +2432,12 @@ void ABaseCharacter::Multicast_ToggleCraftingUI_Implementation(bool bShow)
 			CraftingWidgetComp->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform);
 			CraftingWidgetComp->SetRelativeLocation(FVector(0.f, 0.f, 400.f)); // HP바(300.f)보다 더 높은 위치로 지정
 
-			// 시야 판정 타이머 시작 (0.1초마다 검사)
-			GetWorld()->GetTimerManager().SetTimer(
-				CraftingUIVisibilityTimer,
-				this,
-				&ABaseCharacter::UpdateCraftingUIVisibility,
-				0.3f,
-				true
-			);
+			// 시야 상태 변화 델리게이트 구독 (폴링 타이머 대체 — 006 합-2)
+			if (UVision_VisualComp* VisionComp = FindComponentByClass<UVision_VisualComp>())
+			{
+				VisionComp->OnTargetRevealed.AddUniqueDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+				VisionComp->OnTargetHidden.AddUniqueDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+			}
 
 			// 즉시 1회 실행하여 최초 상태 반영
 			UpdateCraftingUIVisibility();
@@ -2487,8 +2451,12 @@ void ABaseCharacter::Multicast_ToggleCraftingUI_Implementation(bool bShow)
 			CraftingWidgetComp = nullptr;
 		}
 
-		// 시작했던 타이머 초기화 (파괴)
-		GetWorld()->GetTimerManager().ClearTimer(CraftingUIVisibilityTimer);
+		// 델리게이트 구독 해제 (파괴)
+		if (UVision_VisualComp* VisionComp = FindComponentByClass<UVision_VisualComp>())
+		{
+			VisionComp->OnTargetRevealed.RemoveDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+			VisionComp->OnTargetHidden.RemoveDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+		}
 	}
 }
 
@@ -2509,31 +2477,14 @@ void ABaseCharacter::UpdateCraftingUIVisibility()
 		return;
 	}
 
-	// 2. 시야(Vision) 플러그인 연동: UVision_VisualComp를 통해 가시성 확인
-	if (UVision_VisualComp* VisionComp = FindComponentByClass<UVision_VisualComp>())
+	// 2. 시야(Vision) 플러그인 연동: 단일 질의 API로 판정 (거리 폴백 제거 — 006 합-1)
+	if (const ULOSVisionSubsystem* VisionSubsystem = GetWorld()->GetSubsystem<ULOSVisionSubsystem>())
 	{
-		// Vision 컴포넌트의 Alpha 값이 0.0f보다 크면 시야에 들어온 것
-		if (VisionComp->GetVisibilityAlpha() > 0.0f)
-		{
-			CraftingWidgetComp->SetVisibility(true);
-		}
-		else
-		{
-			CraftingWidgetComp->SetVisibility(false);
-		}
+		CraftingWidgetComp->SetVisibility(VisionSubsystem->IsActorVisibleToLocalPlayer(this));
 	}
 	else
 	{
-		// 만약 Vision 컴포넌트가 없다면, 기존 방식(거리 1000 이내)을 기본값으로 사용
-		float Dist = FVector::Dist(this->GetActorLocation(), LocalChar->GetActorLocation());
-		if (Dist > 1000.f)
-		{
-			CraftingWidgetComp->SetVisibility(false);
-		}
-		else
-		{
-			CraftingWidgetComp->SetVisibility(true);
-		}
+		CraftingWidgetComp->SetVisibility(true);
 	}
 }
 

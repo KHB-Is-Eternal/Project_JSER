@@ -69,6 +69,9 @@ protected:
 	UFUNCTION()
 	void OnRep_WardTeamChannel();
 
+	// WardTeamChannel 기준으로 시야 컴포넌트 초기화 (서버 InitializeWardTeam / 클라 OnRep 공통 경로)
+	void ApplyWardTeamChannel();
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:

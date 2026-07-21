@@ -7,7 +7,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Engine/Texture2D.h"
-#include "LineOfSight/VisionComps/Vision_VisualComp.h" // 시야 연동
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h" // 시야 연동 (단일 질의 API)
 
 // 수식 근거: 기존 UI_MainHUD::HandleMinimapClicked의 45° 회전 역산 로직과 동일한 매핑.
 // 캡처(-90° 피치, 직교)에서 이미지 U+ = 월드 +Y, V+ = 월드 -X 이므로
@@ -67,13 +67,16 @@ bool FUI_MinimapProjection::IsCharacterVisibleOnMinimap(const ABaseCharacter* Ch
         return true;
     }
 
-    // 적군: 시야 시스템 연동
-    if (const UVision_VisualComp* VisionComp = Character->FindComponentByClass<UVision_VisualComp>())
+    // 적군: 시야 시스템 연동 (단일 질의 API — 컴포넌트 미부착 폴백 정책은 API가 담당)
+    if (const UWorld* World = Character->GetWorld())
     {
-        return VisionComp->GetVisibilityAlpha() > 0.f;
+        if (const ULOSVisionSubsystem* VisionSubsystem = World->GetSubsystem<ULOSVisionSubsystem>())
+        {
+            return VisionSubsystem->IsActorVisibleToLocalPlayer(Character);
+        }
     }
 
-    return true; // Vision 컴포넌트가 없으면 표시 (기존 캡처 방식과 동일한 동작)
+    return true;
 }
 
 FLinearColor FUI_MinimapProjection::GetTeamColor(const ABaseCharacter* Character, const ABaseCharacter* LocalChar)

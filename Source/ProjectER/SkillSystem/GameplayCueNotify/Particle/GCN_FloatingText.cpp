@@ -6,7 +6,6 @@
 #include "NiagaraSystem.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillVfxCullingHelper.h"
 #include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
-#include "LineOfSight/VisionComps/Vision_VisualComp.h"
 
 UGCN_FloatingText::UGCN_FloatingText()
 {
@@ -75,16 +74,8 @@ bool UGCN_FloatingText::OnExecute_Implementation(AActor* MyTarget, const FGamepl
 		NiagaraComp->SetVariableLinearColor(FName(TEXT("Color")), TextColor);
 		NiagaraComp->SetVariableFloat(FName(TEXT("Size")), TextSize);
 
-		UVision_VisualComp* VisionVisualComp = MyTarget->FindComponentByClass<UVision_VisualComp>();
-		if (CullState == EVfxCullState::SpawnHidden || 
-			(CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen && 
-			 IsValid(VisionVisualComp) && VisionVisualComp->GetVisibilityAlpha() <= 0.0f))
-		{
-			NiagaraComp->SetVisibility(false);
-			NiagaraComp->SetHiddenInGame(true);
-		}
-
-		if (CullState == EVfxCullState::SpawnAndTrackVision || 
+		// 초기 숨김 처리는 RegisterParticle이 등록 시점에 시야 상태로 확정함 (006 합-1/합-2)
+		if (CullState == EVfxCullState::SpawnAndTrackVision ||
 			CullState == EVfxCullState::SpawnHidden || 
 			CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen)
 		{

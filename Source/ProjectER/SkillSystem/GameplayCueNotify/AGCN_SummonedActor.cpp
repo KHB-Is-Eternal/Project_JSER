@@ -225,15 +225,8 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 			// 미니맵 씬캡처에는 찍히지 않도록 제외
 			VfxComponent->SetHiddenInSceneCapture(true);
 
-			if (CullState == EVfxCullState::SpawnHidden ||
-				(CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen && 
-				 IsValid(VisionVisualComp) && VisionVisualComp->GetVisibilityAlpha() <= 0.0f))
-			{
-				VfxComponent->SetVisibility(false);
-				VfxComponent->SetHiddenInGame(true);
-			}
-
-			if (CullState == EVfxCullState::SpawnAndTrackVision || 
+			// 초기 숨김 처리는 RegisterParticle이 등록 시점에 시야 상태로 확정함 (006 합-1/합-2)
+			if (CullState == EVfxCullState::SpawnAndTrackVision ||
 				CullState == EVfxCullState::SpawnHidden || 
 				CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen)
 			{

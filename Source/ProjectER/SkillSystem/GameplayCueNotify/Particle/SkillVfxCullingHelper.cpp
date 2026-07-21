@@ -1,5 +1,5 @@
 #include "SkillSystem/GameplayCueNotify/Particle/SkillVfxCullingHelper.h"
-#include "LineOfSight/VisionComps/Vision_VisualComp.h"
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
 #include "CharacterSystem/Interface/TargetableInterface.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -69,35 +69,27 @@ EVfxCullState USkillVfxCullingHelper::CheckVfxCulling(const AActor* TargetActor,
 		}
 	}
 
-	// 2. 시야(Vision) 판정
-	// TargetActor나 Instigator 둘 중 하나라도 시야 컴포넌트가 있다면 그것을 우선으로 판별합니다.
+	// 2. 시야(Vision) 판정 — 단일 질의 API (006 합-1, 컴포넌트 미부착 폴백 정책은 API가 담당)
 	const AActor* VisionCheckActor = IsValid(TargetActor) ? TargetActor : InstigatorActor;
 	if (IsValid(VisionCheckActor))
 	{
-		if (UVision_VisualComp* VisionComp = VisionCheckActor->FindComponentByClass<UVision_VisualComp>())
+		if (const ULOSVisionSubsystem* VisionSubsystem = World->GetSubsystem<ULOSVisionSubsystem>())
 		{
-			const float CurrentAlpha = VisionComp->GetVisibilityAlpha();
-			// 시야 알파값이 0보다 크면 현재 내 시야에 보인다는 의미
-			if (CurrentAlpha > 0.0f)
+			if (VisionSubsystem->IsActorVisibleToLocalPlayer(VisionCheckActor))
 			{
 				return bIsProjectile ? EVfxCullState::SpawnAndTrackVisionUntilSeen : EVfxCullState::SpawnAndTrackVision;
 			}
-			else
+
+			// 시야 밖이라면 지속형/단발성에 따라 처리가 갈림
+			if (bIsProjectile)
 			{
-				// 시야 밖이라면 지속형/단발성에 따라 처리가 갈림
-				if (bIsProjectile)
-				{
-					return bIsPersistent ? EVfxCullState::SpawnAndTrackVisionUntilSeen : EVfxCullState::SkipSpawn;
-				}
-				else
-				{
-					return bIsPersistent ? EVfxCullState::SpawnHidden : EVfxCullState::SkipSpawn;
-				}
+				return bIsPersistent ? EVfxCullState::SpawnAndTrackVisionUntilSeen : EVfxCullState::SkipSpawn;
 			}
+			return bIsPersistent ? EVfxCullState::SpawnHidden : EVfxCullState::SkipSpawn;
 		}
 	}
 
-	// 3. 시야 컴포넌트를 찾지 못했다면 기존 거리 기반 판정(Fallback) 적용
+	// 3. 판정 대상 액터가 없다면 기존 거리 기반 판정(Fallback) 적용
 	FVector EffectLocation;
 	if (!Parameters.Location.IsNearlyZero())
 	{

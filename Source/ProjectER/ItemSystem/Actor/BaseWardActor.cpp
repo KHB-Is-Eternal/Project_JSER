@@ -51,12 +51,22 @@ void ABaseWardActor::BeginPlay()
 void ABaseWardActor::InitializeWardTeam(uint8 InTeamChannel)
 {
 	WardTeamChannel = InTeamChannel;
+	ApplyWardTeamChannel();
+}
 
+void ABaseWardActor::OnRep_WardTeamChannel()
+{
+	// 클라이언트 측에서 팀 정보가 동기화되면 초기화를 수행합니다.
+	ApplyWardTeamChannel();
+}
+
+void ABaseWardActor::ApplyWardTeamChannel()
+{
 	if (VisionVisualComp)
 	{
 		// 와드의 시야 반경과 팀을 설정하고 서브시스템에 등록(Initialize)합니다.
 		VisionVisualComp->SetVisionRange(VisionRadius);
-		VisionVisualComp->SetVisionChannel(static_cast<EVisionChannel>(InTeamChannel));
+		VisionVisualComp->SetVisionChannel(static_cast<EVisionChannel>(WardTeamChannel));
 		VisionVisualComp->Initialize();
 	}
 
@@ -65,26 +75,8 @@ void ABaseWardActor::InitializeWardTeam(uint8 InTeamChannel)
 		// 두 컴포넌트를 연결하고, 감지 반경을 시야 반경(Visual)과 동일하게 동기화시킵니다.
 		VisionEvaluatorComp->InitializeEvaluator(VisionVisualComp);
 		VisionEvaluatorComp->SyncDetectionRadius();
-		
+
 		// 자기 자신의 팀을 기준으로 안개 걷어낼 대상을 평가하도록 초기화
-		VisionEvaluatorComp->InitializeIfSameTeam();
-	}
-}
-
-void ABaseWardActor::OnRep_WardTeamChannel()
-{
-	// 클라이언트 측에서 팀 정보가 동기화되면 초기화를 수행합니다.
-	if (VisionVisualComp)
-	{
-		VisionVisualComp->SetVisionRange(VisionRadius);
-		VisionVisualComp->SetVisionChannel(static_cast<EVisionChannel>(WardTeamChannel));
-		VisionVisualComp->Initialize();
-	}
-
-	if (VisionEvaluatorComp && VisionVisualComp)
-	{
-		VisionEvaluatorComp->InitializeEvaluator(VisionVisualComp);
-		VisionEvaluatorComp->SyncDetectionRadius();
 		VisionEvaluatorComp->InitializeIfSameTeam();
 	}
 }

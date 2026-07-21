@@ -14,6 +14,7 @@
 #include "ItemSystem/Actor/BaseItemActor.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
 #include "ItemSystem/Actor/BaseWardActor.h"
+#include "GlobalUtil/StaticGlobalUtils.h"
 #include "LineOfSight/Management/VisionPlayerStateComp.h"
 
 UBaseInventoryComponent::UBaseInventoryComponent()
@@ -476,16 +477,7 @@ bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsab
 		return false;
 	}
 
-	// ETeamType -> EVisionChannel 매핑 (ABaseCharacter::ConvertTeamToVisionChannel와 동일 규칙).
-	// 해당 헬퍼가 protected라 public GetTeamType()으로 팀을 얻어 여기서 매핑한다.
-	EVisionChannel VisionChannel = EVisionChannel::None;
-	switch (OwnerChar->GetTeamType())
-	{
-	case ETeamType::Team_A: VisionChannel = EVisionChannel::TeamA; break;
-	case ETeamType::Team_B: VisionChannel = EVisionChannel::TeamB; break;
-	case ETeamType::Team_C: VisionChannel = EVisionChannel::TeamC; break;
-	default:                VisionChannel = EVisionChannel::None;  break;
-	}
+	const EVisionChannel VisionChannel = UStaticGlobalUtils::ConvertTeamToVisionChannel(OwnerChar->GetTeamType());
 
 	if (VisionChannel == EVisionChannel::None)
 	{
