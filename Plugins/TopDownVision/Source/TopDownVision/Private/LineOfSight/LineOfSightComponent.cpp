@@ -13,7 +13,6 @@
 #include "Components/SphereComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/BoxComponent.h"
-#include "LineOfSight/ObjectTracing/UBoundaryAwareVisibilityTracer.h"
 
 #include "DrawDebugHelpers.h"//debug for visualizing the activation
 #include "Engine/TextureRenderTarget2D.h"
@@ -80,9 +79,6 @@ void ULineOfSightComponent::BeginPlay()
         VisionSphere->OnComponentEndOverlap.AddDynamic(
             this, &ULineOfSightComponent::OnVisionSphereEndOverlap);
     }
-
-    // ===== Create tracer =====
-    VisibilityTracer = NewObject<UBoundaryAwareVisibilityTracer>(this);
 
     //set attachment of vision sphere
     VisionSphere->SetupAttachment(GetOwner()->GetRootComponent());
@@ -311,7 +307,7 @@ void ULineOfSightComponent::ToggleLOSStampUpdate(bool bIsOn)
 
 void ULineOfSightComponent::UpdateTargetDetection()
 {
-    if (!bDetectionEnabled || !VisionSphere || !VisibilityTracer)
+    if (!bDetectionEnabled || !VisionSphere)
     {
         UE_LOG(LOSVision, VeryVerbose,
             TEXT("[%s] ULineOfSightComponent::UpdateTargetDetection >> skipped (Disabled or missing components)"),

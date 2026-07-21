@@ -66,7 +66,6 @@ private:
     void EvaluateTick();
     void EvaluateTarget(AActor* Target, UVision_VisualComp* TargetVisual);
     bool EvaluateWallObstacle(AActor* Target, UTopDown2DShapeComp* ShapeComp);
-    bool EvaluateVolumeObstacle(AActor* Target, UTopDown2DShapeComp* ShapeComp);
 
     // --- Visibility reporting --- //
     void ReportVisibility(AActor* Target, bool bVisible);
@@ -95,9 +94,6 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Evaluator")
     float DetectionRadius = 1200.f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Evaluator")
-    float OcclusionThreshold = 0.9f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Evaluator")
     TEnumAsByte<ECollisionChannel> WallTraceChannel = ECC_Visibility;
