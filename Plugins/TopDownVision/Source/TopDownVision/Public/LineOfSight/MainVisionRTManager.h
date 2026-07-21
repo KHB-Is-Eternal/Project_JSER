@@ -119,6 +119,9 @@ protected:
 
 	float TimeSinceLastUpdate = 0.f;
 
+	// UpdateCameraLOS의 같은 프레임 중복 실행 방지 (자체 틱 + DrawUpdates 이중 호출 대비, 006 합-5)
+	uint64 LastUpdateFrame = 0;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision")
 	FName LayeredLOSTextureParam = TEXT("RenderTarget");
 

@@ -22,6 +22,8 @@
 
 UMainVisionRTManager::UMainVisionRTManager()
 {
+    // 자체 틱은 BP의 DrawUpdates 호출이 없는 넷 모드(데디 서버 + 순수 클라 등)를 위한
+    // 폴백 드라이버 — 중복 실행은 UpdateCameraLOS의 프레임 가드가 차단 (006 합-5)
     PrimaryComponentTick.bCanEverTick = true;
     PrimaryComponentTick.bStartWithTickEnabled = true;
 
@@ -130,12 +132,16 @@ void UMainVisionRTManager::TickComponent(float DeltaTime, ELevelTick TickType, F
 	}
 }
 
-
-
 void UMainVisionRTManager::UpdateCameraLOS()
 {
     if (!ShouldRunClientLogic())
         return;
+
+    // 같은 프레임 중복 실행 방지 — 자체 틱과 TopDownCameraComp::DrawUpdates 양쪽에서
+    // 호출되어도 프레임당 1회만 수행 (006 합-5)
+    if (LastUpdateFrame == GFrameCounter)
+        return;
+    LastUpdateFrame = GFrameCounter;
 
     if (!GridVisionMap)
         return;
