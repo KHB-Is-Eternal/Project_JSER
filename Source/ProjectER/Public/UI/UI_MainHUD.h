@@ -35,6 +35,7 @@ class UBaseItemData;
 class UCanvasPanel;
 class AUI_AMiniMapCapture;
 class UMaterialInstanceDynamic;
+class UMaterialInterface;
 class ABaseCharacter;
 class UTexture2D;
 
@@ -139,9 +140,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
 	float MinimapUpdateInterval = 0.f;
 
-	// 팀색 링 텍스처 (화이트 링 — 팀색은 틴트로 적용)
+	// 팀색 링 머티리얼 (TeamColor 파라미터 필요 — M_MinimapLine)
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
-	TSoftObjectPtr<UTexture2D> MinimapRingTexture;
+	TSoftObjectPtr<UMaterialInterface> MinimapRingMaterial;
+
+	// 얼굴 원형 마스킹 머티리얼 (CharacterTexture 파라미터 필요 — M_MinimapIcon)
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
+	TSoftObjectPtr<UMaterialInterface> MinimapFaceMaterial;
 
 	// 얼굴 아이콘 픽셀 크기
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
@@ -162,6 +167,8 @@ private:
 	TMap<TObjectPtr<ABaseCharacter>, FMinimapIconPair> MinimapIcons; // 캐릭터별 아이콘 풀
 
 	float MinimapUpdateAccum = 0.f;
+
+	bool bMinimapStaticParamsSet = false; // 줌/회전각 머티리얼 파라미터 1회 설정 여부
 
 	void UpdateMinimapView();
 	void UpdateMinimapBackground(const FVector& ViewCenter);

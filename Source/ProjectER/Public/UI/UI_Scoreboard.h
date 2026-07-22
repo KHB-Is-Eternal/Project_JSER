@@ -23,7 +23,7 @@ class AER_PlayerState;
 class UCanvasPanel;
 class AUI_AMiniMapCapture;
 class ABaseCharacter;
-class UTexture2D;
+class UMaterialInterface;
 
 UCLASS()
 class PROJECTER_API UUI_Scoreboard : public UUserWidget
@@ -56,9 +56,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
 	float MinimapIconRotationDeg = -45.f;
 
-	// 팀색 링 텍스처 (화이트 링 — 팀색은 틴트로 적용)
+	// 팀색 링 머티리얼 (TeamColor 파라미터 필요 — M_MinimapLine)
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
-	TSoftObjectPtr<UTexture2D> MinimapRingTexture;
+	TSoftObjectPtr<UMaterialInterface> MinimapRingMaterial;
+
+	// 얼굴 원형 마스킹 머티리얼 (CharacterTexture 파라미터 필요 — M_MinimapIcon)
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
+	TSoftObjectPtr<UMaterialInterface> MinimapFaceMaterial;
 
 	// 얼굴 아이콘 픽셀 크기
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")

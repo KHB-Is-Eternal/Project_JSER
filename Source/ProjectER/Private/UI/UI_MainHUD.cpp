@@ -574,10 +574,16 @@ void UUI_MainHUD::UpdateMinimapBackground(const FVector& ViewCenter)
         return;
     }
 
-    // 뷰 회전(45°)은 머티리얼 UV 회전 노드(상수)로 처리 — 여기서는 중심/줌만 갱신
+    // 줌/회전각은 런타임에 불변 — 최초 1회만 설정 (회전각은 아이콘 계산과 같은 프로퍼티를 공유해 어긋남 방지)
+    if (!bMinimapStaticParamsSet)
+    {
+        MinimapBackgroundMID->SetScalarParameterValue(FName("UVZoom"), MinimapViewWidth / MapWidth);
+        MinimapBackgroundMID->SetScalarParameterValue(FName("UVRotationDeg"), MinimapViewRotationDeg);
+        bMinimapStaticParamsSet = true;
+    }
+
     const FVector2D UVCenter = FUI_MinimapProjection::WorldToMapUV(ViewCenter, MinimapCaptureActor->GetMapCenter(), MapWidth);
     MinimapBackgroundMID->SetVectorParameterValue(FName("UVCenter"), FLinearColor(UVCenter.X, UVCenter.Y, 0.f, 0.f));
-    MinimapBackgroundMID->SetScalarParameterValue(FName("UVZoom"), MinimapViewWidth / MapWidth);
 }
 
 void UUI_MainHUD::UpdateMinimapIcons(const ABaseCharacter* LocalChar)
@@ -625,7 +631,8 @@ void UUI_MainHUD::UpdateMinimapIcons(const ABaseCharacter* LocalChar)
         if (!Icons)
         {
             FMinimapIconPair NewPair = FUI_MinimapProjection::CreateIconPair(this, MinimapIconCanvas, Character,
-                LocalChar, MinimapRingTexture.LoadSynchronous(), MinimapRingIconSize, MinimapFaceIconSize);
+                LocalChar, MinimapRingMaterial.LoadSynchronous(), MinimapRingIconSize,
+                MinimapFaceMaterial.LoadSynchronous(), MinimapFaceIconSize);
             if (!NewPair.Face)
             {
                 continue;
@@ -633,8 +640,9 @@ void UUI_MainHUD::UpdateMinimapIcons(const ABaseCharacter* LocalChar)
             Icons = &MinimapIcons.Add(Character, NewPair);
         }
 
-        // HeroData가 늦게 리플리케이션된 경우 얼굴 텍스처 지연 적용
+        // HeroData/TeamID가 늦게 리플리케이션된 경우 지연 적용
         FUI_MinimapProjection::RefreshFaceTexture(*Icons, Character);
+        FUI_MinimapProjection::RefreshTeamColor(*Icons, Character, LocalChar);
 
         // 뷰 범위 판정 + 시야 판정
         const FVector2D Offset = FUI_MinimapProjection::WorldToViewOffset(

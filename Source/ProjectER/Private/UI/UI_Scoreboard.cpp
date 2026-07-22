@@ -100,7 +100,8 @@ void UUI_Scoreboard::UpdateMinimapIcons()
         if (!Icons)
         {
             FMinimapIconPair NewPair = FUI_MinimapProjection::CreateIconPair(this, MinimapIconCanvas, Character,
-                LocalChar, MinimapRingTexture.LoadSynchronous(), MinimapRingIconSize, MinimapFaceIconSize);
+                LocalChar, MinimapRingMaterial.LoadSynchronous(), MinimapRingIconSize,
+                MinimapFaceMaterial.LoadSynchronous(), MinimapFaceIconSize);
             if (!NewPair.Face)
             {
                 continue;
@@ -108,8 +109,9 @@ void UUI_Scoreboard::UpdateMinimapIcons()
             Icons = &MinimapIcons.Add(Character, NewPair);
         }
 
-        // HeroData가 늦게 리플리케이션된 경우 얼굴 텍스처 지연 적용
+        // HeroData/TeamID가 늦게 리플리케이션된 경우 지연 적용
         FUI_MinimapProjection::RefreshFaceTexture(*Icons, Character);
+        FUI_MinimapProjection::RefreshTeamColor(*Icons, Character, LocalChar);
 
         // 시야 판정 (HUD와 동일 규칙)
         if (!FUI_MinimapProjection::IsCharacterVisibleOnMinimap(Character, LocalChar))

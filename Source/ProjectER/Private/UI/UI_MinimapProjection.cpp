@@ -7,6 +7,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Engine/Texture2D.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h" // 시야 연동 (단일 질의 API)
 
 // 수식 근거: 기존 UI_MainHUD::HandleMinimapClicked의 45° 회전 역산 로직과 동일한 매핑.
@@ -102,7 +103,8 @@ FLinearColor FUI_MinimapProjection::GetTeamColor(const ABaseCharacter* Character
 }
 
 FMinimapIconPair FUI_MinimapProjection::CreateIconPair(UUserWidget* OwnerWidget, UCanvasPanel* Canvas, ABaseCharacter* Character,
-    const ABaseCharacter* LocalChar, UTexture2D* RingTexture, const float RingSize, const float FaceSize)
+    const ABaseCharacter* LocalChar, UMaterialInterface* RingMaterial, const float RingSize,
+    UMaterialInterface* FaceMaterial, const float FaceSize)
 {
     FMinimapIconPair NewPair;
     if (!OwnerWidget || !Canvas || !Character)
@@ -111,11 +113,15 @@ FMinimapIconPair FUI_MinimapProjection::CreateIconPair(UUserWidget* OwnerWidget,
     }
 
     // 팀색 링 (얼굴 아래 레이어 — 먼저 추가해야 뒤에 깔림)
-    if (RingTexture)
+    if (RingMaterial)
     {
         NewPair.Ring = NewObject<UImage>(OwnerWidget);
-        NewPair.Ring->SetBrushFromTexture(RingTexture);
-        NewPair.Ring->SetColorAndOpacity(GetTeamColor(Character, LocalChar));
+        NewPair.RingMID = UMaterialInstanceDynamic::Create(RingMaterial, OwnerWidget);
+        if (NewPair.RingMID)
+        {
+            NewPair.Ring->SetBrushFromMaterial(NewPair.RingMID);
+        }
+        RefreshTeamColor(NewPair, Character, LocalChar);
         if (UCanvasPanelSlot* RingSlot = Canvas->AddChildToCanvas(NewPair.Ring))
         {
             RingSlot->SetAnchors(FAnchors(0.f, 0.f));
@@ -126,12 +132,17 @@ FMinimapIconPair FUI_MinimapProjection::CreateIconPair(UUserWidget* OwnerWidget,
         NewPair.Ring->SetVisibility(ESlateVisibility::Collapsed);
     }
 
-    // 얼굴 아이콘
+    // 얼굴 아이콘 (머티리얼이 CharacterTexture를 원형 마스킹)
     NewPair.Face = NewObject<UImage>(OwnerWidget);
-    if (Character->HeroData && Character->HeroData->CharacterIcon)
+    if (FaceMaterial)
     {
-        NewPair.Face->SetBrushFromTexture(Character->HeroData->CharacterIcon);
+        NewPair.FaceMID = UMaterialInstanceDynamic::Create(FaceMaterial, OwnerWidget);
+        if (NewPair.FaceMID)
+        {
+            NewPair.Face->SetBrushFromMaterial(NewPair.FaceMID);
+        }
     }
+    RefreshFaceTexture(NewPair, Character);
     if (UCanvasPanelSlot* FaceSlot = Canvas->AddChildToCanvas(NewPair.Face))
     {
         FaceSlot->SetAnchors(FAnchors(0.f, 0.f));
@@ -146,10 +157,36 @@ FMinimapIconPair FUI_MinimapProjection::CreateIconPair(UUserWidget* OwnerWidget,
 
 void FUI_MinimapProjection::RefreshFaceTexture(FMinimapIconPair& Icons, const ABaseCharacter* Character)
 {
-    if (Icons.Face && !Icons.Face->GetBrush().GetResourceObject()
-        && Character && Character->HeroData && Character->HeroData->CharacterIcon)
+    if (Icons.bFaceTextureApplied || !Icons.Face
+        || !Character || !Character->HeroData || !Character->HeroData->CharacterIcon)
     {
+        return;
+    }
+
+    if (Icons.FaceMID)
+    {
+        Icons.FaceMID->SetTextureParameterValue(FName("CharacterTexture"), Character->HeroData->CharacterIcon);
+    }
+    else
+    {
+        // 얼굴 머티리얼 미지정 시 텍스처 직접 표시 (원형 마스킹 없음)
         Icons.Face->SetBrushFromTexture(Character->HeroData->CharacterIcon);
+    }
+    Icons.bFaceTextureApplied = true;
+}
+
+void FUI_MinimapProjection::RefreshTeamColor(FMinimapIconPair& Icons, const ABaseCharacter* Character, const ABaseCharacter* LocalChar)
+{
+    if (!Icons.RingMID || !Character)
+    {
+        return;
+    }
+
+    const FLinearColor TeamColor = GetTeamColor(Character, LocalChar);
+    if (TeamColor != Icons.CachedRingColor)
+    {
+        Icons.RingMID->SetVectorParameterValue(FName("TeamColor"), TeamColor);
+        Icons.CachedRingColor = TeamColor;
     }
 }
 

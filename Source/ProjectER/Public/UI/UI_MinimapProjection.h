@@ -6,6 +6,8 @@
 class ABaseCharacter;
 class UCanvasPanel;
 class UImage;
+class UMaterialInstanceDynamic;
+class UMaterialInterface;
 class UTexture2D;
 class UUserWidget;
 
@@ -20,6 +22,20 @@ struct FMinimapIconPair
 
     UPROPERTY()
     TObjectPtr<UImage> Face = nullptr;
+
+    // 얼굴 머티리얼 MID (CharacterTexture 파라미터 지연 적용용)
+    UPROPERTY()
+    TObjectPtr<UMaterialInstanceDynamic> FaceMID = nullptr;
+
+    // 링 머티리얼 MID (TeamColor 파라미터 지연 갱신용 — TeamID 리플리케이션 대응)
+    UPROPERTY()
+    TObjectPtr<UMaterialInstanceDynamic> RingMID = nullptr;
+
+    // HeroData 지연 리플리케이션 대응 — 얼굴 텍스처 적용 완료 여부
+    bool bFaceTextureApplied = false;
+
+    // 마지막으로 적용한 팀색 (변경 시에만 파라미터 재설정)
+    FLinearColor CachedRingColor = FLinearColor::Transparent;
 };
 
 /**
@@ -52,11 +68,17 @@ struct PROJECTER_API FUI_MinimapProjection
     static FLinearColor GetTeamColor(const ABaseCharacter* Character, const ABaseCharacter* LocalChar);
 
     // 캔버스에 링 + 얼굴 아이콘 위젯을 생성 (초기 상태 Collapsed). 실패 시 Face가 nullptr
+    // RingMaterial: TeamColor 파라미터를 가진 UI 머티리얼 (M_MinimapLine)
+    // FaceMaterial: CharacterTexture 파라미터로 얼굴을 원형 마스킹하는 UI 머티리얼 (M_MinimapIcon)
     static FMinimapIconPair CreateIconPair(UUserWidget* OwnerWidget, UCanvasPanel* Canvas, ABaseCharacter* Character,
-        const ABaseCharacter* LocalChar, UTexture2D* RingTexture, float RingSize, float FaceSize);
+        const ABaseCharacter* LocalChar, UMaterialInterface* RingMaterial, float RingSize,
+        UMaterialInterface* FaceMaterial, float FaceSize);
 
     // HeroData 지연 리플리케이션 대응 — 얼굴 텍스처가 아직 없으면 재적용 시도
     static void RefreshFaceTexture(FMinimapIconPair& Icons, const ABaseCharacter* Character);
+
+    // TeamID 지연 리플리케이션 대응 — 팀색이 바뀌었으면 링 색 재적용
+    static void RefreshTeamColor(FMinimapIconPair& Icons, const ABaseCharacter* Character, const ABaseCharacter* LocalChar);
 
     // 아이콘 쌍을 캔버스 좌표에 배치하고 표시
     static void PlaceIconPair(FMinimapIconPair& Icons, const FVector2D& CanvasPos);
