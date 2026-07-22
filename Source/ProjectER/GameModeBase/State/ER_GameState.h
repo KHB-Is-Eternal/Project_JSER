@@ -10,6 +10,8 @@ class UCharacterData;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPhaseChangedBP, int32, NewPhase);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerStateChangedSignature, class APlayerState*, InPlayerState);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGameStartedBP);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnHazardVisualsFinishedBP);
 
 // this is for the mpc update
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHazardZonesChanged, const TArray<int32>&, NewDangerZoneIDs);
@@ -44,6 +46,9 @@ public:
 	UFUNCTION()
 	void OnRep_Phase();
 
+	UFUNCTION()
+	void OnRep_GameStarted();
+
 	float GetPhaseRemainingTime() const;
 
 	UFUNCTION(BlueprintCallable)
@@ -62,6 +67,10 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Hazard")
 	void OnDangerZonesReceived(const TArray<int32>& NewDangerZoneIDs);
+
+	// 구역 색 전환 타임라인(OnDangerZonesReceived 내부)의 Finished 핀에서 호출 — 색 전환 완료 시점 알림용
+	UFUNCTION(BlueprintCallable, Category = "Hazard")
+	void NotifyHazardVisualsFinished();
 
 	// 위험 구역 강도 설정 (경고=0.5, 위험=1.0 등 자유롭게 지정)
 	UFUNCTION(NetMulticast, Reliable)
@@ -84,8 +93,17 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnPhaseChangedBP OnPhaseChanged;
 
+	UPROPERTY(BlueprintAssignable)
+	FOnGameStartedBP OnGameStarted;
+
+	UPROPERTY(ReplicatedUsing = OnRep_GameStarted)
+	bool bGameStarted = false;
+
 	UPROPERTY(BlueprintAssignable, Category = "Hazard")
 	FOnHazardZonesChanged OnHazardZonesChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "Hazard")
+	FOnHazardVisualsFinishedBP OnHazardVisualsFinished;
 
 	UPROPERTY(BlueprintAssignable, Category = "GameState|Events")
 	FOnPlayerStateChangedSignature OnPlayerStateAddedDelegate;

@@ -44,7 +44,7 @@ public:
 protected:
 	bool bIsManualAiming = false;
 	virtual void ExecuteSmartCast(const FGameplayEventData& EventData) {}
-	virtual void StartIndicatorMode(bool bIsManual) { bIsManualAiming = bIsManual; }
+	virtual void StartIndicatorMode(bool bIsManual);
 
 	virtual void ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const override;
 	virtual UGameplayEffect* GetCostGameplayEffect() const override;
@@ -135,6 +135,9 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UBaseSkillConfig> CachedConfig;
+
+	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
+	FGameplayTag AimingTag;
 
 	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
 	FGameplayTag CastingTag;

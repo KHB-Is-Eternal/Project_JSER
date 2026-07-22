@@ -446,6 +446,7 @@ namespace ProjectER
 	{
 		namespace Animation
 		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Aiming, "Skill.Animation.Aiming", "Skill Manual Aiming State Tag");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Casting, "Skill.Animation.Casting", "Skill Casting State Tag");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Active, "Skill.Animation.Active", "Skill Active (Hit) State Tag");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Backswing, "Skill.Animation.Backswing", "Skill Backswing State Tag");

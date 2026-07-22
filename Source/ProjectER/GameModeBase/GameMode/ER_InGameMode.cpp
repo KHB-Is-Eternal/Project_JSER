@@ -833,6 +833,12 @@ void AER_InGameMode::StartGame_Internal()
 		NeutralSS->FirstSpawnNeutral();
 	}
 
+	// 카운트다운 종료 후 실제 게임 시작 시점 (미니맵 재캡처 트리거)
+	if (AER_GameState* ERGS = GetGameState<AER_GameState>())
+	{
+		ERGS->bGameStarted = true;
+	}
+
 	HandlePhaseTimeUp();
 }
 

@@ -222,7 +222,10 @@ void AGCN_SummonedActor::SetupVfxComponent(const USkillNiagaraSpawnConfig* Niaga
 
 		if (IsValid(VfxComponent))
 		{
-			if (CullState == EVfxCullState::SpawnHidden || 
+			// 미니맵 씬캡처에는 찍히지 않도록 제외
+			VfxComponent->SetHiddenInSceneCapture(true);
+
+			if (CullState == EVfxCullState::SpawnHidden ||
 				(CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen && 
 				 IsValid(VisionVisualComp) && VisionVisualComp->GetVisibilityAlpha() <= 0.0f))
 			{

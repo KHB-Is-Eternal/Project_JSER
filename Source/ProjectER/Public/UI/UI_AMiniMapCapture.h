@@ -17,6 +17,10 @@ public:
     UFUNCTION()
     void UpdateMiniMap();
 
+    // 미니맵 좌표 변환용 맵 기준 정보 (UI_MinimapProjection과 함께 사용)
+    FVector GetMapCenter() const;
+    float GetMapOrthoWidth() const;
+
 protected:
     virtual void BeginPlay() override;
 
@@ -29,4 +33,8 @@ protected:
     UPROPERTY(EditAnywhere)
     class UTextureRenderTarget2D* MapRenderTarget;
 
+private:
+    // 게임 상태 변화 시 맵 재캡처 (페이즈 변경 — 파라미터 시그니처 맞춤용 래퍼)
+    UFUNCTION()
+    void OnPhaseChanged_Recapture(int32 NewPhase);
 };

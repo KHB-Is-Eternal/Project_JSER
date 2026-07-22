@@ -435,15 +435,15 @@ public:
 	void OnLevelChanged();
 protected:
 	// 미니맵용 씬 캡처 컴포넌트
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Minimap")
-	class USceneCaptureComponent2D* MinimapCaptureComponent;
+	// UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Minimap")
+	// class USceneCaptureComponent2D* MinimapCaptureComponent;
 	
-	// 미니맵용 얼굴 아이콘
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
-	class UStaticMeshComponent* MinimapIconMesh;
+	// // 미니맵용 얼굴 아이콘
+	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
+	// class UStaticMeshComponent* MinimapIconMesh;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
-	class UStaticMeshComponent* MinimapLineMesh;
+	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
+	// class UStaticMeshComponent* MinimapLineMesh;
 
 	// 미니맵용 얼굴 마테리얼
 	UPROPERTY()

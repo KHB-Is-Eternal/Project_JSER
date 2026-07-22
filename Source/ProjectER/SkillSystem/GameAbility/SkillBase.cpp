@@ -44,11 +44,13 @@ USkillBase::USkillBase()
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateYes;
+	AimingTag = ProjectER::Skill::Animation::Aiming;
 	CastingTag = ProjectER::Skill::Animation::Casting;
 	ActiveTag = ProjectER::Skill::Animation::Active;
 	BackswingTag = ProjectER::Skill::Animation::Backswing;
 	AllowMovementTag = ProjectER::Skill::Option::AllowMovement;
 	//FailedOutOfRangeTag = FGameplayTag::RequestGameplayTag(FName("State.Failed.OutOfRange"));
+	ActivationBlockedTags.AddTag(AimingTag);
 	ActivationBlockedTags.AddTag(CastingTag);
 	ActivationBlockedTags.AddTag(ActiveTag);
 	ActivationBlockedTags.AddTag(ProjectER::State::Life::Death);
@@ -99,6 +101,7 @@ void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGame
 
 	// 1. 스킬 종료(End) Gameplay Event 발송
 	SendEndEvent();
+	SetSkillTagCount(AimingTag, 0);
 
 	if (ActorInfo && ActorInfo->OwnerActor.IsValid())
 	{
@@ -340,6 +343,7 @@ void USkillBase::ChangeSkillState(ESkillAbilityState NewState)
 	}
 
 	// 모든 애니메이션 관련 태그 초기화
+	SetSkillTagCount(AimingTag, 0);
 	SetSkillTagCount(CastingTag, 0);
 	SetSkillTagCount(ActiveTag, 0);
 	SetSkillTagCount(BackswingTag, 0);
@@ -981,8 +985,16 @@ void USkillBase::SpawnIndicators()
 	}
 }
 
+void USkillBase::StartIndicatorMode(bool bIsManual)
+{
+	bIsManualAiming = bIsManual;
+	SetSkillTagCount(AimingTag, 1);
+}
+
 void USkillBase::ClearIndicators()
 {
+	SetSkillTagCount(AimingTag, 0);
+
 	if (ActiveDirectionIndicator != nullptr)
 	{
 		ActiveDirectionIndicator->Destroy();

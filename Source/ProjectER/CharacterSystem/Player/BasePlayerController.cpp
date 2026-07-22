@@ -1883,10 +1883,13 @@ void ABasePlayerController::ShowScoreboard()
 		NoShowScoreBoard = true;
 		if (IsValid(ScoreboardWidget))
 		{
+			// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 배경은 레벨 로드 시 1회 캡처로 대체됨 (아이콘은 UI_Scoreboard가 CPU로 갱신)
+			/*
 			if (CachedMiniMapActor)
 			{
 				CachedMiniMapActor->UpdateMiniMap();
 			}
+			*/
 
 			ScoreboardWidget->SetVisibility(ESlateVisibility::Visible);
 			// 실시간 데이터 갱신 함수 호출 추가? 해야 됨?

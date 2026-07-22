@@ -55,6 +55,9 @@ ABaseMonster::ABaseMonster()
 	GetMesh()->VisibilityBasedAnimTickOption
 		= EVisibilityBasedAnimTickOption::OnlyTickMontagesWhenNotRendered;
 
+	// 미니맵 씬캡처에는 찍히지 않도록 제외 (캐릭터 아이콘으로 대체 표시)
+	GetMesh()->SetHiddenInSceneCapture(true);
+
 	GetCharacterMovement()->SetComponentTickEnabled(false);
 	GetCharacterMovement()->bOrientRotationToMovement = true;;
 
