@@ -16,6 +16,21 @@ class ABaseItemActor;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryUpdatedSignature);
 
+// 시작 지급 아이템 1종 + 개수
+USTRUCT(BlueprintType)
+struct FStartingItemEntry
+{
+	GENERATED_BODY()
+
+	// 지급할 아이템
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Startup")
+	TObjectPtr<UBaseItemData> Item = nullptr;
+
+	// 지급 개수 (슬롯 스택 초과 시 다음 빈 슬롯으로 분산)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Startup", meta = (ClampMin = "1"))
+	int32 Count = 1;
+};
+
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class PROJECTER_API UBaseInventoryComponent : public UActorComponent
 {
@@ -50,9 +65,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Inventory")
 	int32 MaxSlots = 8;
 
-	// 스폰 시 서버에서 자동 지급할 시작 아이템 목록 (에디터에서 지정)
+	// 스폰 시 서버에서 자동 지급할 시작 아이템 목록 (아이템 + 개수, 에디터에서 지정)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Inventory|Startup")
-	TArray<TObjectPtr<UBaseItemData>> StartingItems;
+	TArray<FStartingItemEntry> StartingItems;
 
 	// 멀티플레이어 동기화를 위해 Replicated 추가
 	UPROPERTY(ReplicatedUsing = OnRep_InventoryContents, VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")

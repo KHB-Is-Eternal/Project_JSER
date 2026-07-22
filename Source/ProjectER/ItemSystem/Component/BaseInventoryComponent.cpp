@@ -33,11 +33,22 @@ void UBaseInventoryComponent::BeginPlay()
 	// 서버 권한에서만 시작 아이템 지급 (클라이언트 중복 추가 방지)
 	if (const AActor* Owner = GetOwner(); Owner && Owner->HasAuthority())
 	{
-		for (UBaseItemData* Item : StartingItems)
+		for (const FStartingItemEntry& Entry : StartingItems)
 		{
-			if (Item)
+			if (Entry.Item == nullptr || Entry.Count <= 0)
 			{
-				AddItem(Item);
+				continue;
+			}
+
+			for (int32 i = 0; i < Entry.Count; ++i)
+			{
+				// AddItem이 스택/빈 슬롯 분산 처리. 가득 차면 false → 초과분 버리고 다음 엔트리로
+				if (!AddItem(Entry.Item))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] StartingItems: inventory full, dropped %d of '%s'"),
+						Entry.Count - i, *Entry.Item->ItemName.ToString());
+					break;
+				}
 			}
 		}
 	}
