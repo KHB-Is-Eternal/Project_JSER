@@ -55,11 +55,16 @@ struct TOPDOWNVISION_API FLOSVisibilityMIDSet
 
 // ── Per-key fixed-size MID pool ───────────────────────────────────────────────
 
+USTRUCT()
 struct FLOSVisibilityMIDPool
 {
+    GENERATED_BODY()
+
     FName MeshKey;
 
-    /** Pre-created sets — fixed size, never grows. */
+    /** Pre-created sets — fixed size, never grows.
+     *  UPROPERTY 필수 — 없으면 GC가 MID를 수거해 댕글링 포인터로 크래시. */
+    UPROPERTY(Transient)
     TArray<FLOSVisibilityMIDSet> Sets;
 
     /** Which sets are free. Parallel to Sets. */
@@ -95,6 +100,13 @@ public:
     void  ReleaseSlot(UVision_VisualComp* Provider);
     void  DrainPool();
 
+    /** MeshKey 기반 가시성 MID 세트를 획득해 Provider의 VisibilityMeshComp에 적용.
+     *  성공 시 true. 키 미등록/풀 고갈 시 false — 호출측에서 소유 모드로 폴백. */
+    bool AcquireVisibilityMIDsFor(UVision_VisualComp* Provider);
+
+    /** 획득했던 MID 세트를 풀에 반납하고 원본 머티리얼 복원. 미보유 시 무시. */
+    void ReleaseVisibilityMIDsFor(UVision_VisualComp* Provider);
+
     int32 GetPoolSize()      const { return Pool.Num(); }
     int32 GetAcquiredCount() const;
 
@@ -122,6 +134,7 @@ private:
     TArray<FLOSStampPoolSlot> Pool;
 
     /** One pool per MeshKey — fixed size, pre-warmed at Initialize. */
+    UPROPERTY(Transient)
     TArray<FLOSVisibilityMIDPool> VisibilityMIDPools;
 
     /** MeshKey → index into VisibilityMIDPools. */
