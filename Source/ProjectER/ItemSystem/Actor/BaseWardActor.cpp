@@ -3,6 +3,7 @@
 #include "Components/SphereComponent.h"
 #include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
+#include "LineOfSight/LOSVisual/VisibilityMeshComp.h"
 #include "TimerManager.h"
 #include "Net/UnrealNetwork.h"
 
@@ -20,11 +21,20 @@ ABaseWardActor::ABaseWardActor()
 	WardMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WardMesh"));
 	RootComponent = WardMesh;
 	WardMesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+	WardMesh->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
+	WardMesh->SetGenerateOverlapEvents(true); // 오버랩 이벤트는 쌍방 모두 true여야 발생
+	WardMesh->ComponentTags.Add(TEXT("VisibilityMesh"));
+	WardMesh->ComponentTags.Add(TEXT("VisionTarget"));
+	WardMesh->SetHiddenInSceneCapture(true);
 
 	HitCollision = CreateDefaultSubobject<USphereComponent>(TEXT("HitCollision"));
 	HitCollision->SetupAttachment(RootComponent);
 	HitCollision->SetSphereRadius(50.f);
 	HitCollision->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+	HitCollision->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
+	HitCollision->SetGenerateOverlapEvents(true); // 오버랩 이벤트는 쌍방 모두 true여야 발생
+	HitCollision->ComponentTags.Add(TEXT("VisionTarget"));
+	HitCollision->SetHiddenInSceneCapture(true);
 
 	VisionEvaluatorComp = CreateDefaultSubobject<UVision_EvaluatorComp>(TEXT("VisionEvaluatorComp"));
 	VisionVisualComp = CreateDefaultSubobject<UVision_VisualComp>(TEXT("VisionVisualComp"));
@@ -41,6 +51,14 @@ void ABaseWardActor::BeginPlay()
 
 	CurrentHealth = MaxHealth;
 
+	// 캐릭터 BP와 동일한 패턴 — 시야 이벤트로 메시 가시성 토글.
+	// 표시(Revealed)는 즉시, 숨김은 페이드 완료(HideComplete) 후에 꺼서 페이드와 공존한다.
+	if (VisionVisualComp)
+	{
+		VisionVisualComp->OnTargetRevealed.AddUniqueDynamic(this, &ABaseWardActor::HandleWardRevealed);
+		VisionVisualComp->OnTargetHideComplete.AddUniqueDynamic(this, &ABaseWardActor::HandleWardHidden);
+	}
+
 	// 수명 타이머 설정
 	if (WardLifeSpan > 0.f)
 	{
@@ -54,6 +72,22 @@ void ABaseWardActor::InitializeWardTeam(uint8 InTeamChannel)
 	ApplyWardTeamChannel();
 }
 
+void ABaseWardActor::HandleWardRevealed()
+{
+	if (WardMesh)
+	{
+		WardMesh->SetVisibility(true);
+	}
+}
+
+void ABaseWardActor::HandleWardHidden()
+{
+	if (WardMesh)
+	{
+		WardMesh->SetVisibility(false);
+	}
+}
+
 void ABaseWardActor::OnRep_WardTeamChannel()
 {
 	// 클라이언트 측에서 팀 정보가 동기화되면 초기화를 수행합니다.
@@ -64,6 +98,13 @@ void ABaseWardActor::ApplyWardTeamChannel()
 {
 	if (VisionVisualComp)
 	{
+		if (UVisibilityMeshComp* VisMeshComp = VisionVisualComp->GetVisibilityMeshComp())
+		{
+			// MeshKey 지정 시 내부에서 FindMeshesByTag()까지 수행.
+			// LOS Resource Pool 세팅에 "Ward" 키가 등록되어 있으면 풀 MID 사용, 없으면 소유 모드 폴백.
+			VisMeshComp->SetMeshKey(TEXT("Ward"));
+		}
+
 		// 와드의 시야 반경과 팀을 설정하고 서브시스템에 등록(Initialize)합니다.
 		VisionVisualComp->SetVisionRange(VisionRadius);
 		VisionVisualComp->SetVisionChannel(static_cast<EVisionChannel>(WardTeamChannel));

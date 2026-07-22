@@ -9,6 +9,7 @@
 #include "LineOfSight/ObjectTracing/TopDown2DShapeComp.h"
 
 #include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
+#include "LineOfSight/Management/Subsystem/LOSRequirementPoolSubsystem.h"
 #include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 #include "ObstacleOcclusion/Manager/OcclusionSubsystem.h"
 
@@ -59,6 +60,10 @@ void UVision_VisualComp::EndPlay(const EEndPlayReason::Type EndPlayReason)
     if (ULOSVisionSubsystem* Subsystem = GetWorld()->GetSubsystem<ULOSVisionSubsystem>())
         Subsystem->UnregisterProvider(this, VisionChannel);
 
+    // 풀에서 받은 가시성 MID 세트 반납 (미보유 시 무시)
+    if (ULOSRequirementPoolSubsystem* PoolSub = GetWorld()->GetSubsystem<ULOSRequirementPoolSubsystem>())
+        PoolSub->ReleaseVisibilityMIDsFor(this);
+
     if (OcclusionTargetIndex != INDEX_NONE)
     {
         if (UOcclusionSubsystem* OccSub = GetWorld()->GetSubsystem<UOcclusionSubsystem>())
@@ -83,7 +88,14 @@ void UVision_VisualComp::Initialize()
     // and only initializes visibility fading mesh.
     if (VisibilityMesh)
     {
-        VisibilityMesh->Initialize();
+        // MeshKey가 설정된 액터는 풀에서 미리 만든 MID 세트를 우선 사용하고,
+        // 키 미등록/풀 고갈 시 기존처럼 메시의 머티리얼로 MID를 생성(소유 모드)한다.
+        bool bPooledMIDs = false;
+        if (ULOSRequirementPoolSubsystem* PoolSub = GetWorld()->GetSubsystem<ULOSRequirementPoolSubsystem>())
+            bPooledMIDs = PoolSub->AcquireVisibilityMIDsFor(this);
+
+        if (!bPooledMIDs)
+            VisibilityMesh->Initialize();
     }
 
     UE_LOG(LOSVision, Log,

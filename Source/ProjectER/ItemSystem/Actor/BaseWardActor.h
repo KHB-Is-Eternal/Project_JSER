@@ -69,6 +69,14 @@ protected:
 	UFUNCTION()
 	void OnRep_WardTeamChannel();
 
+	// 시야 이벤트 구독 핸들러 — 캐릭터 BP와 동일한 패턴.
+	// 머티리얼에 VisibilityAlpha 파라미터가 없어도 메시 가시성으로 숨김/표시를 보장한다.
+	UFUNCTION()
+	void HandleWardRevealed();
+
+	UFUNCTION()
+	void HandleWardHidden();
+
 	// WardTeamChannel 기준으로 시야 컴포넌트 초기화 (서버 InitializeWardTeam / 클라 OnRep 공통 경로)
 	void ApplyWardTeamChannel();
 

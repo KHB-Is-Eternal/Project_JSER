@@ -101,4 +101,7 @@ private:
 private:
     void CacheOriginalMaterials();
     UMeshComponent* FindMeshComponentForSlot(int32 GlobalSlotIndex, int32& OutLocalSlotIndex) const;
+
+    /** First valid tagged mesh — skeletal first, then static. Pool mode target. */
+    UMeshComponent* GetFirstTargetMesh() const;
 };
