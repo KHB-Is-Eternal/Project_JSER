@@ -50,6 +50,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Inventory")
 	int32 MaxSlots = 8;
 
+	// 스폰 시 서버에서 자동 지급할 시작 아이템 목록 (에디터에서 지정)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Inventory|Startup")
+	TArray<TObjectPtr<UBaseItemData>> StartingItems;
+
 	// 멀티플레이어 동기화를 위해 Replicated 추가
 	UPROPERTY(ReplicatedUsing = OnRep_InventoryContents, VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
 	TArray<UBaseItemData*> InventoryContents;
