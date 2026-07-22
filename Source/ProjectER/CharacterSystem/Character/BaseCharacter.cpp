@@ -201,6 +201,9 @@ ABaseCharacter::ABaseCharacter()
 	// 캐릭터 메쉬는 미니맵에 안보이게 (TopDownVision 등 다른 캡처에도 영향 가능 — 유지)
 	GetMesh()->SetHiddenInSceneCapture(true);
 
+	// 시야 시스템의 VisibilityMeshComp가 페이드 대상 메시로 인식하도록 태그 추가
+	GetMesh()->ComponentTags.Add(TEXT("VisibilityMesh"));
+
 	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정
 	/*
 	// 미니맵 아이콘은 미니맵에 보이게
