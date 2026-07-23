@@ -185,7 +185,7 @@ void ABaseRangeOverlapEffectActor::SetCollisionComponent(UShapeComponent* InColl
 
 	// 2. 물리 및 충돌 설정 (공통)
 	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	CollisionComponent->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+	CollisionComponent->SetCollisionProfileName(TEXT("SkillArea"));
 	CollisionComponent->SetGenerateOverlapEvents(true);
 
 	if (GetRootComponent() != CollisionComponent)
