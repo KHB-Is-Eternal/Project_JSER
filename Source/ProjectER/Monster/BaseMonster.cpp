@@ -698,7 +698,12 @@ void ABaseMonster::RewardMonsterXP(AActor* Player, FGameplayTag Tag, float Amoun
 
 void ABaseMonster::OnCooldown(FGameplayTag CooldownTag, float Cooldown)
 {
-	AddCooldownTag(CooldownTag);
+	// 제거 타이머는 태그당 하나뿐이므로, 만료 전 재호출 시 태그 카운트가 누적되어
+	// 영구 잔류(-1이 한 번만 실행)하지 않도록 중복 부여를 방지합니다.
+	if (!ASC->HasMatchingGameplayTag(CooldownTag))
+	{
+		AddCooldownTag(CooldownTag);
+	}
 	FTimerHandle& TimerHandle = CooldownTimerMap.FindOrAdd(CooldownTag);
 
 	GetWorld()->GetTimerManager().SetTimer(
