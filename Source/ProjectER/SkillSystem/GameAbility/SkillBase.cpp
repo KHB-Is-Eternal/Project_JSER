@@ -34,6 +34,7 @@
 #include "GameFramework/GameState.h"
 #include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
 #include "SkillSystem/AnimNotify/AnimNotify_AddTagSkillActive.h"
+#include "SkillSystem/AnimNotify/AnimNotify_AddTagSkillCasting.h"
 #include "SkillSystem/Actor/SkillIndicatorActor.h"
 #include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 #include "SkillSystem/GameplayAbilityTargetActor/MouseLocationTargetActor.h"
@@ -73,6 +74,7 @@ void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const 
 {
 	CurrentPhaseIndex = 0;
 	bHasFallbackTriggeredActive = false;
+	MaxExpectedActiveCount = 0;
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
 	{
@@ -94,6 +96,16 @@ void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const 
 void USkillBase::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
 	ClearFallbackTimers();
+
+	// [Fix] 스킬 발동(Active)이 예정돼 있었는데 한 번도 실행되지 않은 채 종료된 경우, 선차감된 쿨타임을 서버에서 환불합니다.
+	if (HasAuthority(&ActivationInfo) && MaxExpectedActiveCount > 0 && CurrentPhaseIndex == 0 && AppliedCooldownHandle.IsValid())
+	{
+		if (UAbilitySystemComponent* ASC = GetASC())
+		{
+			ASC->RemoveActiveGameplayEffect(AppliedCooldownHandle);
+		}
+	}
+	AppliedCooldownHandle = FActiveGameplayEffectHandle();
 
 	if (bWasCancelled) {
 		OnCancelAbility();
@@ -182,7 +194,7 @@ void USkillBase::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FG
 				SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(*CooldownTags);
 			}
 
-			ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, SpecHandle);
+			AppliedCooldownHandle = ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, SpecHandle);
 		}
 	}
 }
@@ -424,12 +436,22 @@ void USkillBase::SetupFallbackTimers()
 		{
 			FTimerHandle ActiveTimer;
 			FTimerDelegate Delegate = FTimerDelegate::CreateUObject(this, &USkillBase::Fallback_TriggerActiveTag, PhaseIndex);
-			
+
 			float TriggerTime = NotifyEvent.GetTriggerTime() + 0.1f;
 			World->GetTimerManager().SetTimer(ActiveTimer, Delegate, TriggerTime, false);
-			
+
 			FallbackActiveTimerHandles.Add(ActiveTimer);
 			PhaseIndex++;
+		}
+		// CastingTag 백업 타이머 등록. Casting 노티파이가 지연/유실되면 Active 폴백이 bRequireCastingTag 검증에
+		// 실패해 스킬 발동 전체가 스킵되므로, Casting 세팅도 동일한 방식으로 백업합니다.
+		else if (NotifyEvent.Notify && NotifyEvent.Notify->IsA(UAnimNotify_AddTagSkillCasting::StaticClass()))
+		{
+			FTimerHandle CastingTimer;
+			float TriggerTime = NotifyEvent.GetTriggerTime() + 0.1f;
+			World->GetTimerManager().SetTimer(CastingTimer, this, &USkillBase::Fallback_TriggerCastingTag, TriggerTime, false);
+
+			FallbackActiveTimerHandles.Add(CastingTimer);
 		}
 	}
 	
@@ -455,10 +477,10 @@ void USkillBase::Fallback_TriggerActiveTag(int32 TargetPhaseIndex)
 
 	if (CurrentPhaseIndex > TargetPhaseIndex) return;
 
-	// 폴백 타이머가 작동했음을 마킹. 이후에 도착하는 실제 애니메이션 Active 노티파이는 전부 무시됨.
-	bHasFallbackTriggeredActive = true;
-
 	if (!TryExecuteSkill()) return;
+
+	// 폴백이 실제로 스킬 발동(Active)을 실행했을 때만 마킹. 검증에 실패한 폴백이 뒤늦게 도착하는 실제 Active 노티파이까지 차단하지 않도록 함.
+	bHasFallbackTriggeredActive = true;
 
 	ChangeSkillState(ESkillAbilityState::Active);
 
@@ -472,6 +494,16 @@ void USkillBase::Fallback_TriggerActiveTag(int32 TargetPhaseIndex)
 
 	ExecuteSkill();
 	CurrentPhaseIndex++;
+}
+
+void USkillBase::Fallback_TriggerCastingTag()
+{
+	if (!IsActive()) return;
+
+	// 이미 Casting 이후 상태(Active/Backswing)로 진입했다면 상태를 후퇴시키지 않습니다.
+	if (CurrentState != ESkillAbilityState::None) return;
+
+	ChangeSkillState(ESkillAbilityState::Casting);
 }
 
 void USkillBase::SetWaitAnimationEvents()
@@ -661,10 +693,18 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 
 			// [Fix] 서버에서 Target에게 예측 키를 강제로 전파하여 GEC까지 전달되도록 합니다.
 			// ScopedPK가 유실된 경우 Ability의 ActivationPK를 백업으로 사용하여 랜덤성을 해결합니다.
-			FPredictionKey BestPK = SourceASC->ScopedPredictionKey;
-			if (!BestPK.IsValidKey()) 
+			// [Fix2] 단, 이 어빌리티가 클라이언트 예측으로 활성화된 경우(ActivationPK 유효)에만 전파합니다.
+			// 서버 단독 활성화(AI, ServerOnly 패시브, 서버 발동 트리거 어빌리티)에서 바깥 RPC 스코프의
+			// 클라 예측 키가 새어 들어오면, 예측한 적 없는 클라이언트가 GameplayCue(VFX/SFX)를 스킵합니다.
+			FPredictionKey BestPK;
+			const FPredictionKey ActivationPK = GetCurrentActivationInfo().GetActivationPredictionKey();
+			if (ActivationPK.IsValidKey())
 			{
-				BestPK = GetCurrentActivationInfo().GetActivationPredictionKey();
+				BestPK = SourceASC->ScopedPredictionKey;
+				if (!BestPK.IsValidKey())
+				{
+					BestPK = ActivationPK;
+				}
 			}
 			
 			FScopedPredictionWindow TargetScopedWindow(TargetASC, BestPK);

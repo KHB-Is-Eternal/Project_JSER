@@ -320,9 +320,10 @@ void AGCN_SummonedActor::SetupCollisionOutline(UShapeComponent* InCollisionCompo
 
 	// 1. 아군/적군/몬스터 색상 판단
 	FLinearColor TargetColor = FLinearColor::Red; // 적군 기본
-	if (const UWorld* World = GetWorld())
+	if (UWorld* World = GetWorld())
 	{
-		if (const APlayerController* LocalPC = World->GetFirstPlayerController())
+		// 리슨 호스트 월드에는 PC가 여러 개 — 로컬 PC를 명시적으로 조회 (006 리슨 버그)
+		if (const APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(World))
 		{
 			if (const AActor* LocalPawn = LocalPC->GetPawn())
 			{

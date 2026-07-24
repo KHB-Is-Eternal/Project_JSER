@@ -29,6 +29,29 @@ void UBaseInventoryComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	EnsureInventoryArraysValid();
+
+	// 서버 권한에서만 시작 아이템 지급 (클라이언트 중복 추가 방지)
+	if (const AActor* Owner = GetOwner(); Owner && Owner->HasAuthority())
+	{
+		for (const FStartingItemEntry& Entry : StartingItems)
+		{
+			if (Entry.Item == nullptr || Entry.Count <= 0)
+			{
+				continue;
+			}
+
+			for (int32 i = 0; i < Entry.Count; ++i)
+			{
+				// AddItem이 스택/빈 슬롯 분산 처리. 가득 차면 false → 초과분 버리고 다음 엔트리로
+				if (!AddItem(Entry.Item))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] StartingItems: inventory full, dropped %d of '%s'"),
+						Entry.Count - i, *Entry.Item->ItemName.ToString());
+					break;
+				}
+			}
+		}
+	}
 }
 
 void UBaseInventoryComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -484,9 +507,7 @@ bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsab
 		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyPlaceWard: failed to resolve team vision channel (None). Ward placement cancelled."));
 		return false;
 	}
-	const uint8 TeamChannel = static_cast<uint8>(VisionChannel);
-
-	// 채널 확정 후에만 스폰 (실패 시 orphan 액터 방지)
+	// 채널 확정(None 아님) 후에만 스폰 (실패 시 orphan 액터 방지)
 	// TODO: 추후 플레이어 컨트롤러에서 마우스 커서 위치를 받아오는 방식으로 수정 예정 (BasePlayerController 수정 필요)
 	const FVector SpawnLocation = OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 150.f);
 
@@ -501,10 +522,10 @@ bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsab
 		return false;
 	}
 
-	// Initialize team for ward
+	// Initialize team for ward (팀 타입 전달 → 와드 내부에서 시야 채널 파생)
 	if (ABaseWardActor* WardActor = Cast<ABaseWardActor>(SpawnedActor))
 	{
-		WardActor->InitializeWardTeam(TeamChannel);
+		WardActor->InitializeWardTeam(OwnerChar->GetTeamType());
 	}
 
 	return true;

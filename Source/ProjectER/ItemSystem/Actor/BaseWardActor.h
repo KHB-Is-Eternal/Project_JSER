@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "AbilitySystemInterface.h"
+#include "CharacterSystem/Interface/TargetableInterface.h"
 #include "LineOfSight/Management/VisionProviderInterface.h"
 #include "BaseWardActor.generated.h"
 
@@ -9,9 +11,12 @@ class UStaticMeshComponent;
 class USphereComponent;
 class UVision_EvaluatorComp;
 class UVision_VisualComp;
+class UProjectERASC;
+class UWardAttributeSet;
+class UAbilitySystemComponent;
 
 UCLASS()
-class PROJECTER_API ABaseWardActor : public AActor, public IVisionProviderInterface
+class PROJECTER_API ABaseWardActor : public AActor, public IVisionProviderInterface, public IAbilitySystemInterface, public ITargetableInterface
 {
 	GENERATED_BODY()
 	
@@ -21,13 +26,21 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-public:	
-	// 체력 감소 처리용 데미지 수신 함수
-	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	// 엔진 수명(SetLifeSpan) 만료 시 호출 — 공통 파괴 경로로 라우팅
+	virtual void LifeSpanExpired() override;
 
-	// 팀 정보 초기화 (설치 시 호출)
+public:
+	// 팀 정보 초기화 (설치 시 호출). 팀에서 시야 채널을 파생한다.
 	UFUNCTION(BlueprintCallable, Category = "Ward")
-	void InitializeWardTeam(uint8 InTeamChannel);
+	void InitializeWardTeam(ETeamType InTeamType);
+
+	// IAbilitySystemInterface 구현 (평타 GE 수신용 ASC 제공)
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	// ITargetableInterface 구현 (적 평타 대상 판정용)
+	virtual ETeamType GetTeamType() const override;
+	virtual bool IsTargetable() const override;
+	virtual void HighlightActor(bool bIsHighlight, int32 StencilValue = 0) override;
 
 	// IVisionProviderInterface 구현
 	virtual uint8 GetVisionTeam() const override;
@@ -80,14 +93,22 @@ protected:
 	// WardTeamChannel 기준으로 시야 컴포넌트 초기화 (서버 InitializeWardTeam / 클라 OnRep 공통 경로)
 	void ApplyWardTeamChannel();
 
+	// GAS: 평타 GE 수신용 ASC + 전용 어트리뷰트셋 (직접 소유, 몬스터 패턴)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ward|GAS")
+	TObjectPtr<UProjectERASC> ASC;
+
+	UPROPERTY()
+	TObjectPtr<UWardAttributeSet> WardAttributes;
+
+	// 게임플레이 팀 (ITargetableInterface). 설치 시 저장.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ward|Team")
+	ETeamType WardTeamType = ETeamType::None;
+
+	// 평타 피격 1회 처리 (서버 전용): 남은 체력 감소 및 0이면 파괴
+	void HandleAutoAttackHit();
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
-	// 타이머 핸들러
-	FTimerHandle LifeSpanTimerHandle;
-
-	UFUNCTION()
-	void OnWardExpired();
-
 	void DestroyWard();
 };

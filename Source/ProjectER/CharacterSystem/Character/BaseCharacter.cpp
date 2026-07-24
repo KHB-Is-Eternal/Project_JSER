@@ -2288,7 +2288,8 @@ void ABaseCharacter::OnHealthChanged()
 		}
 		else
 		{
-			APlayerController* LocalPC = GetWorld()->GetFirstPlayerController();
+			// 리슨 호스트 월드에는 PC가 여러 개 — 로컬 PC를 명시적으로 조회 (006 리슨 버그)
+			APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(GetWorld());
 			if (LocalPC)
 			{
 				AER_PlayerState* MyPS = LocalPC->GetPlayerState<AER_PlayerState>();
@@ -2467,7 +2468,8 @@ void ABaseCharacter::UpdateCraftingUIVisibility()
 {
 	if (!CraftingWidgetComp) return;
 
-	APlayerController* LocalPC = GetWorld()->GetFirstPlayerController();
+	// 리슨 호스트 월드에는 PC가 여러 개 — 로컬 PC를 명시적으로 조회 (006 리슨 버그)
+	APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(GetWorld());
 	if (!LocalPC) return;
 
 	ABaseCharacter* LocalChar = Cast<ABaseCharacter>(LocalPC->GetPawn());
