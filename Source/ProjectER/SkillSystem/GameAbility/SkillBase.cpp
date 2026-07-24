@@ -693,10 +693,18 @@ void USkillBase::ApplyEffectToTargetInternal(UAbilitySystemComponent* TargetASC,
 
 			// [Fix] 서버에서 Target에게 예측 키를 강제로 전파하여 GEC까지 전달되도록 합니다.
 			// ScopedPK가 유실된 경우 Ability의 ActivationPK를 백업으로 사용하여 랜덤성을 해결합니다.
-			FPredictionKey BestPK = SourceASC->ScopedPredictionKey;
-			if (!BestPK.IsValidKey()) 
+			// [Fix2] 단, 이 어빌리티가 클라이언트 예측으로 활성화된 경우(ActivationPK 유효)에만 전파합니다.
+			// 서버 단독 활성화(AI, ServerOnly 패시브, 서버 발동 트리거 어빌리티)에서 바깥 RPC 스코프의
+			// 클라 예측 키가 새어 들어오면, 예측한 적 없는 클라이언트가 GameplayCue(VFX/SFX)를 스킵합니다.
+			FPredictionKey BestPK;
+			const FPredictionKey ActivationPK = GetCurrentActivationInfo().GetActivationPredictionKey();
+			if (ActivationPK.IsValidKey())
 			{
-				BestPK = GetCurrentActivationInfo().GetActivationPredictionKey();
+				BestPK = SourceASC->ScopedPredictionKey;
+				if (!BestPK.IsValidKey())
+				{
+					BestPK = ActivationPK;
+				}
 			}
 			
 			FScopedPredictionWindow TargetScopedWindow(TargetASC, BestPK);
