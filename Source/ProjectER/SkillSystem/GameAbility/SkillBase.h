@@ -177,9 +177,13 @@ protected:
 	UPROPERTY()
 	bool bHasFallbackTriggeredActive = false;
 
+	/** CommitAbility로 선차감된 쿨타임 GE 핸들. 스킬 발동(Active)이 한 번도 실행되지 않은 채 종료되면 환불에 사용합니다. (const ApplyCooldown에서 기록하므로 mutable) */
+	mutable FActiveGameplayEffectHandle AppliedCooldownHandle;
+
 	void SetupFallbackTimers();
 	void ClearFallbackTimers();
 	void Fallback_TriggerActiveTag(int32 TargetPhaseIndex);
+	void Fallback_TriggerCastingTag();
 
 	void SetWaitEventBackswingTag();
 
