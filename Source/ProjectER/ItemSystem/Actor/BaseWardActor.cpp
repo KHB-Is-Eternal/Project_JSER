@@ -4,6 +4,10 @@
 #include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
 #include "LineOfSight/LOSVisual/VisibilityMeshComp.h"
+#include "AbilitySystemComponent.h"
+#include "CharacterSystem/GAS/ProjectERASC.h"
+#include "ItemSystem/GAS/WardAttributeSet.h"
+#include "GlobalUtil/StaticGlobalUtils.h"
 #include "Net/UnrealNetwork.h"
 
 ABaseWardActor::ABaseWardActor()
@@ -12,7 +16,7 @@ ABaseWardActor::ABaseWardActor()
 	bReplicates = true;
 
 	WardTeamChannel = 255; // EVisionChannel::None (255)로 초기화하여, 0(TeamA)이나 1(TeamB)로 변경 시 클라이언트에서 무조건 OnRep이 발생하도록 강제함
-	MaxHealth = 3;
+	MaxHealth = 4; // 적 평타 4회 피격 시 파괴
 	CurrentHealth = MaxHealth;
 	WardLifeSpan = 60.f;
 	VisionRadius = 800.f;
@@ -21,6 +25,7 @@ ABaseWardActor::ABaseWardActor()
 	RootComponent = WardMesh;
 	WardMesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
 	WardMesh->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
+	WardMesh->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (적 평타 커서 타겟 선택)
 	WardMesh->SetGenerateOverlapEvents(true); // 오버랩 이벤트는 쌍방 모두 true여야 발생
 	WardMesh->ComponentTags.Add(TEXT("VisibilityMesh"));
 	WardMesh->ComponentTags.Add(TEXT("VisionTarget"));
@@ -31,12 +36,19 @@ ABaseWardActor::ABaseWardActor()
 	HitCollision->SetSphereRadius(50.f);
 	HitCollision->SetCollisionProfileName(TEXT("BlockAllDynamic"));
 	HitCollision->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
+	HitCollision->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (적 평타 커서 타겟 선택)
 	HitCollision->SetGenerateOverlapEvents(true); // 오버랩 이벤트는 쌍방 모두 true여야 발생
 	HitCollision->ComponentTags.Add(TEXT("VisionTarget"));
 	HitCollision->SetHiddenInSceneCapture(true);
 
 	VisionEvaluatorComp = CreateDefaultSubobject<UVision_EvaluatorComp>(TEXT("VisionEvaluatorComp"));
 	VisionVisualComp = CreateDefaultSubobject<UVision_VisualComp>(TEXT("VisionVisualComp"));
+
+	// GAS: 평타 GE 수신용 ASC + 전용 어트리뷰트셋 직접 소유 (몬스터 패턴, Minimal 복제)
+	ASC = CreateDefaultSubobject<UProjectERASC>(TEXT("ASC"));
+	ASC->SetIsReplicated(true);
+	ASC->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
+	WardAttributes = CreateDefaultSubobject<UWardAttributeSet>(TEXT("WardAttributes"));
 
 	// (제거됨) 풀 시스템 바인딩 시도했던 유효하지 않은 함수 연결 제거
 
@@ -49,6 +61,16 @@ void ABaseWardActor::BeginPlay()
 	Super::BeginPlay();
 
 	CurrentHealth = MaxHealth;
+
+	// GAS 액터 정보 초기화(평타 GE 수신) + 평타 피격 구독
+	if (ASC)
+	{
+		ASC->InitAbilityActorInfo(this, this);
+	}
+	if (WardAttributes)
+	{
+		WardAttributes->OnWardAutoAttackHit.AddUObject(this, &ABaseWardActor::HandleAutoAttackHit);
+	}
 
 	// 캐릭터 BP와 동일한 패턴 — 시야 이벤트로 메시 가시성 토글.
 	// 표시(Revealed)는 즉시, 숨김은 페이드 완료(HideComplete) 후에 꺼서 페이드와 공존한다.
@@ -65,9 +87,10 @@ void ABaseWardActor::BeginPlay()
 	}
 }
 
-void ABaseWardActor::InitializeWardTeam(uint8 InTeamChannel)
+void ABaseWardActor::InitializeWardTeam(ETeamType InTeamType)
 {
-	WardTeamChannel = InTeamChannel;
+	WardTeamType = InTeamType;
+	WardTeamChannel = static_cast<uint8>(UStaticGlobalUtils::ConvertTeamToVisionChannel(InTeamType));
 	ApplyWardTeamChannel();
 }
 
@@ -128,21 +151,42 @@ void ABaseWardActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ABaseWardActor, WardTeamChannel);
 }
 
-float ABaseWardActor::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
+UAbilitySystemComponent* ABaseWardActor::GetAbilitySystemComponent() const
 {
-	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	return ASC;
+}
 
-	// 와드는 어떤 데미지든 1의 피해만 입음
-	if (ActualDamage > 0.f)
+ETeamType ABaseWardActor::GetTeamType() const
+{
+	return WardTeamType;
+}
+
+bool ABaseWardActor::IsTargetable() const
+{
+	// 생존(체력 남음) 중일 때만 타겟 가능
+	return CurrentHealth > 0;
+}
+
+void ABaseWardActor::HighlightActor(bool bIsHighlight, int32 StencilValue)
+{
+	// TODO: 필요 시 포스트프로세스 하이라이트. 현재 미사용.
+}
+
+void ABaseWardActor::HandleAutoAttackHit()
+{
+	// 데미지 적용(GE)은 서버 권한에서 실행되므로 여기도 서버 전용
+	if (!HasAuthority())
 	{
-		CurrentHealth -= 1;
-		if (CurrentHealth <= 0)
-		{
-			DestroyWard();
-		}
+		return;
 	}
 
-	return ActualDamage;
+	CurrentHealth = FMath::Max(0, CurrentHealth - 1);
+	UE_LOG(LogTemp, Log, TEXT("[BaseWardActor] Auto-attack hit. Remaining health: %d / %d"), CurrentHealth, MaxHealth);
+
+	if (CurrentHealth <= 0)
+	{
+		DestroyWard();
+	}
 }
 
 uint8 ABaseWardActor::GetVisionTeam() const
