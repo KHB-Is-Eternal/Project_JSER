@@ -120,6 +120,11 @@ private:
     UFUNCTION()
     void OnPawnSet(APlayerState* PlayerState, APawn* NewPawn, APawn* OldPawn);
 
+    /** 이 PS의 소유 컨트롤러가 로컬 컨트롤러인가 (리슨 호스트/스탠드얼론의 즉시 반영 판정).
+     *  GetLocalVisionPS와의 포인터 비교는 심리스 트래블의 PS 교체 창에서 옛 PS를
+     *  돌려받아 어긋날 수 있으므로, 소유 관계를 직접 묻는다. */
+    bool IsOwnedByLocalController() const;
+
     void InitializeSameTeamEvaluators();
 
     /** Pushes TeamChannel onto the owning pawn's Vision_VisualComp and

@@ -3,6 +3,7 @@
 #include "CharacterSystem/Interface/TargetableInterface.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "Engine/Engine.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/World.h"
 #include "SkillSystem/Actor/BaseMissileActor/BaseMissileActor.h"
@@ -15,7 +16,8 @@ EVfxCullState USkillVfxCullingHelper::CheckVfxCulling(const AActor* TargetActor,
 	const UWorld* World = IsValid(TargetActor) ? TargetActor->GetWorld() : nullptr;
 	if (!IsValid(World)) return EVfxCullState::SpawnAndIgnoreVision;
 
-	const APlayerController* LocalPC = World->GetFirstPlayerController();
+	// 리슨 호스트 월드에는 PC가 여러 개 — 로컬 PC를 명시적으로 조회 (006 리슨 버그)
+	const APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(const_cast<UWorld*>(World));
 	if (!IsValid(LocalPC)) return EVfxCullState::SpawnAndIgnoreVision;
 
 	const APawn* LocalPawn = LocalPC->GetPawn();

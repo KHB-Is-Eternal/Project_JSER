@@ -181,7 +181,7 @@ void UVisionPlayerStateComp::AddTeamVisibleEntry(AActor* Target, EVisionChannel 
     TeamVisibleActors.MarkItemDirty(Entry);
 
     // 리슨서버 호스트/스탠드얼론: 복제 콜백이 안 오므로 즉시 로컬 반영
-    if (ULOSVisionSubsystem::GetLocalVisionPS(GetWorld()) == this)
+    if (IsOwnedByLocalController())
         ReevaluateTargetVisibility(Target);
 }
 
@@ -200,7 +200,7 @@ void UVisionPlayerStateComp::RemoveTeamVisibleEntry(AActor* Target, EVisionChann
         TeamVisibleActors.MarkArrayDirty();
 
         // 항목이 이미 제거된 뒤라 Exclude 없이 재평가해도 정확함
-        if (ULOSVisionSubsystem::GetLocalVisionPS(GetWorld()) == this)
+        if (IsOwnedByLocalController())
             ReevaluateTargetVisibility(Target);
         return;
     }
@@ -221,8 +221,15 @@ void UVisionPlayerStateComp::ResetTeamVisibleEntries(const TArray<FVisibleActorE
     }
     TeamVisibleActors.MarkArrayDirty();
 
-    if (ULOSVisionSubsystem::GetLocalVisionPS(GetWorld()) == this)
+    if (IsOwnedByLocalController())
         RefreshVisibility();
+}
+
+bool UVisionPlayerStateComp::IsOwnedByLocalController() const
+{
+    const APlayerState* PS = Cast<APlayerState>(GetOwner());
+    const AController* OwnerController = PS ? PS->GetOwningController() : nullptr;
+    return OwnerController && OwnerController->IsLocalController();
 }
 
 // -------------------------------------------------------------------------- //
@@ -353,8 +360,11 @@ void UVisionPlayerStateComp::ReevaluateTargetVisibility(
         Target->FindComponentByClass<UVision_VisualComp>();
     if (!VisualComp) return;
 
-    APlayerController* PC = GetWorld()->GetFirstPlayerController();
-    if (!PC || !PC->IsLocalController()) return;
+    // 리슨 서버 월드에는 PC가 여러 개라 GetFirstPlayerController가 원격 클라의
+    // PC를 돌려줄 수 있음 — "이 머신에 로컬 플레이어가 있는가"를 직접 묻는다
+    // (데디케이트 서버면 null → 표시 로직 스킵).
+    APlayerController* PC = GEngine->GetFirstLocalPlayerController(GetWorld());
+    if (!PC) return;
 
     VisualComp->SetVisible(
         ComputeTargetVisibility(Target, VisualComp, ExcludeObserverTeam));
