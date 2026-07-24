@@ -4,7 +4,6 @@
 #include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
 #include "LineOfSight/LOSVisual/VisibilityMeshComp.h"
-#include "TimerManager.h"
 #include "Net/UnrealNetwork.h"
 
 ABaseWardActor::ABaseWardActor()
@@ -59,10 +58,10 @@ void ABaseWardActor::BeginPlay()
 		VisionVisualComp->OnTargetHideComplete.AddUniqueDynamic(this, &ABaseWardActor::HandleWardHidden);
 	}
 
-	// 수명 타이머 설정
-	if (WardLifeSpan > 0.f)
+	// 수명은 엔진 SetLifeSpan으로 처리. 복제 액터의 파괴는 서버가 주도하므로 서버 권한에서만 설정.
+	if (HasAuthority() && WardLifeSpan > 0.f)
 	{
-		GetWorldTimerManager().SetTimer(LifeSpanTimerHandle, this, &ABaseWardActor::OnWardExpired, WardLifeSpan, false);
+		SetLifeSpan(WardLifeSpan);
 	}
 }
 
@@ -166,8 +165,9 @@ void ABaseWardActor::GetVisibleActors(TArray<AActor*>& OutActors) const
 	// 보통 플러그인 내부 캐시를 사용하므로 여기서는 빈 상태로 반환
 }
 
-void ABaseWardActor::OnWardExpired()
+void ABaseWardActor::LifeSpanExpired()
 {
+	// 엔진 수명 만료 시에도 공통 파괴 경로(DestroyWard)로 통일
 	DestroyWard();
 }
 

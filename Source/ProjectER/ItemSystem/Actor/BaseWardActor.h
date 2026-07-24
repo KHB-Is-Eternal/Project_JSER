@@ -21,7 +21,10 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-public:	
+	// 엔진 수명(SetLifeSpan) 만료 시 호출 — 공통 파괴 경로로 라우팅
+	virtual void LifeSpanExpired() override;
+
+public:
 	// 체력 감소 처리용 데미지 수신 함수
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
@@ -83,11 +86,5 @@ protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
-	// 타이머 핸들러
-	FTimerHandle LifeSpanTimerHandle;
-
-	UFUNCTION()
-	void OnWardExpired();
-
 	void DestroyWard();
 };
