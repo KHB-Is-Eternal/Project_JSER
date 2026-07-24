@@ -20,6 +20,7 @@ class UUI_ToolTip;
 class UCharacterData;
 class UAbilitySystemComponent;
 class USkillDataAsset;
+struct FGameplayEffectSpec;
 
 // [김현수 추가분]
 class UUniformGridPanel;
@@ -447,6 +448,8 @@ protected:
 	void OnCooldownTagChanged(const FGameplayTag Tag, int32 NewCount, int32 SkillIndex);
 
 	void OnCooldownTimeChanged(FActiveGameplayEffectHandle Handle, float StartTime, float Duration, int32 SkillIndex);
+
+	void OnActiveGameplayEffectAddedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle Handle);
 
 	// cool down 관리
 protected:

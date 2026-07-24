@@ -293,6 +293,9 @@ void UUI_MainHUD::InitASCHud(UAbilitySystemComponent* _ASC)
     {
         ASC->AbilityActivatedCallbacks.AddUObject(this, &UUI_MainHUD::OnAbilityActivated);
 
+        // [Fix] 쿨타임 GE가 추가될 때마다 OnTimeChanged를 바인딩합니다. (예측본/복제본 모두 발화)
+        ASC->OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(this, &UUI_MainHUD::OnActiveGameplayEffectAddedToSelf);
+
         // Register cooldown tag events for each skill
         for (int32 i = 0; i < SkillDataAssets.Num(); ++i)
         {
@@ -1245,19 +1248,6 @@ void UUI_MainHUD::OnCooldownTagChanged(const FGameplayTag Tag, int32 NewCount, i
             if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[SkillIndex]->SkillConfig->GetCooldownTags())
             {
                 GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration);
-
-                // [Fix] 쿨타임 반환(Refund) 등에 따른 실시간 시간 갱신을 받기 위해 OnTimeChanged 델리게이트를 구독합니다.
-                FGameplayEffectQuery const Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(*CooldownTags);
-                TArray<FActiveGameplayEffectHandle> ActiveHandles = ASC->GetActiveEffects(Query);
-                for (const FActiveGameplayEffectHandle& Handle : ActiveHandles)
-                {
-                    const FActiveGameplayEffect* ActiveGE = ASC->GetActiveGameplayEffect(Handle);
-                    if (ActiveGE)
-                    {
-                        FActiveGameplayEffect* MutableGE = const_cast<FActiveGameplayEffect*>(ActiveGE);
-                        MutableGE->EventSet.OnTimeChanged.AddUObject(this, &UUI_MainHUD::OnCooldownTimeChanged, SkillIndex);
-                    }
-                }
             }
             ProcessCooldown(SkillIndex, Duration, RemainingTime);
         }
@@ -1328,6 +1318,32 @@ void UUI_MainHUD::OnCooldownTimeChanged(FActiveGameplayEffectHandle Handle, floa
 
         // 변경된 남은 시간으로 로컬 타이머 및 UI 텍스트 갱신
         ProcessCooldown(SkillIndex, Duration, RemainingTime);
+    }
+}
+
+void UUI_MainHUD::OnActiveGameplayEffectAddedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle Handle)
+{
+    // [Fix] 쿨타임 반환(Refund) 등에 따른 실시간 시간 갱신을 받기 위해 OnTimeChanged 델리게이트를 구독합니다.
+    // 태그 이벤트(0→1) 시점 바인딩은 클라이언트에서 예측 GE에만 붙고, 이후 서버에서 복제된 GE에는
+    // 붙지 않아 환급이 UI에 반영되지 않았습니다. GE 추가 시점에 바인딩하면 복제본에도 항상 바인딩됩니다.
+    FGameplayTagContainer GrantedTags;
+    Spec.GetAllGrantedTags(GrantedTags);
+
+    for (int32 i = 0; i < SkillDataAssets.Num(); ++i)
+    {
+        if (SkillDataAssets[i] && SkillDataAssets[i]->SkillConfig)
+        {
+            if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[i]->SkillConfig->GetCooldownTags())
+            {
+                if (GrantedTags.HasAny(*CooldownTags))
+                {
+                    if (FOnActiveGameplayEffectTimeChange* TimeChangeDelegate = SourceASC->OnGameplayEffectTimeChangeDelegate(Handle))
+                    {
+                        TimeChangeDelegate->AddUObject(this, &UUI_MainHUD::OnCooldownTimeChanged, i);
+                    }
+                }
+            }
+        }
     }
 }
 
