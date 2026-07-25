@@ -4,6 +4,7 @@
 #include "GameModeBase/State/ER_GameState.h"
 #include "CharacterSystem/Player/BasePlayerController.h"
 #include "Components/UniformGridPanel.h"
+#include "Components/UniformGridSlot.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Components/Image.h"
@@ -164,13 +165,16 @@ void UUI_CharacterSelectWidget::RefreshSlotSizes()
 	const int32 Columns = 8;
 	const int32 TotalNum = CreatedSlots.Num();
 	const int32 Rows = FMath::CeilToInt((float)TotalNum / (float)Columns);
+	const int32 UsedColumns = FMath::Min(Columns, TotalNum);
 
-	const float CellWidth = GridSize.X / (float)Columns;
-	const float CellHeight = GridSize.Y / (float)Rows;
-	const float SquareSize = FMath::Min(CellWidth, CellHeight);
+	// 세로 공간을 넘지 않는 안전한 1:1 정사각형 슬롯 크기 산출
+	const float MaxCellWidth = GridSize.X / (float)UsedColumns;
+	const float MaxCellHeight = GridSize.Y / (float)Rows;
+	const float SquareSize = FMath::Min(MaxCellWidth, MaxCellHeight);
 
 	if (SquareSize >= 1.0f)
 	{
+		// 1. 모든 슬롯의 1:1 정사각형 크기 지정
 		for (UUI_CharacterSelectSlot* CharSlot : CreatedSlots)
 		{
 			if (CharSlot)
@@ -178,6 +182,32 @@ void UUI_CharacterSelectWidget::RefreshSlotSizes()
 				CharSlot->SetSlotSquareSize(SquareSize);
 			}
 		}
+
+		// 2. 양쪽 끝 맞춤(Space-Between) 위치 오프셋(RenderTranslation) 연산
+		float DynamicGap = 0.0f;
+		if (UsedColumns > 1)
+		{
+			const float TotalSlotsWidth = (float)UsedColumns * SquareSize;
+			const float RemainingWidth = FMath::Max(0.0f, GridSize.X - TotalSlotsWidth);
+			DynamicGap = RemainingWidth / (float)(UsedColumns - 1);
+		}
+
+		const float DefaultCellWidth = GridSize.X / (float)UsedColumns;
+
+		for (int32 i = 0; i < TotalNum; ++i)
+		{
+			if (CreatedSlots.IsValidIndex(i) && CreatedSlots[i])
+			{
+				int32 Col = i % Columns;
+				// UniformGridPanel이 이미 배치해둔 기본 위치(GridCellX)와 목표 위치(TargetX)의 차이만큼만 XOffset 이동
+				float TargetX = (float)Col * (SquareSize + DynamicGap);
+				float GridCellX = (float)Col * DefaultCellWidth;
+				float XOffset = TargetX - GridCellX;
+
+				CreatedSlots[i]->SetRenderTranslation(FVector2D(XOffset, 0.0f));
+			}
+		}
+
 		bSizeUpdated = true;
 	}
 }
@@ -282,9 +312,5 @@ void UUI_CharacterSelectWidget::OnSelectConfirmClicked()
 		PC->Server_ToggleReadyState();
 		
 		bIsReady = !bIsReady;
-		if (Text_ConfirmButton)
-		{
-			Text_ConfirmButton->SetText(bIsReady ? FText::FromString(TEXT("선택 취소")) : FText::FromString(TEXT("선택")));
-		}
 	}
 }
