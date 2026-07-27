@@ -26,6 +26,7 @@ ABaseWardActor::ABaseWardActor()
 	WardMesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
 	WardMesh->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
 	WardMesh->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (적 평타 커서 타겟 선택)
+	WardMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore); // 캐릭터가 와드를 관통해 지나가도록 물리 블록 해제
 	WardMesh->SetGenerateOverlapEvents(true); // 오버랩 이벤트는 쌍방 모두 true여야 발생
 	WardMesh->ComponentTags.Add(TEXT("VisibilityMesh"));
 	WardMesh->ComponentTags.Add(TEXT("VisionTarget"));
@@ -37,6 +38,7 @@ ABaseWardActor::ABaseWardActor()
 	HitCollision->SetCollisionProfileName(TEXT("BlockAllDynamic"));
 	HitCollision->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
 	HitCollision->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (적 평타 커서 타겟 선택)
+	HitCollision->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore); // 캐릭터가 와드를 관통해 지나가도록 물리 블록 해제
 	HitCollision->SetGenerateOverlapEvents(true); // 오버랩 이벤트는 쌍방 모두 true여야 발생
 	HitCollision->ComponentTags.Add(TEXT("VisionTarget"));
 	HitCollision->SetHiddenInSceneCapture(true);
