@@ -7,7 +7,13 @@
 #include "AbilitySystemComponent.h"
 #include "CharacterSystem/GAS/ProjectERASC.h"
 #include "ItemSystem/GAS/WardAttributeSet.h"
+#include "ItemSystem/UI/UI_WardHPBar.h"
 #include "GlobalUtil/StaticGlobalUtils.h"
+#include "Components/WidgetComponent.h"
+#include "Blueprint/UserWidget.h"
+#include "Engine/Engine.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 
 ABaseWardActor::ABaseWardActor()
@@ -52,6 +58,15 @@ ABaseWardActor::ABaseWardActor()
 	ASC->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
 	WardAttributes = CreateDefaultSubobject<UWardAttributeSet>(TEXT("WardAttributes"));
 
+	// 머리 위 HP 바 위젯 (화면 정렬, 4칸 분절). 실제 위젯 클래스는 BP에서 지정.
+	HPBarWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("HPBarWidget"));
+	HPBarWidget->SetupAttachment(RootComponent);
+	HPBarWidget->SetRelativeLocation(FVector(0.f, 0.f, 120.f));
+	HPBarWidget->SetWidgetSpace(EWidgetSpace::Screen);
+	HPBarWidget->SetDrawSize(FVector2D(120.f, 16.f));
+	HPBarWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HPBarWidget->SetHiddenInSceneCapture(true);
+
 	// (제거됨) 풀 시스템 바인딩 시도했던 유효하지 않은 함수 연결 제거
 
 	// 시야 시스템에서 타겟으로 감지될 수 있도록 태그 추가
@@ -82,6 +97,17 @@ void ABaseWardActor::BeginPlay()
 		VisionVisualComp->OnTargetHideComplete.AddUniqueDynamic(this, &ABaseWardActor::HandleWardHidden);
 	}
 
+	// HP 바 위젯 초기화 후 1회 갱신 (로컬 클라이언트 전용 — 서버/데디는 위젯 없음)
+	if (HPBarWidget)
+	{
+		if (HPBarWidgetClass)
+		{
+			HPBarWidget->SetWidgetClass(HPBarWidgetClass);
+		}
+		HPBarWidget->InitWidget();
+	}
+	RefreshHPBar();
+
 	// 수명은 엔진 SetLifeSpan으로 처리. 복제 액터의 파괴는 서버가 주도하므로 서버 권한에서만 설정.
 	if (HasAuthority() && WardLifeSpan > 0.f)
 	{
@@ -102,6 +128,12 @@ void ABaseWardActor::HandleWardRevealed()
 	{
 		WardMesh->SetVisibility(true);
 	}
+	if (HPBarWidget)
+	{
+		HPBarWidget->SetVisibility(true);
+	}
+	// 로컬에 표시되는 시점 — 색/칸 갱신(이때는 로컬 폰 팀이 확정돼 있음)
+	RefreshHPBar();
 }
 
 void ABaseWardActor::HandleWardHidden()
@@ -109,6 +141,10 @@ void ABaseWardActor::HandleWardHidden()
 	if (WardMesh)
 	{
 		WardMesh->SetVisibility(false);
+	}
+	if (HPBarWidget)
+	{
+		HPBarWidget->SetVisibility(false);
 	}
 }
 
@@ -144,6 +180,9 @@ void ABaseWardActor::ApplyWardTeamChannel()
 		// 자기 자신의 팀을 기준으로 안개 걷어낼 대상을 평가하도록 초기화
 		VisionEvaluatorComp->InitializeIfSameTeam();
 	}
+
+	// 팀이 확정됐으니 HP 바 색상(아군/적) 갱신
+	RefreshHPBar();
 }
 
 void ABaseWardActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -151,6 +190,50 @@ void ABaseWardActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ABaseWardActor, WardTeamChannel);
+	DOREPLIFETIME(ABaseWardActor, CurrentHealth);
+}
+
+void ABaseWardActor::OnRep_CurrentHealth()
+{
+	// 클라이언트: 남은 히트가 복제되면 HP 바 갱신
+	RefreshHPBar();
+}
+
+void ABaseWardActor::RefreshHPBar()
+{
+	if (!HPBarWidget)
+	{
+		return;
+	}
+
+	if (UUI_WardHPBar* Bar = Cast<UUI_WardHPBar>(HPBarWidget->GetUserWidgetObject()))
+	{
+		Bar->UpdateBar(CurrentHealth, MaxHealth, IsAllyOfLocalPlayer());
+	}
+}
+
+bool ABaseWardActor::IsAllyOfLocalPlayer() const
+{
+	if (!GEngine)
+	{
+		return false;
+	}
+
+	// 리슨서버 대응: 로컬 플레이어 컨트롤러를 명시적으로 조회
+	APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(GetWorld());
+	if (!LocalPC)
+	{
+		return false;
+	}
+
+	if (const APawn* LocalPawn = LocalPC->GetPawn())
+	{
+		if (const ITargetableInterface* LocalTarget = Cast<ITargetableInterface>(LocalPawn))
+		{
+			return LocalTarget->GetTeamType() == WardTeamType;
+		}
+	}
+	return false;
 }
 
 UAbilitySystemComponent* ABaseWardActor::GetAbilitySystemComponent() const
@@ -184,6 +267,9 @@ void ABaseWardActor::HandleAutoAttackHit()
 
 	CurrentHealth = FMath::Max(0, CurrentHealth - 1);
 	UE_LOG(LogTemp, Log, TEXT("[BaseWardActor] Auto-attack hit. Remaining health: %d / %d"), CurrentHealth, MaxHealth);
+
+	// 서버(리슨 호스트 포함) 즉시 갱신. 원격 클라는 CurrentHealth OnRep으로 갱신됨.
+	RefreshHPBar();
 
 	if (CurrentHealth <= 0)
 	{
