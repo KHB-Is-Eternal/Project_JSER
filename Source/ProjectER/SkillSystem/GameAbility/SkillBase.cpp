@@ -981,6 +981,11 @@ void USkillBase::OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataH
 
 void USkillBase::SpawnIndicators()
 {
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+
 	USkillDataAsset* DataAsset = GetSkillDataAsset();
 	AActor* Avatar = GetAvatarActorFromActorInfo();
 	if (!IsValid(DataAsset) || !IsValid(Avatar) || !IsValid(CachedConfig)) return;
