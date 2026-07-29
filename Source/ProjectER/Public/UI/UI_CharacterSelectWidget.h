@@ -26,13 +26,13 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UUniformGridPanel> GridPanel_Characters;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidget), BlueprintReadOnly, Category = "ProjectER|UI")
 	TObjectPtr<UImage> Image_LeftCard;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidget), BlueprintReadOnly, Category = "ProjectER|UI")
 	TObjectPtr<UImage> Image_CenterCard;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidget), BlueprintReadOnly, Category = "ProjectER|UI")
 	TObjectPtr<UImage> Image_RightCard;
 
 	UPROPERTY(meta = (BindWidget))
@@ -52,6 +52,14 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "ProjectER|UI")
 	TSubclassOf<UUI_CharacterSelectSlot> SlotWidgetClass;
+
+	// 슬롯 크기 배율 (1.0 = 기본 자동 맞춤 크기, 0.8 = 80% 크기 등)
+	UPROPERTY(EditAnywhere, Category = "ProjectER|UI", meta = (ClampMin = "0.1", ClampMax = "2.0"))
+	float SlotScaleMultiplier = 1.0f;
+
+	// 슬롯 사이의 간격 (픽셀)
+	UPROPERTY(EditAnywhere, Category = "ProjectER|UI")
+	float SlotGap = 10.0f;
 
 	UFUNCTION()
 	void OnPrevClicked();

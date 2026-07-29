@@ -10,6 +10,7 @@
 #include "Components/Image.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Kismet/GameplayStatics.h"
 
 void UUI_CharacterSelectWidget::NativeConstruct()
@@ -167,30 +168,29 @@ void UUI_CharacterSelectWidget::RefreshSlotSizes()
 	const int32 Rows = FMath::CeilToInt((float)TotalNum / (float)Columns);
 	const int32 UsedColumns = FMath::Min(Columns, TotalNum);
 
-	// 세로 공간을 넘지 않는 안전한 1:1 정사각형 슬롯 크기 산출
+	// 세로 공간을 넘지 않는 안전한 1:1 정사각형 슬롯 기준 크기 산출
 	const float MaxCellWidth = GridSize.X / (float)UsedColumns;
 	const float MaxCellHeight = GridSize.Y / (float)Rows;
-	const float SquareSize = FMath::Min(MaxCellWidth, MaxCellHeight);
+	const float BaseSquareSize = FMath::Min(MaxCellWidth, MaxCellHeight);
 
-	if (SquareSize >= 1.0f)
+	// SlotScaleMultiplier 적용하여 최종 정사각형 슬롯 크기 결정
+	const float FinalSquareSize = FMath::Max(1.0f, BaseSquareSize * SlotScaleMultiplier);
+
+	if (FinalSquareSize >= 1.0f)
 	{
 		// 1. 모든 슬롯의 1:1 정사각형 크기 지정
 		for (UUI_CharacterSelectSlot* CharSlot : CreatedSlots)
 		{
 			if (CharSlot)
 			{
-				CharSlot->SetSlotSquareSize(SquareSize);
+				CharSlot->SetSlotSquareSize(FinalSquareSize);
 			}
 		}
 
-		// 2. 양쪽 끝 맞춤(Space-Between) 위치 오프셋(RenderTranslation) 연산
-		float DynamicGap = 0.0f;
-		if (UsedColumns > 1)
-		{
-			const float TotalSlotsWidth = (float)UsedColumns * SquareSize;
-			const float RemainingWidth = FMath::Max(0.0f, GridSize.X - TotalSlotsWidth);
-			DynamicGap = RemainingWidth / (float)(UsedColumns - 1);
-		}
+		// 2. 전체 슬롯 그룹의 가로 총 폭 및 중앙 정렬 오프셋 연산
+		const float EffectiveGap = FMath::Max(0.0f, SlotGap);
+		const float TotalGroupWidth = ((float)UsedColumns * FinalSquareSize) + ((float)(UsedColumns - 1) * EffectiveGap);
+		const float StartOffset = (GridSize.X - TotalGroupWidth) * 0.5f;
 
 		const float DefaultCellWidth = GridSize.X / (float)UsedColumns;
 
@@ -199,8 +199,8 @@ void UUI_CharacterSelectWidget::RefreshSlotSizes()
 			if (CreatedSlots.IsValidIndex(i) && CreatedSlots[i])
 			{
 				int32 Col = i % Columns;
-				// UniformGridPanel이 이미 배치해둔 기본 위치(GridCellX)와 목표 위치(TargetX)의 차이만큼만 XOffset 이동
-				float TargetX = (float)Col * (SquareSize + DynamicGap);
+				// 슬롯 그룹이 패널 중앙에 오도록 목표 위치(TargetX)를 설정하고 오프셋 차이 적용
+				float TargetX = StartOffset + ((float)Col * (FinalSquareSize + EffectiveGap));
 				float GridCellX = (float)Col * DefaultCellWidth;
 				float XOffset = TargetX - GridCellX;
 
@@ -285,7 +285,14 @@ void UUI_CharacterSelectWidget::UpdateCarouselImages()
 			UCharacterData* CharData = AvailableCharacters[DataIndex].LoadSynchronous();
 			if (CharData && CharData->CharacterIcon)
 			{
-				CardImage->SetBrushFromTexture(CharData->CharacterIcon);
+				if (UMaterialInstanceDynamic* DynamicMat = CardImage->GetDynamicMaterial())
+				{
+					DynamicMat->SetTextureParameterValue(FName("CharacterIcon"), CharData->CharacterIcon);
+				}
+				else
+				{
+					CardImage->SetBrushFromTexture(CharData->CharacterIcon);
+				}
 			}
 		}
 	};
