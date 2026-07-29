@@ -50,8 +50,16 @@ void UProjectERASC::InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarA
 {
 	Super::InitAbilityActorInfo(InOwnerActor, InAvatarActor);
 
-	// 클라이언트에서만 주기적으로 유령 GE 청소기 가동 (예: 1.5초마다)
-	if (IsNetMode(NM_Client) && GetAvatarActor() != nullptr)
+	// [Guard] 쿨다운 GE 제거 시점의 유령 태그 즉시 치유 가드 바인딩 (전 넷모드)
+	if (!bCooldownGuardBound)
+	{
+		OnAnyGameplayEffectRemovedDelegate().AddUObject(this, &UProjectERASC::OnAnyGERemoved_CooldownGuard);
+		bCooldownGuardBound = true;
+	}
+
+	// 모든 넷모드에서 주기적으로 유령 GE 청소기 가동
+	// (호스트/스탠드얼론은 자가 수리 수단이 전무해 유령 태그가 영구 잔류하므로 클라 전용 제한을 해제)
+	if (GetAvatarActor() != nullptr)
 	{
 		if (UWorld* World = GetWorld())
 		{
@@ -101,6 +109,15 @@ void UProjectERASC::CleanupGhostGameplayEffects()
 
 		for (const FActiveGameplayEffectHandle& Handle : HandlesToRemove)
 		{
+			// [CDTAG 디버그] 유령 GE 강제 제거 기록
+			if (const FActiveGameplayEffect* GhostGE = GetActiveGameplayEffect(Handle))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[CDTAG][CLEANER] %s: GhostGE 강제 제거 %s Dur=%.2f Rem=%.2f PK=%s"),
+					*GetNameSafe(GetOwnerActor()), *GetNameSafe(GhostGE->Spec.Def),
+					GhostGE->GetDuration(), GhostGE->GetTimeRemaining(CurrentTime),
+					*GhostGE->PredictionKey.ToString());
+			}
+
 			// 클라이언트 사이드에서 강제 제거 (스택 모두 제거)
 			RemoveActiveGameplayEffect(Handle, -1);
 		}
@@ -125,6 +142,10 @@ void UProjectERASC::CleanupGhostGameplayEffects()
 							// 태그 카운트는 > 0 인데, 이 태그를 주는 GE가 단 하나도 없다면 완벽한 유령 태그입니다.
 							if (ActiveGEs.Num() == 0)
 							{
+								// [CDTAG 디버그] 유령 태그 강제 리셋 기록
+								UE_LOG(LogTemp, Warning, TEXT("[CDTAG][CLEANER] %s: 유령 태그 강제 리셋 Tag=%s Count=%d"),
+									*GetNameSafe(GetOwnerActor()), *Tag.ToString(), GetTagCount(Tag));
+
 								// 태그 카운트를 강제로 0으로 리셋합니다.
 								SetTagMapCount(Tag, 0);
 							}
@@ -135,3 +156,54 @@ void UProjectERASC::CleanupGhostGameplayEffects()
 		}
 	}
 }
+
+void UProjectERASC::OnAnyGERemoved_CooldownGuard(const FActiveGameplayEffect& RemovedGE)
+{
+	// 스킬 쿨다운 태그(Cooldown.Skill.*)만 대상. 몬스터 평타의 Cooldown.AutoAttack은
+	// GE 없이 루즈 태그로 운용되는 것이 정상이므로 오삭제 방지를 위해 제외합니다.
+	static const FGameplayTag SkillCooldownRoot = FGameplayTag::RequestGameplayTag(FName("Cooldown.Skill"), false);
+	if (!SkillCooldownRoot.IsValid())
+	{
+		return;
+	}
+
+	FGameplayTagContainer GrantedTags;
+	RemovedGE.Spec.GetAllGrantedTags(GrantedTags);
+
+	FGameplayTagContainer CooldownTags;
+	for (const FGameplayTag& Tag : GrantedTags)
+	{
+		if (Tag.MatchesTag(SkillCooldownRoot))
+		{
+			CooldownTags.AddTag(Tag);
+		}
+	}
+
+	if (CooldownTags.IsEmpty())
+	{
+		return;
+	}
+
+	// 이 콜백 시점에는 제거 처리(태그 감소, 배열 정리)가 진행 중일 수 있으므로
+	// 다음 틱에 최종 상태를 검증합니다.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this, CooldownTags]()
+		{
+			for (const FGameplayTag& Tag : CooldownTags)
+			{
+				if (GetTagCount(Tag) > 0)
+				{
+					FGameplayEffectQuery Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Tag));
+					if (GetActiveEffects(Query).Num() == 0)
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[CDTAG][GUARD] %s: 쿨다운 GE 제거 직후 유령 태그 감지, 즉시 리셋 Tag=%s Count=%d"),
+							*GetNameSafe(GetOwnerActor()), *Tag.ToString(), GetTagCount(Tag));
+						SetTagMapCount(Tag, 0);
+					}
+				}
+			}
+		}));
+	}
+}
+
