@@ -117,7 +117,7 @@ void ABaseWardActor::BeginPlay()
 
 void ABaseWardActor::InitializeWardTeam(ETeamType InTeamType)
 {
-	WardTeamType = InTeamType;
+	// WardTeamChannel만 복제되므로, WardTeamType은 ApplyWardTeamChannel에서 채널로부터 파생한다.
 	WardTeamChannel = static_cast<uint8>(UStaticGlobalUtils::ConvertTeamToVisionChannel(InTeamType));
 	ApplyWardTeamChannel();
 }
@@ -156,6 +156,16 @@ void ABaseWardActor::OnRep_WardTeamChannel()
 
 void ABaseWardActor::ApplyWardTeamChannel()
 {
+	// 복제된 WardTeamChannel로부터 게임플레이 팀(WardTeamType) 파생 — 서버/클라 공통.
+	// (WardTeamType 자체는 비복제이므로 클라에서도 여기서 채워져야 GetTeamType/HP바 색이 정상)
+	switch (static_cast<EVisionChannel>(WardTeamChannel))
+	{
+	case EVisionChannel::TeamA: WardTeamType = ETeamType::Team_A; break;
+	case EVisionChannel::TeamB: WardTeamType = ETeamType::Team_B; break;
+	case EVisionChannel::TeamC: WardTeamType = ETeamType::Team_C; break;
+	default:                    WardTeamType = ETeamType::None;   break;
+	}
+
 	if (VisionVisualComp)
 	{
 		if (UVisibilityMeshComp* VisMeshComp = VisionVisualComp->GetVisibilityMeshComp())
@@ -254,7 +264,15 @@ bool ABaseWardActor::IsTargetable() const
 
 void ABaseWardActor::HighlightActor(bool bIsHighlight, int32 StencilValue)
 {
-	// TODO: 필요 시 포스트프로세스 하이라이트. 현재 미사용.
+	// 캐릭터와 동일한 커스텀 뎁스 아웃라인 방식 (마우스오버 시 컨트롤러가 호출)
+	if (WardMesh)
+	{
+		WardMesh->SetRenderCustomDepth(bIsHighlight);
+		if (bIsHighlight)
+		{
+			WardMesh->SetCustomDepthStencilValue(StencilValue);
+		}
+	}
 }
 
 void ABaseWardActor::HandleAutoAttackHit()
