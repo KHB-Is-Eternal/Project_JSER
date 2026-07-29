@@ -41,6 +41,14 @@ public:
 
     void SyncDetectionRadius();
 
+    // Overlap one more target object type on top of VisionTargetChannel.
+    // For owners whose targets are not Pawns (e.g. a ward detecting other wards).
+    void AddVisionTargetChannel(ECollisionChannel InChannel);
+
+    // For owners that need to tune the sensor beyond the helpers above.
+    UFUNCTION(BlueprintCallable, Category="Evaluator")
+    USphereComponent* GetDetectionSphere() const { return DetectionSphere; }
+
     UFUNCTION(BlueprintCallable)
     void BP_DrawDebugSphereComp(float DrawTime);
 
@@ -89,14 +97,19 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Evaluator")
     USphereComponent* DetectionSphere = nullptr;
 
+    // Object type of the targets the DetectionSphere overlaps.
+    // GameTraceChannel1 was unusable here — it is declared as a trace-only channel,
+    // so no primitive ever carries it as an object type.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Evaluator")
-    TEnumAsByte<ECollisionChannel> VisionTargetChannel = ECC_GameTraceChannel1;
+    TEnumAsByte<ECollisionChannel> VisionTargetChannel = ECC_Pawn;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Evaluator")
     float DetectionRadius = 1200.f;
 
+    // LOSChannel — only vision obstacles respond to it. Visibility would also be
+    // blocked by the observer's own mesh and by the target itself.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Evaluator")
-    TEnumAsByte<ECollisionChannel> WallTraceChannel = ECC_Visibility;
+    TEnumAsByte<ECollisionChannel> WallTraceChannel = ECC_GameTraceChannel1;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Evaluator",
         meta=(ClampMin="0.01"))

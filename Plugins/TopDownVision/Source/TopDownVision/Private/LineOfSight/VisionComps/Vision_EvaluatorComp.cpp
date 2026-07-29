@@ -213,6 +213,14 @@ void UVision_EvaluatorComp::SyncDetectionRadius()
         DetectionRadius);
 }
 
+void UVision_EvaluatorComp::AddVisionTargetChannel(ECollisionChannel InChannel)
+{
+    if (!DetectionSphere)
+        return;
+
+    DetectionSphere->SetCollisionResponseToChannel(InChannel, ECR_Overlap);
+}
+
 void UVision_EvaluatorComp::BP_DrawDebugSphereComp(float DrawTime)
 {
     if (bDrawDebug)

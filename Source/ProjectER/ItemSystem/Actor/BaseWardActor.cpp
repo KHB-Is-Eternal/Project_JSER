@@ -4,6 +4,7 @@
 #include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 #include "LineOfSight/VisionComps/Vision_VisualComp.h"
 #include "LineOfSight/LOSVisual/VisibilityMeshComp.h"
+#include "LineOfSight/ObjectTracing/TopDown2DShapeComp.h"
 #include "AbilitySystemComponent.h"
 #include "CharacterSystem/GAS/ProjectERASC.h"
 #include "ItemSystem/GAS/WardAttributeSet.h"
@@ -50,7 +51,17 @@ ABaseWardActor::ABaseWardActor()
 	HitCollision->SetHiddenInSceneCapture(true);
 
 	VisionEvaluatorComp = CreateDefaultSubobject<UVision_EvaluatorComp>(TEXT("VisionEvaluatorComp"));
+	// 기본 감지 대상은 Pawn(캐릭터/몬스터). 와드는 WorldDynamic이므로 와드끼리도 감지하도록 추가.
+	VisionEvaluatorComp->AddVisionTargetChannel(ECC_WorldDynamic);
+
 	VisionVisualComp = CreateDefaultSubobject<UVision_VisualComp>(TEXT("VisionVisualComp"));
+
+	// 벽 판정용 2D 실루엣. 미설정 시 TraceRadius가 0이라 관측자의 벽 판정이 통째로 생략되어
+	// 와드가 벽 뒤에서도 적에게 보인다. (캐릭터/몬스터는 BP에서 Circle로 지정)
+	if (UTopDown2DShapeComp* ShapeComp = VisionVisualComp->GetShapeComp())
+	{
+		ShapeComp->SetCircleShape(HitCollision->GetUnscaledSphereRadius());
+	}
 
 	// GAS: 평타 GE 수신용 ASC + 전용 어트리뷰트셋 직접 소유 (몬스터 패턴, Minimal 복제)
 	ASC = CreateDefaultSubobject<UProjectERASC>(TEXT("ASC"));
