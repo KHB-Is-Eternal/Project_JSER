@@ -69,3 +69,18 @@ public:
     FText ItemLongDesc;
 
 };
+
+// [김현수 추가분] 개별 아이템 픽업(확률 조정)을 위한 구조체
+// 몬스터 가챠 드랍과 LootableComponent 가중치 루트가 공유하므로 ItemSystem 공용 위치에 둔다.
+USTRUCT(BlueprintType)
+struct FDropItemInfo
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+    TObjectPtr<UBaseItemData> Item;
+
+    // 기본 가중치 1.0f. 숫자가 클수록 동일 등급 내에서 더 자주 나옴. 0.0f면 등장 안 함.
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin=0.0f))
+    float Weight = 1.0f;
+};

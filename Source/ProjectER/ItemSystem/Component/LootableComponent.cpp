@@ -30,7 +30,15 @@ void ULootableComponent::BeginPlay()
 	// 서버에서만 자동 초기화
 	if (GetOwner()->HasAuthority() && bAutoInitialize)
 	{
-		InitializeRandomLoot();
+		// 가중치 풀이 세팅돼 있으면 가중치 생성, 아니면 기존 균등 랜덤으로 fallback
+		if (DropItemPool.Num() > 0)
+		{
+			InitializeWeightedLoot();
+		}
+		else
+		{
+			InitializeRandomLoot();
+		}
 	}
 }
 
@@ -176,6 +184,165 @@ void ULootableComponent::InitializeRandomLoot()
 	// 서버 UI 갱신 및 복제 강제
 	OnLootChanged.Broadcast();
 	GetOwner()->ForceNetUpdate();
+}
+
+void ULootableComponent::InitializeWeightedLoot()
+{
+	if (!GetOwner()->HasAuthority()) return;
+
+	if (DropItemPool.Num() == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[%s] DropItemPool is EMPTY! 가중치 루트를 생성할 수 없습니다."), *GetOwner()->GetName());
+		return;
+	}
+
+	// MinLootCount/MaxLootCount 를 드랍 개수로 재사용 (기존 균등 랜덤과 동일한 개수 필드)
+	const TArray<UBaseItemData*> Result = GenerateWeightedDrops(
+		DropItemPool, RarityDropRates, MaxRarityDropCounts, MinLootCount, MaxLootCount);
+
+	// 결과를 기존 슬롯 구조(ItemPool + CurrentItemList)로 주입
+	InitializeWithItems(Result);
+}
+
+// [김현수 추가분] 몬스터 가챠와 공유하는 가중치 드랍 생성기 (ABaseMonster::GenerateGachaDrops 로직 이식)
+TArray<UBaseItemData*> ULootableComponent::GenerateWeightedDrops(
+	const TArray<FDropItemInfo>& InDropPool,
+	const TMap<EItemRarity, float>& InRarityDropRates,
+	const TMap<EItemRarity, int32>& InMaxRarityDropCounts,
+	int32 InMinDropCount,
+	int32 InMaxDropCount)
+{
+	TArray<UBaseItemData*> ResultDrops;
+
+	// 1. 드랍 카운트 굴림
+	int32 LootCount = FMath::RandRange(InMinDropCount, InMaxDropCount);
+
+	// 레어도 확률 맵 정규화용 총합
+	float TotalRarityRate = 0.0f;
+	for (const auto& Pair : InRarityDropRates)
+	{
+		TotalRarityRate += Pair.Value;
+	}
+
+	if (TotalRarityRate <= 0.0f)
+	{
+		// 확률 세팅이 아예 없으면 꽝(빈 배열) 반환
+		return ResultDrops;
+	}
+
+	// [옵션B] 100%가 안되거나 넘어도 무조건 100% 기준으로 비율(Normalize) 보정
+	TMap<EItemRarity, float> NormalizedRates;
+	for (const auto& Pair : InRarityDropRates)
+	{
+		NormalizedRates.Add(Pair.Key, Pair.Value / TotalRarityRate);
+	}
+
+	// 등급별 드랍 제한(Cap) 추적용 맵
+	TMap<EItemRarity, int32> DroppedRarityCounts;
+
+	for (int32 i = 0; i < LootCount; ++i)
+	{
+		// 2. 등급(Rarity) 굴림
+		float RarityRoll = FMath::FRand();
+		float CurrentAccum = 0.0f;
+		EItemRarity PickedRarity = EItemRarity::Normal;
+
+		for (const auto& Pair : NormalizedRates)
+		{
+			CurrentAccum += Pair.Value;
+			if (RarityRoll <= CurrentAccum)
+			{
+				PickedRarity = Pair.Key;
+				break;
+			}
+		}
+
+		// 3. 당첨 등급 아이템 필터링 (가중치 0.0 제외)
+		TArray<FDropItemInfo> FilteredPool;
+		for (const FDropItemInfo& DropInfo : InDropPool)
+		{
+			if (DropInfo.Item && DropInfo.Item->ItemRarity == PickedRarity && DropInfo.Weight > 0.0f)
+			{
+				FilteredPool.Add(DropInfo);
+			}
+		}
+
+		// 캡(Cap) 제한 검사
+		bool bIsCapped = false;
+		if (const int32* MaxCountPtr = InMaxRarityDropCounts.Find(PickedRarity))
+		{
+			if (*MaxCountPtr > 0 && DroppedRarityCounts.FindOrAdd(PickedRarity) >= *MaxCountPtr)
+			{
+				bIsCapped = true;
+			}
+		}
+
+		// [옵션A] 풀이 비었거나 캡에 걸리면 하위 등급으로 강등
+		if (FilteredPool.Num() == 0 || bIsCapped)
+		{
+			uint8 RarityInt = static_cast<uint8>(PickedRarity);
+			bool bFoundValidDowngrade = false;
+
+			while (!bFoundValidDowngrade && RarityInt > 0)
+			{
+				RarityInt--; // 한 단계 강등
+				EItemRarity DowngradedRarity = static_cast<EItemRarity>(RarityInt);
+
+				bool bDowngradeCapped = false;
+				if (const int32* MaxCountPtr = InMaxRarityDropCounts.Find(DowngradedRarity))
+				{
+					if (*MaxCountPtr > 0 && DroppedRarityCounts.FindOrAdd(DowngradedRarity) >= *MaxCountPtr)
+					{
+						bDowngradeCapped = true;
+					}
+				}
+
+				if (!bDowngradeCapped)
+				{
+					FilteredPool.Empty();
+					for (const FDropItemInfo& DropInfo : InDropPool)
+					{
+						if (DropInfo.Item && DropInfo.Item->ItemRarity == DowngradedRarity && DropInfo.Weight > 0.0f)
+						{
+							FilteredPool.Add(DropInfo);
+						}
+					}
+
+					if (FilteredPool.Num() > 0)
+					{
+						PickedRarity = DowngradedRarity;
+						bFoundValidDowngrade = true;
+					}
+				}
+			}
+		}
+
+		// 4. 아이템 가중치(Weight) 경쟁 굴림
+		if (FilteredPool.Num() > 0)
+		{
+			float TotalWeight = 0.0f;
+			for (const FDropItemInfo& Info : FilteredPool)
+			{
+				TotalWeight += Info.Weight;
+			}
+
+			float ItemRoll = FMath::FRandRange(0.0f, TotalWeight);
+			float ItemAccum = 0.0f;
+
+			for (const FDropItemInfo& Info : FilteredPool)
+			{
+				ItemAccum += Info.Weight;
+				if (ItemRoll <= ItemAccum)
+				{
+					ResultDrops.Add(Info.Item);
+					DroppedRarityCounts.FindOrAdd(PickedRarity)++;
+					break;
+				}
+			}
+		}
+	}
+
+	return ResultDrops;
 }
 
 void ULootableComponent::InitializeWithItems(const TArray<UBaseItemData*>& Items)
