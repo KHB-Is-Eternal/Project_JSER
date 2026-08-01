@@ -187,6 +187,12 @@ protected:
 	// 기존 Move 함수를 확장하여 상호작용 판정 포함
 	void ProcessMouseInteraction();
 
+	// [김현수 추가분] 와드 배치 무장 상태. -1이면 비무장, >=0이면 해당 슬롯 와드를 좌클릭 배치 대기 중.
+	int32 PendingWardSlot = -1;
+
+	// [김현수 추가분] 와드 배치 무장 해제 (우클릭 이동 / ESC 취소용)
+	void CancelWardPlacement();
+
 private:
 	// 조합식 DataTable
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting", meta = (AllowPrivateAccess = "true"))
@@ -231,6 +237,10 @@ public:
 
 	UFUNCTION(Server, Reliable)
 	void Server_DropInventoryItem(int32 SlotIndex, FVector_NetQuantize DropLocation);
+
+	// [김현수 추가분] 좌클릭한 위치에 와드 배치 요청 (서버에서 재검증 후 스폰·소비)
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_PlaceWardAtLocation(int32 SlotIndex, FVector_NetQuantize Location);
 
 	UPROPERTY(EditDefaultsOnly, Category = "Item|Drop")
 	TSubclassOf<ABaseItemActor> DroppedItemActorClass;

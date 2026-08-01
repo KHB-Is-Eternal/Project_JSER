@@ -250,7 +250,13 @@ void UBaseInventoryComponent::UseItem(const int32 SlotIndex)
 		return;
 	}
 
-	if (!UsableItem->bConsumable)
+	ConsumeUsedItem(SlotIndex, UsableItem);
+}
+
+// [김현수 추가분] 사용 성공 후 슬롯 스택 1 소모 (UseItem / PlaceWardAtLocation 공용)
+void UBaseInventoryComponent::ConsumeUsedItem(int32 SlotIndex, UUsableItemData* UsableItem)
+{
+	if (UsableItem == nullptr || !UsableItem->bConsumable)
 	{
 		return;
 	}
@@ -261,7 +267,10 @@ void UBaseInventoryComponent::UseItem(const int32 SlotIndex)
 	}
 	else
 	{
-		InventoryContents[SlotIndex] = nullptr;
+		if (InventoryContents.IsValidIndex(SlotIndex))
+		{
+			InventoryContents[SlotIndex] = nullptr;
+		}
 		if (InventoryStackCounts.IsValidIndex(SlotIndex))
 		{
 			InventoryStackCounts[SlotIndex] = 0;
@@ -466,7 +475,7 @@ bool UBaseInventoryComponent::ApplyStatIncrease(UAbilitySystemComponent* ASC, UU
 	return true;
 }
 
-bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsableItemData* ItemData)
+bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsableItemData* ItemData, bool bUseTargetLocation, const FVector& TargetLocation)
 {
 	if (ASC == nullptr || ItemData == nullptr)
 	{
@@ -508,8 +517,10 @@ bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsab
 		return false;
 	}
 	// 채널 확정(None 아님) 후에만 스폰 (실패 시 orphan 액터 방지)
-	// TODO: 추후 플레이어 컨트롤러에서 마우스 커서 위치를 받아오는 방식으로 수정 예정 (BasePlayerController 수정 필요)
-	const FVector SpawnLocation = OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 150.f);
+	// [김현수 추가분] 좌클릭 배치 흐름에선 커서 히트 위치(TargetLocation)에, 아니면 기존 소유자 앞 방향에 스폰.
+	const FVector SpawnLocation = bUseTargetLocation
+		? TargetLocation
+		: OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 150.f);
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = OwnerActor;
@@ -526,9 +537,73 @@ bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsab
 	if (ABaseWardActor* WardActor = Cast<ABaseWardActor>(SpawnedActor))
 	{
 		WardActor->InitializeWardTeam(OwnerChar->GetTeamType());
+		// [김현수 추가분] 메시 바닥이 지면에 밀착되도록 Z 보정 (서버에서 위치 확정 → 클라 복제)
+		WardActor->SnapToGround();
 	}
 
 	return true;
+}
+
+// [김현수 추가분] 좌클릭 배치 흐름: 지정 위치에 와드 스폰 후 스택 소모 (서버 권한)
+void UBaseInventoryComponent::PlaceWardAtLocation(int32 SlotIndex, const FVector& TargetLocation)
+{
+	AActor* const OwnerActor = GetOwner();
+	if (OwnerActor == nullptr || !OwnerActor->HasAuthority())
+	{
+		return;
+	}
+
+	if (!InventoryContents.IsValidIndex(SlotIndex))
+	{
+		return;
+	}
+
+	UUsableItemData* const UsableItem = Cast<UUsableItemData>(InventoryContents[SlotIndex]);
+	if (UsableItem == nullptr || UsableItem->EffectType != EItemEffectType::PlaceWard)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] PlaceWardAtLocation: Slot %d is not a ward"), SlotIndex);
+		return;
+	}
+
+	if (!CanUseItemsInCurrentLifeState())
+	{
+		return;
+	}
+
+	// 쿨타임 체크 (서버 재검증)
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (float* LastUseTime = LastItemUseTimes.Find(UsableItem))
+	{
+		if (CurrentTime - *LastUseTime < UsableItem->UseCooldown)
+		{
+			return;
+		}
+	}
+
+	// 사거리 재검증 (0이면 무제한). 초과 시 배치 취소.
+	if (UsableItem->WardPlaceRange > 0.f)
+	{
+		const float DistSq = FVector::DistSquared(OwnerActor->GetActorLocation(), TargetLocation);
+		if (DistSq > FMath::Square(UsableItem->WardPlaceRange))
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[BaseInventoryComponent] PlaceWardAtLocation: out of range"));
+			return;
+		}
+	}
+
+	UAbilitySystemComponent* const ASC = ResolveOwnerAbilitySystemComponent();
+	if (ASC == nullptr)
+	{
+		return;
+	}
+
+	if (!ApplyPlaceWard(ASC, UsableItem, /*bUseTargetLocation=*/true, TargetLocation))
+	{
+		return;
+	}
+
+	LastItemUseTimes.Add(UsableItem, CurrentTime);
+	ConsumeUsedItem(SlotIndex, UsableItem);
 }
 
 bool UBaseInventoryComponent::EnqueueFoodHeal(UUsableItemData* ItemData)
