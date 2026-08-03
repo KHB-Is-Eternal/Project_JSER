@@ -14,6 +14,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Engine/StaticMesh.h"
 #include "CollisionQueryParams.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
@@ -155,9 +156,18 @@ void ABaseWardActor::SnapToGround()
 		GroundZ = Hit.Location.Z;
 	}
 
-	// 액터 원점을 지면 + 오프셋에 둔다. 메시 피벗이 밑면이 아니면 GroundZOffset(BP에서 튜닝)으로 보정.
+	// 에셋 로컬 bbox의 밑면(Min.Z, 피벗 기준)이 지면에 오도록 액터 Z를 보정.
+	// WardMesh가 루트이고 스케일만 적용되므로, 밑면 오프셋 = -Min.Z * ScaleZ.
+	float PivotToBottom = 0.f;
+	if (WardMesh && WardMesh->GetStaticMesh())
+	{
+		const FBox LocalBox = WardMesh->GetStaticMesh()->GetBoundingBox();
+		PivotToBottom = -LocalBox.Min.Z * WardMesh->GetComponentScale().Z;
+	}
+
+	// 지면 + 밑면오프셋 + (미세 보정용)GroundZOffset
 	FVector NewLoc = ActorLoc;
-	NewLoc.Z = GroundZ + GroundZOffset;
+	NewLoc.Z = GroundZ + PivotToBottom + GroundZOffset;
 	SetActorLocation(NewLoc);
 }
 
