@@ -29,7 +29,30 @@ void UItemCatalogWidget::NativeConstruct()
 	if (Btn_NextPage)
 		Btn_NextPage->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickNextPage);
 
+	if (Btn_SortRarity)
+		Btn_SortRarity->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickSortRarity);
+
+	UpdateSortLabel(); // [김현수 추가분] 초기 정렬 라벨 표시
 	FilterItems(ECatalogFilter::All);
+}
+
+// [김현수 추가분] 레어도 정렬 토글 (누를 때마다 낮은순 ↔ 높은순)
+void UItemCatalogWidget::OnClickSortRarity()
+{
+	bRaritySortAscending = !bRaritySortAscending;
+	CurrentPage = 0;
+	UpdateSortLabel();
+	LoadAllItems(CurrentFilter);
+}
+
+// [김현수 추가분] 정렬 버튼 라벨 갱신
+void UItemCatalogWidget::UpdateSortLabel()
+{
+	if (Text_SortRarity)
+	{
+		Text_SortRarity->SetText(FText::FromString(
+			bRaritySortAscending ? TEXT("레어도 낮은순") : TEXT("레어도 높은순")));
+	}
 }
 
 void UItemCatalogWidget::FilterItems(ECatalogFilter FilterType)
@@ -37,6 +60,24 @@ void UItemCatalogWidget::FilterItems(ECatalogFilter FilterType)
 	CurrentFilter = FilterType;
 	CurrentPage = 0;
 	LoadAllItems(CurrentFilter);
+	UpdateFilterButtonStyles(); // [김현수 추가분] 선택 탭 강조 갱신
+}
+
+// [김현수 추가분] 현재 필터에 해당하는 탭만 강조색으로 표시
+void UItemCatalogWidget::UpdateFilterButtonStyles()
+{
+	auto Apply = [&](UButton* Btn, ECatalogFilter Type)
+	{
+		if (Btn)
+		{
+			Btn->SetBackgroundColor(CurrentFilter == Type ? ActiveFilterColor : InactiveFilterColor);
+		}
+	};
+
+	Apply(Btn_FilterAll, ECatalogFilter::All);
+	Apply(Btn_FilterConsumable, ECatalogFilter::Consumable);
+	Apply(Btn_FilterRecovery, ECatalogFilter::Recovery);
+	Apply(Btn_FilterMaterial, ECatalogFilter::Material);
 }
 
 void UItemCatalogWidget::OnClickPrevPage()
@@ -120,9 +161,17 @@ void UItemCatalogWidget::LoadAllItems(ECatalogFilter FilterType)
 		}
 	}
 
+	// [김현수 추가분] 레어도 기준 정렬 (bRaritySortAscending: 낮은순/높은순)
+	FilteredItems.Sort([this](const UBaseItemData& A, const UBaseItemData& B)
+	{
+		return bRaritySortAscending
+			? (A.ItemRarity < B.ItemRarity)
+			: (A.ItemRarity > B.ItemRarity);
+	});
+
 	int32 TotalItems = FilteredItems.Num();
-	const int32 MaxItemsPerPage = 24; // 4x6 = 24
-	const int32 Columns = 4;
+	const int32 MaxItemsPerPage = 24; // 가로 6 x 세로 4 = 24
+	const int32 Columns = 6;
 
 	MaxPage = TotalItems > 0 ? (TotalItems - 1) / MaxItemsPerPage : 0;
 	CurrentPage = FMath::Clamp(CurrentPage, 0, MaxPage);

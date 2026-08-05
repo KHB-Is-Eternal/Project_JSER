@@ -73,6 +73,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Effect", meta = (EditCondition = "EffectType == EItemEffectType::PlaceWard", EditConditionHides))
 	TSubclassOf<class ABaseWardActor> WardActorClass;
 
+	// [김현수 추가분] 플레이어 기준 최대 배치 거리. 0이면 무제한.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Effect", meta = (EditCondition = "EffectType == EItemEffectType::PlaceWard", EditConditionHides, ClampMin = "0.0"))
+	float WardPlaceRange = 0.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Settings")
 	bool bConsumable;
 

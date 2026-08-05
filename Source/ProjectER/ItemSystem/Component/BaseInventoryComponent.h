@@ -55,6 +55,9 @@ public:
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_UseItem(int32 SlotIndex);
 
+	// [김현수 추가분] 지정한 월드 위치에 와드 배치 (서버 권한). 컨트롤러의 좌클릭 배치 흐름에서 호출.
+	void PlaceWardAtLocation(int32 SlotIndex, const FVector& TargetLocation);
+
 	// 인벤토리 정보 가져오기
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Inventory")
 	int32 GetInventoryCount() const;
@@ -98,7 +101,10 @@ private:
 
 	bool ApplyItemEffect(UUsableItemData* ItemData);
 	bool ApplyStatIncrease(UAbilitySystemComponent* ASC, UUsableItemData* ItemData);
-	bool ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsableItemData* ItemData);
+	// [김현수 추가분] bUseTargetLocation=true면 TargetLocation에, 아니면 기존 소유자 앞 방향에 스폰.
+	bool ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsableItemData* ItemData, bool bUseTargetLocation = false, const FVector& TargetLocation = FVector::ZeroVector);
+	// [김현수 추가분] 사용 성공 후 슬롯 스택 1 소모 (UseItem / PlaceWardAtLocation 공용)
+	void ConsumeUsedItem(int32 SlotIndex, UUsableItemData* UsableItem);
 	bool EnqueueFoodHeal(UUsableItemData* ItemData);
 	void StartNextFoodHealEffect();
 	void EnsureInventoryArraysValid();

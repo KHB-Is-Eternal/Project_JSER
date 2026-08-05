@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "ItemSystem/Actor/BaseBoxActor.h"
 #include "ItemSystem/Interface/I_ItemInteractable.h"
+#include "ItemSystem/Data/BaseItemData.h"
 #include "LootableComponent.generated.h"
 
 class UBaseItemData;
@@ -74,10 +75,28 @@ public:
 	// ========================================
 
 	/**
-	 * 랜덤 아이템으로 루트 테이블 생성
+	 * 랜덤 아이템으로 루트 테이블 생성 (균등 확률, DropItemPool 미설정 시 fallback)
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Lootable")
 	void InitializeRandomLoot();
+
+	/**
+	 * 가중치/등급확률/등급캡 기반 루트 생성 (몬스터 가챠와 동일 로직)
+	 * DropItemPool 이 세팅돼 있을 때 사용. 내부적으로 InitializeWithItems 로 결과 주입.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Lootable")
+	void InitializeWeightedLoot();
+
+	/**
+	 * [김현수 추가분] 몬스터 가챠와 LootableComponent 가 공유하는 가중치 드랍 생성기.
+	 * 등급확률(정규화) → 등급별 캡/하위강등 → 등급 내 가중치 경쟁 순으로 굴린다.
+	 */
+	static TArray<UBaseItemData*> GenerateWeightedDrops(
+		const TArray<FDropItemInfo>& InDropPool,
+		const TMap<EItemRarity, float>& InRarityDropRates,
+		const TMap<EItemRarity, int32>& InMaxRarityDropCounts,
+		int32 InMinDropCount,
+		int32 InMaxDropCount);
 
 	/**
 	 * 특정 아이템 리스트로 루트 테이블 생성
@@ -154,9 +173,26 @@ public:
 	// 설정 가능한 프로퍼티
 	// ========================================
 
-	/** 루팅 가능한 아이템 풀 */
+	/** 루팅 가능한 아이템 풀 (균등 랜덤용) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, ReplicatedUsing = OnRep_ItemPool, Category = "Lootable|Setup")
 	TArray<TObjectPtr<UBaseItemData>> ItemPool;
+
+	// ========================================
+	// [김현수 추가분] 가중치 드랍 설정 (몬스터 데이터에셋과 동일 구조)
+	// DropItemPool 이 하나라도 세팅되면 균등 랜덤 대신 가중치 생성이 사용된다.
+	// ========================================
+
+	/** 가중치 드랍 풀 (아이템 + 등급 내 가중치) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lootable|Weighted")
+	TArray<FDropItemInfo> DropItemPool;
+
+	/** 등급별 드랍 확률 (합이 100%가 아니어도 내부에서 정규화) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lootable|Weighted")
+	TMap<EItemRarity, float> RarityDropRates;
+
+	/** 등급별 최대 드랍 개수 제한 (0이거나 미설정이면 무제한) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lootable|Weighted")
+	TMap<EItemRarity, int32> MaxRarityDropCounts;
 
 	/** 최대 슬롯 개수 (기본 10칸) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lootable|Setup")

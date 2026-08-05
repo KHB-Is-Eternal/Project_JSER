@@ -109,19 +109,7 @@ struct FMonsterDecalData
 };
 
 
-// [김현수 추가분] 개별 아이템 픽업(확률 조정)을 위한 구조체
-USTRUCT(BlueprintType)
-struct FDropItemInfo
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	TObjectPtr<UBaseItemData> Item;
-
-	// 기본 가중치 1.0f. 숫자가 클수록 동일 등급 내에서 더 자주 나옴. 0.0f면 등장 안 함.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin=0.0f))
-	float Weight = 1.0f;
-};
+// [김현수 추가분] FDropItemInfo는 ItemSystem/Data/BaseItemData.h 로 이동(몬스터·Lootable 공용).
 
 // 몬스터 데이터
 UCLASS()

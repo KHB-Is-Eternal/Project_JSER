@@ -14,6 +14,8 @@ class UVision_VisualComp;
 class UProjectERASC;
 class UWardAttributeSet;
 class UAbilitySystemComponent;
+class UWidgetComponent;
+class UUserWidget;
 
 UCLASS()
 class PROJECTER_API ABaseWardActor : public AActor, public IVisionProviderInterface, public IAbilitySystemInterface, public ITargetableInterface
@@ -33,6 +35,11 @@ public:
 	// 팀 정보 초기화 (설치 시 호출). 팀에서 시야 채널을 파생한다.
 	UFUNCTION(BlueprintCallable, Category = "Ward")
 	void InitializeWardTeam(ETeamType InTeamType);
+
+	// [김현수 추가분] 지면(ch9)을 트레이스해 메시 바닥이 땅에 닿도록 Z 보정 (설치 시 서버에서 호출).
+	// 피벗이 밑면이 아니어도 메시 바운드 바닥을 지면에 맞춘다.
+	UFUNCTION(BlueprintCallable, Category = "Ward")
+	void SnapToGround();
 
 	// IAbilitySystemInterface 구현 (평타 GE 수신용 ASC 제공)
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
@@ -66,14 +73,22 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ward|Stats")
 	int32 MaxHealth;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ward|Stats")
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentHealth, VisibleAnywhere, BlueprintReadOnly, Category = "Ward|Stats")
 	int32 CurrentHealth;
+
+	UFUNCTION()
+	void OnRep_CurrentHealth();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ward|Stats")
 	float WardLifeSpan;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ward|Stats")
 	float VisionRadius;
+
+	// [김현수 추가분] 지면에 스냅할 때 얹을 Z 오프셋. 메시 피벗이 밑면이 아니면 이 값으로 보정한다.
+	// (이상적으로는 메시 에디터에서 피벗을 밑면으로 옮기는 것이 정석. 그 전까진 이 값으로 조정.)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ward|Placement")
+	float GroundZOffset = 0.f;
 
 	// 와드의 팀 채널 저장 (클라이언트 동기화를 위해 ReplicatedUsing 사용)
 	UPROPERTY(ReplicatedUsing = OnRep_WardTeamChannel)
@@ -103,6 +118,20 @@ protected:
 	// 게임플레이 팀 (ITargetableInterface). 설치 시 저장.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ward|Team")
 	ETeamType WardTeamType = ETeamType::None;
+
+	// 머리 위 HP 바 위젯 (4칸 분절). 아군=연두 / 적=붉은. 양 팀 모두에게 표시.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ward|UI")
+	TObjectPtr<UWidgetComponent> HPBarWidget;
+
+	// 표시할 위젯 클래스 (WBP_WardHPBar 지정). BP에서 세팅.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ward|UI")
+	TSubclassOf<UUserWidget> HPBarWidgetClass;
+
+	// HP 바 갱신: 남은 칸 + 로컬 뷰어 기준 아군/적 색상
+	void RefreshHPBar();
+
+	// 로컬 플레이어 기준 이 와드가 아군인지
+	bool IsAllyOfLocalPlayer() const;
 
 	// 평타 피격 1회 처리 (서버 전용): 남은 체력 감소 및 0이면 파괴
 	void HandleAutoAttackHit();
