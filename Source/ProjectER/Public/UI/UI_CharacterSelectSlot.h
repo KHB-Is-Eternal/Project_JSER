@@ -18,6 +18,7 @@ class PROJECTER_API UUI_CharacterSelectSlot : public UUserWidget
 
 public:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
 	void InitSlot(int32 InSlotIndex, UCharacterData* InCharacterData, UUI_CharacterGridWidget* InGridWidget);
 

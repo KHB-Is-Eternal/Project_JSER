@@ -48,6 +48,26 @@ void UUI_CharacterSelectWidget::NativeConstruct()
 	SelectCharacter(0);
 }
 
+void UUI_CharacterSelectWidget::NativeDestruct()
+{
+	// 위젯 재구성 시 중복 바인딩(ensure) 방지를 위해 해제
+	if (Button_Prev)
+	{
+		Button_Prev->OnClicked.RemoveDynamic(this, &UUI_CharacterSelectWidget::OnPrevClicked);
+	}
+	if (Button_Next)
+	{
+		Button_Next->OnClicked.RemoveDynamic(this, &UUI_CharacterSelectWidget::OnNextClicked);
+	}
+
+	if (AER_PlayerState* ERPS = GetOwningPlayerState<AER_PlayerState>())
+	{
+		ERPS->OnCharacterDataChanged.RemoveDynamic(this, &UUI_CharacterSelectWidget::OnPlayerStateCharacterChanged);
+	}
+
+	Super::NativeDestruct();
+}
+
 void UUI_CharacterSelectWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);

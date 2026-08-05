@@ -26,6 +26,25 @@ void UUI_CharacterSelectSlot::NativeConstruct()
 	}
 }
 
+void UUI_CharacterSelectSlot::NativeDestruct()
+{
+	// 위젯 재구성 시 중복 바인딩(ensure) 방지를 위해 해제
+	if (SlotButton)
+	{
+		SlotButton->OnClicked.RemoveDynamic(this, &UUI_CharacterSelectSlot::OnSlotButtonClicked);
+	}
+
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		if (AER_PlayerState* ERPS = PC->GetPlayerState<AER_PlayerState>())
+		{
+			ERPS->OnReadyStateChanged.RemoveDynamic(this, &UUI_CharacterSelectSlot::OnReadyStateChanged);
+		}
+	}
+
+	Super::NativeDestruct();
+}
+
 void UUI_CharacterSelectSlot::InitSlot(int32 InSlotIndex, UCharacterData* InCharacterData, UUI_CharacterGridWidget* InGridWidget)
 {
 	SlotIndex = InSlotIndex;
@@ -40,19 +59,6 @@ void UUI_CharacterSelectSlot::InitSlot(int32 InSlotIndex, UCharacterData* InChar
 		}
 	}
 	SetHighlight(false);
-
-	// 초기화 시점에도 PlayerState 바인딩 시도
-	if (APlayerController* PC = GetOwningPlayer())
-	{
-		if (AER_PlayerState* ERPS = PC->GetPlayerState<AER_PlayerState>())
-		{
-			bIsReadyLocal = ERPS->bIsReady;
-			if (!ERPS->OnReadyStateChanged.IsAlreadyBound(this, &UUI_CharacterSelectSlot::OnReadyStateChanged))
-			{
-				ERPS->OnReadyStateChanged.AddDynamic(this, &UUI_CharacterSelectSlot::OnReadyStateChanged);
-			}
-		}
-	}
 }
 
 void UUI_CharacterSelectSlot::OnReadyStateChanged(bool bNewReadyState)

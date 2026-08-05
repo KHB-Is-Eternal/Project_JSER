@@ -17,6 +17,7 @@ class PROJECTER_API UUI_CharacterGridWidget : public UUserWidget
 
 public:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
 	void InitGrid(const TArray<TSoftObjectPtr<UCharacterData>>& InAvailableCharacters);
 	void SetSelectedHighlight(int32 SelectedIndex);

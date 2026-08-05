@@ -23,6 +23,17 @@ void UUI_CharacterGridWidget::NativeConstruct()
 	}
 }
 
+void UUI_CharacterGridWidget::NativeDestruct()
+{
+	// 위젯 재구성 시 중복 바인딩(ensure) 방지를 위해 해제
+	if (AER_PlayerState* ERPS = GetOwningPlayerState<AER_PlayerState>())
+	{
+		ERPS->OnCharacterDataChanged.RemoveDynamic(this, &UUI_CharacterGridWidget::OnPlayerStateCharacterChanged);
+	}
+
+	Super::NativeDestruct();
+}
+
 void UUI_CharacterGridWidget::InitGrid(const TArray<TSoftObjectPtr<UCharacterData>>& InAvailableCharacters)
 {
 	if (!GridPanel_Characters || !SlotWidgetClass) return;
@@ -42,10 +53,11 @@ void UUI_CharacterGridWidget::InitGrid(const TArray<TSoftObjectPtr<UCharacterDat
 		UUI_CharacterSelectSlot* NewSlot = CreateWidget<UUI_CharacterSelectSlot>(GetOwningPlayer(), SlotWidgetClass);
 		if (NewSlot)
 		{
-			NewSlot->InitSlot(i, CharData, this);
+			// 그리드 편입 시점에 슬롯의 NativeConstruct(레디 상태 바인딩)가 먼저 실행되도록 InitSlot보다 앞서 호출
 			int32 Row = i / Columns;
 			int32 Col = i % Columns;
 			GridPanel_Characters->AddChildToUniformGrid(NewSlot, Row, Col);
+			NewSlot->InitSlot(i, CharData, this);
 			CreatedSlots.Add(NewSlot);
 		}
 	}
