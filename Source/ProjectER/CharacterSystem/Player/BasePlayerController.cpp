@@ -537,6 +537,13 @@ void ABasePlayerController::CheckHoveredActor()
 
 void ABasePlayerController::OnMoveStarted()
 {
+	// [김현수 추가분] 와드 배치 무장 중 우클릭은 이동 대신 배치 취소로 소비.
+	if (PendingWardSlot >= 0)
+	{
+		CancelWardPlacement();
+		return;
+	}
+
 	if (bIsAttackInputMode)
 	{
 		CancelAttackMode();
@@ -941,6 +948,38 @@ void ABasePlayerController::CheckInteractionDistance()
 
 void ABasePlayerController::OnConfirm()
 {
+	// [김현수 추가분] 와드 배치 무장 중이면 좌클릭 위치에 배치 요청 (공격/ASC 분기로 흘리지 않음).
+	if (PendingWardSlot >= 0)
+	{
+		FHitResult Hit;
+		if (GetCurvedHitResultUnderCursor(MouseTraceChannel, false, Hit) && Hit.bBlockingHit)
+		{
+			bool bInRange = true;
+			if (APawn* P = GetPawn())
+			{
+				if (UBaseInventoryComponent* Inv = P->FindComponentByClass<UBaseInventoryComponent>())
+				{
+					if (UUsableItemData* Usable = Cast<UUsableItemData>(Inv->GetItemAt(PendingWardSlot)))
+					{
+						if (Usable->WardPlaceRange > 0.f)
+						{
+							bInRange = FVector::DistSquared(P->GetActorLocation(), Hit.Location) <= FMath::Square(Usable->WardPlaceRange);
+						}
+					}
+				}
+			}
+
+			if (bInRange)
+			{
+				Server_PlaceWardAtLocation(PendingWardSlot, Hit.Location);
+				PendingWardSlot = -1;
+			}
+			// 사거리 초과: 무효 클릭 취급 → 무장 유지
+		}
+		// 바닥 미히트: 무장 유지
+		return;
+	}
+
 	if (!bIsAttackInputMode)
 	{
 		APawn* ControlledPawn = GetPawn();
@@ -967,6 +1006,9 @@ void ABasePlayerController::OnConfirm()
 }
 
 void ABasePlayerController::OnCanceled() {
+	// [김현수 추가분] ESC/취소 입력 시 와드 배치 무장 해제.
+	CancelWardPlacement();
+
 	APawn* ControlledPawn = GetPawn();
 	if (!ControlledPawn) return;
 
@@ -2015,6 +2057,21 @@ void ABasePlayerController::UseInventorySlot(int32 SlotIndex)
 		return;
 	}
 
+	// [김현수 추가분] 와드 아이템이면 즉시 사용하지 않고 좌클릭 배치 모드로 무장한다.
+	if (UUsableItemData* Usable = Cast<UUsableItemData>(InventoryComp->GetItemAt(SlotIndex)))
+	{
+		if (Usable->EffectType == EItemEffectType::PlaceWard)
+		{
+			PendingWardSlot = SlotIndex;
+			CancelAttackMode(); // 공격 모드와 상호 배타
+			if (IsLocalController() && ClickSound)
+			{
+				UGameplayStatics::PlaySound2D(this, ClickSound);
+			}
+			return;
+		}
+	}
+
 	// 슬롯 인덱스 사용 (0부터 시작)
 	InventoryComp->UseItem(SlotIndex);
 
@@ -2060,6 +2117,32 @@ void ABasePlayerController::SetSoundMix(EAudioType AudioType, float Volume)
 void ABasePlayerController::UseInventoryForUI(int32 _ind)
 {
 	UseInventorySlot(_ind);
+}
+
+// [김현수 추가분] 와드 배치 무장 해제
+void ABasePlayerController::CancelWardPlacement()
+{
+	PendingWardSlot = -1;
+}
+
+// [김현수 추가분] 좌클릭 위치에 와드 배치 요청 (서버 재검증)
+bool ABasePlayerController::Server_PlaceWardAtLocation_Validate(int32 SlotIndex, FVector_NetQuantize Location)
+{
+	return SlotIndex >= 0 && SlotIndex < 64;
+}
+
+void ABasePlayerController::Server_PlaceWardAtLocation_Implementation(int32 SlotIndex, FVector_NetQuantize Location)
+{
+	APawn* PlayerPawn = GetPawn();
+	if (!PlayerPawn)
+	{
+		return;
+	}
+
+	if (UBaseInventoryComponent* InventoryComp = PlayerPawn->FindComponentByClass<UBaseInventoryComponent>())
+	{
+		InventoryComp->PlaceWardAtLocation(SlotIndex, Location);
+	}
 }
 
 void ABasePlayerController::setChatMessage(const FString& Message)

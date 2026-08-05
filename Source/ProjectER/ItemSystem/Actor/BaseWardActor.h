@@ -36,6 +36,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ward")
 	void InitializeWardTeam(ETeamType InTeamType);
 
+	// [김현수 추가분] 지면(ch9)을 트레이스해 메시 바닥이 땅에 닿도록 Z 보정 (설치 시 서버에서 호출).
+	// 피벗이 밑면이 아니어도 메시 바운드 바닥을 지면에 맞춘다.
+	UFUNCTION(BlueprintCallable, Category = "Ward")
+	void SnapToGround();
+
 	// IAbilitySystemInterface 구현 (평타 GE 수신용 ASC 제공)
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
@@ -79,6 +84,11 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ward|Stats")
 	float VisionRadius;
+
+	// [김현수 추가분] 지면에 스냅할 때 얹을 Z 오프셋. 메시 피벗이 밑면이 아니면 이 값으로 보정한다.
+	// (이상적으로는 메시 에디터에서 피벗을 밑면으로 옮기는 것이 정석. 그 전까진 이 값으로 조정.)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ward|Placement")
+	float GroundZOffset = 0.f;
 
 	// 와드의 팀 채널 저장 (클라이언트 동기화를 위해 ReplicatedUsing 사용)
 	UPROPERTY(ReplicatedUsing = OnRep_WardTeamChannel)
