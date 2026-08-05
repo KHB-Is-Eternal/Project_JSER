@@ -29,7 +29,30 @@ void UItemCatalogWidget::NativeConstruct()
 	if (Btn_NextPage)
 		Btn_NextPage->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickNextPage);
 
+	if (Btn_SortRarity)
+		Btn_SortRarity->OnClicked.AddDynamic(this, &UItemCatalogWidget::OnClickSortRarity);
+
+	UpdateSortLabel(); // [김현수 추가분] 초기 정렬 라벨 표시
 	FilterItems(ECatalogFilter::All);
+}
+
+// [김현수 추가분] 레어도 정렬 토글 (누를 때마다 낮은순 ↔ 높은순)
+void UItemCatalogWidget::OnClickSortRarity()
+{
+	bRaritySortAscending = !bRaritySortAscending;
+	CurrentPage = 0;
+	UpdateSortLabel();
+	LoadAllItems(CurrentFilter);
+}
+
+// [김현수 추가분] 정렬 버튼 라벨 갱신
+void UItemCatalogWidget::UpdateSortLabel()
+{
+	if (Text_SortRarity)
+	{
+		Text_SortRarity->SetText(FText::FromString(
+			bRaritySortAscending ? TEXT("레어도 낮은순") : TEXT("레어도 높은순")));
+	}
 }
 
 void UItemCatalogWidget::FilterItems(ECatalogFilter FilterType)
@@ -137,6 +160,14 @@ void UItemCatalogWidget::LoadAllItems(ECatalogFilter FilterType)
 			FilteredItems.Add(ItemData);
 		}
 	}
+
+	// [김현수 추가분] 레어도 기준 정렬 (bRaritySortAscending: 낮은순/높은순)
+	FilteredItems.Sort([this](const UBaseItemData& A, const UBaseItemData& B)
+	{
+		return bRaritySortAscending
+			? (A.ItemRarity < B.ItemRarity)
+			: (A.ItemRarity > B.ItemRarity);
+	});
 
 	int32 TotalItems = FilteredItems.Num();
 	const int32 MaxItemsPerPage = 24; // 가로 6 x 세로 4 = 24

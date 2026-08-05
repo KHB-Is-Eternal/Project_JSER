@@ -57,6 +57,13 @@ protected:
 	UPROPERTY(meta = (BindWidgetOptional))
 	UButton* Btn_FilterMaterial;
 
+	// [김현수 추가분] 레어도 정렬 토글 버튼 + 현재 방향 라벨
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_SortRarity;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UTextBlock* Text_SortRarity;
+
 	// === Pagination UI ===
 	UPROPERTY(meta = (BindWidgetOptional))
 	UButton* Btn_PrevPage;
@@ -83,6 +90,12 @@ private:
 	UFUNCTION() void OnClickPrevPage();
 	UFUNCTION() void OnClickNextPage();
 
+	// [김현수 추가분] 레어도 정렬 토글 (누를 때마다 낮은순 ↔ 높은순)
+	UFUNCTION() void OnClickSortRarity();
+
+	// [김현수 추가분] 정렬 버튼 라벨 갱신
+	void UpdateSortLabel();
+
 	// 모든 아이템 데이터를 불러와 컨테이너에 추가하는 함수
 	void LoadAllItems(ECatalogFilter FilterType = ECatalogFilter::All);
 
@@ -96,4 +109,7 @@ private:
 	int32 CurrentPage = 0;
 	int32 MaxPage = 0;
 	ECatalogFilter CurrentFilter = ECatalogFilter::All;
+
+	// [김현수 추가분] 레어도 정렬 방향. true=낮은순(Normal→Unique), false=높은순.
+	bool bRaritySortAscending = true;
 };
