@@ -37,6 +37,24 @@ void UItemCatalogWidget::FilterItems(ECatalogFilter FilterType)
 	CurrentFilter = FilterType;
 	CurrentPage = 0;
 	LoadAllItems(CurrentFilter);
+	UpdateFilterButtonStyles(); // [김현수 추가분] 선택 탭 강조 갱신
+}
+
+// [김현수 추가분] 현재 필터에 해당하는 탭만 강조색으로 표시
+void UItemCatalogWidget::UpdateFilterButtonStyles()
+{
+	auto Apply = [&](UButton* Btn, ECatalogFilter Type)
+	{
+		if (Btn)
+		{
+			Btn->SetBackgroundColor(CurrentFilter == Type ? ActiveFilterColor : InactiveFilterColor);
+		}
+	};
+
+	Apply(Btn_FilterAll, ECatalogFilter::All);
+	Apply(Btn_FilterConsumable, ECatalogFilter::Consumable);
+	Apply(Btn_FilterRecovery, ECatalogFilter::Recovery);
+	Apply(Btn_FilterMaterial, ECatalogFilter::Material);
 }
 
 void UItemCatalogWidget::OnClickPrevPage()
@@ -121,8 +139,8 @@ void UItemCatalogWidget::LoadAllItems(ECatalogFilter FilterType)
 	}
 
 	int32 TotalItems = FilteredItems.Num();
-	const int32 MaxItemsPerPage = 24; // 4x6 = 24
-	const int32 Columns = 4;
+	const int32 MaxItemsPerPage = 24; // 가로 6 x 세로 4 = 24
+	const int32 Columns = 6;
 
 	MaxPage = TotalItems > 0 ? (TotalItems - 1) / MaxItemsPerPage : 0;
 	CurrentPage = FMath::Clamp(CurrentPage, 0, MaxPage);

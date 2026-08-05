@@ -37,6 +37,13 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Catalog")
 	TSubclassOf<UItemCatalogSlotWidget> SlotWidgetClass;
 
+	// [김현수 추가분] 필터 탭 강조색 (선택 탭 = Active, 나머지 = Inactive). BP에서 조정.
+	UPROPERTY(EditAnywhere, Category = "Catalog|Style")
+	FLinearColor ActiveFilterColor = FLinearColor(0.20f, 0.55f, 0.90f, 1.f);
+
+	UPROPERTY(EditAnywhere, Category = "Catalog|Style")
+	FLinearColor InactiveFilterColor = FLinearColor::White;
+
 	// === Filter Buttons ===
 	UPROPERTY(meta = (BindWidgetOptional))
 	UButton* Btn_FilterAll;
@@ -81,6 +88,9 @@ private:
 
 	// 페이지 버튼 상태 및 텍스트 갱신
 	void UpdatePaginationUI();
+
+	// [김현수 추가분] 현재 필터에 해당하는 탭만 강조색으로 표시
+	void UpdateFilterButtonStyles();
 
 	// 페이징 상태 변수
 	int32 CurrentPage = 0;
