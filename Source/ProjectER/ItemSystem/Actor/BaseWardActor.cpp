@@ -151,24 +151,38 @@ void ABaseWardActor::SnapToGround()
 	Params.AddIgnoredActor(this); // 자기 자신 무시
 
 	float GroundZ = ActorLoc.Z; // 트레이스 실패 시 현재 높이 유지
-	if (GetWorld() && GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_GameTraceChannel9, Params))
+	const bool bTraceHit = (GetWorld() && GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_GameTraceChannel9, Params));
+	if (bTraceHit)
 	{
 		GroundZ = Hit.Location.Z;
 	}
 
 	// 에셋 로컬 bbox의 밑면(Min.Z, 피벗 기준)이 지면에 오도록 액터 Z를 보정.
 	// WardMesh가 루트이고 스케일만 적용되므로, 밑면 오프셋 = -Min.Z * ScaleZ.
+	FBox LocalBox(ForceInit);
+	FVector MeshScale(1.f);
 	float PivotToBottom = 0.f;
 	if (WardMesh && WardMesh->GetStaticMesh())
 	{
-		const FBox LocalBox = WardMesh->GetStaticMesh()->GetBoundingBox();
-		PivotToBottom = -LocalBox.Min.Z * WardMesh->GetComponentScale().Z;
+		LocalBox = WardMesh->GetStaticMesh()->GetBoundingBox();
+		MeshScale = WardMesh->GetComponentScale();
+		PivotToBottom = -LocalBox.Min.Z * MeshScale.Z;
 	}
 
 	// 지면 + 밑면오프셋 + (미세 보정용)GroundZOffset
 	FVector NewLoc = ActorLoc;
 	NewLoc.Z = GroundZ + PivotToBottom + GroundZOffset;
 	SetActorLocation(NewLoc);
+
+	// [김현수 추가분] 디버그: 공중 부양 원인 식별용 값 덤프
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Ward SnapToGround] Trace=%s HitActor=%s | ActorZ(before)=%.1f GroundZ=%.1f | LocalBox.Min.Z=%.1f Max.Z=%.1f ScaleZ=%.2f | PivotToBottom=%.1f GroundZOffset=%.1f | FinalZ=%.1f"),
+		bTraceHit ? TEXT("HIT") : TEXT("MISS"),
+		(bTraceHit && Hit.GetActor()) ? *Hit.GetActor()->GetName() : TEXT("None"),
+		ActorLoc.Z, GroundZ,
+		LocalBox.Min.Z, LocalBox.Max.Z, MeshScale.Z,
+		PivotToBottom, GroundZOffset,
+		NewLoc.Z);
 }
 
 void ABaseWardActor::HandleWardRevealed()
