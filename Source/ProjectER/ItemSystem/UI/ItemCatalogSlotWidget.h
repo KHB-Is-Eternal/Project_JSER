@@ -31,6 +31,14 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UButton* ItemButton;
 
+	// [김현수 추가분] 아이콘 뒤 레어도 솔리드 배경 (팝업처럼 배경을 레어도색으로 채움)
+	UPROPERTY(meta = (BindWidgetOptional))
+	UImage* RarityBG;
+
+	// [김현수 추가분] 최상단 테두리 프레임 (중앙 투명). 채움이 테두리를 침범하지 않도록 위에서 덮는다.
+	UPROPERTY(meta = (BindWidgetOptional))
+	UImage* SlotFrame;
+
 	// 툴팁 클래스 (블루프린트에서 할당)
 	UPROPERTY(EditAnywhere, Category = "Tooltip")
 	TSubclassOf<UUI_ToolTip> TooltipClass;
