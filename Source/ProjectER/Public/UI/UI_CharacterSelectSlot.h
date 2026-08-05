@@ -8,8 +8,7 @@ class UImage;
 class UBorder;
 class UButton;
 class UCharacterData;
-class UUI_CharacterSelectWidget;
-class USizeBox;
+class UUI_CharacterGridWidget;
 
 UCLASS()
 class PROJECTER_API UUI_CharacterSelectSlot : public UUserWidget
@@ -18,17 +17,16 @@ class PROJECTER_API UUI_CharacterSelectSlot : public UUserWidget
 
 public:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
-	void InitSlot(int32 InSlotIndex, UCharacterData* InCharacterData, UUI_CharacterSelectWidget* InParentWidget);
+	void InitSlot(int32 InSlotIndex, UCharacterData* InCharacterData, UUI_CharacterGridWidget* InGridWidget);
 
 	void SetHighlight(bool bIsHighlighted);
 
-	void SetSlotSquareSize(float InSquareSize);
+	UFUNCTION()
+	void OnReadyStateChanged(bool bNewReadyState);
 
 protected:
-	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<USizeBox> SizeBox_Root;
-
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> SlotButton;
 
@@ -49,5 +47,7 @@ private:
 	TObjectPtr<UCharacterData> CharacterData;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UUI_CharacterSelectWidget> ParentWidget;
+	TObjectPtr<UUI_CharacterGridWidget> GridWidget;
+
+	bool bIsReadyLocal = false;
 };

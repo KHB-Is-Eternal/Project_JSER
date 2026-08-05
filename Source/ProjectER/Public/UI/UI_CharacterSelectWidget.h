@@ -4,12 +4,11 @@
 #include "Blueprint/UserWidget.h"
 #include "UI_CharacterSelectWidget.generated.h"
 
-class UUniformGridPanel;
 class UImage;
 class UButton;
 class UTextBlock;
 class UCharacterData;
-class UUI_CharacterSelectSlot;
+class UUI_CharacterGridWidget;
 
 UCLASS()
 class PROJECTER_API UUI_CharacterSelectWidget : public UUserWidget
@@ -18,21 +17,21 @@ class PROJECTER_API UUI_CharacterSelectWidget : public UUserWidget
 
 public:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
-	void OnSlotSelected(int32 SlotIndex);
+	UFUNCTION()
+	void OnPlayerStateCharacterChanged(TSoftObjectPtr<UCharacterData> NewCharacterData);
 
 protected:
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UUniformGridPanel> GridPanel_Characters;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidget), BlueprintReadOnly, Category = "ProjectER|UI")
 	TObjectPtr<UImage> Image_LeftCard;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidget), BlueprintReadOnly, Category = "ProjectER|UI")
 	TObjectPtr<UImage> Image_CenterCard;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidget), BlueprintReadOnly, Category = "ProjectER|UI")
 	TObjectPtr<UImage> Image_RightCard;
 
 	UPROPERTY(meta = (BindWidget))
@@ -41,17 +40,14 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> Button_Next;
 
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UButton> Button_SelectConfirm;
+	// UPROPERTY(meta = (BindWidget))
+	// TObjectPtr<UButton> Button_SelectConfirm;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> Text_CharacterName;
 
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> Text_ConfirmButton;
-
-	UPROPERTY(EditAnywhere, Category = "ProjectER|UI")
-	TSubclassOf<UUI_CharacterSelectSlot> SlotWidgetClass;
+	// UPROPERTY(meta = (BindWidget))
+	// TObjectPtr<UTextBlock> Text_ConfirmButton;
 
 	UFUNCTION()
 	void OnPrevClicked();
@@ -59,13 +55,11 @@ protected:
 	UFUNCTION()
 	void OnNextClicked();
 
-	UFUNCTION()
-	void OnSelectConfirmClicked();
+	// UFUNCTION()
+	// void OnSelectConfirmClicked();
 
 private:
 	TArray<TSoftObjectPtr<UCharacterData>> AvailableCharacters;
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UUI_CharacterSelectSlot>> CreatedSlots;
 
 	int32 CurrentIndex = 0;
 	int32 TargetIndex = 0;
@@ -80,13 +74,10 @@ private:
 	FVector2D BaseSideScale = FVector2D(1.0f, 1.0f);
 	float BaseSideOpacity = 1.0f;
 
-	void UpdateSlotsHighlight();
 	void UpdateCarouselImages();
 	void SelectCharacter(int32 Index);
 	int32 GetWrappedIndex(int32 Index) const;
-	void RefreshSlotSizes();
 	
 	// 레디 상태 여부 기록
 	bool bIsReady = false;
-	bool bSizeUpdated = false;
 };
