@@ -74,7 +74,6 @@ private:
 	FVector2D BaseSideScale = FVector2D(1.0f, 1.0f);
 	float BaseSideOpacity = 1.0f;
 
-	void UpdateSlotsHighlight();
 	void UpdateCarouselImages();
 	void SelectCharacter(int32 Index);
 	int32 GetWrappedIndex(int32 Index) const;

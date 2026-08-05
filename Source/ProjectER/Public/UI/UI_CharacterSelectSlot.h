@@ -9,7 +9,6 @@ class UBorder;
 class UButton;
 class UCharacterData;
 class UUI_CharacterGridWidget;
-class USizeBox;
 
 UCLASS()
 class PROJECTER_API UUI_CharacterSelectSlot : public UUserWidget
@@ -24,15 +23,10 @@ public:
 
 	void SetHighlight(bool bIsHighlighted);
 
-	void SetSlotSquareSize(float InSquareSize);
-
 	UFUNCTION()
 	void OnReadyStateChanged(bool bNewReadyState);
 
 protected:
-	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<USizeBox> SizeBox_Root;
-
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> SlotButton;
 

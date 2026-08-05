@@ -5,7 +5,6 @@
 #include "Components/Image.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
-#include "Components/SizeBox.h"
 
 void UUI_CharacterSelectSlot::NativeConstruct()
 {
@@ -74,15 +73,6 @@ void UUI_CharacterSelectSlot::SetHighlight(bool bIsHighlighted)
 		FLinearColor Color = HighlightBorder->BrushColor;
 		Color.A = bIsHighlighted ? 1.0f : 0.0f;
 		HighlightBorder->SetBrushColor(Color);
-	}
-}
-
-void UUI_CharacterSelectSlot::SetSlotSquareSize(float InSquareSize)
-{
-	if (SizeBox_Root && InSquareSize > 0.0f)
-	{
-		SizeBox_Root->SetWidthOverride(InSquareSize);
-		SizeBox_Root->SetHeightOverride(InSquareSize);
 	}
 }
 
