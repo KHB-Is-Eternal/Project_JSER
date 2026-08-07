@@ -23,6 +23,7 @@ protected:
 
 public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 
 	/** 특정 본(소켓)에 부착되어 매 프레임 상하 위치 보정(트레이스)이 필요한지 여부를 설정합니다. */
 	void SetTrackingDynamicGround(bool bInTracking) { bIsTrackingDynamicGround = bInTracking; }
@@ -36,9 +37,10 @@ public:
 	/** 내부 메쉬 컴포넌트의 월드 스케일을 설정합니다. */
 	void SetIndicatorScale(const FVector& NewScale);
 
-protected:
-	/** 바닥으로 레이를 쏴서 현재 X,Y 위치 기준 바닥 높이(Z)로 강제 이동시킵니다. */
+	/** 바닥으로 레이를 쏴서 현재 X,Y 위치 기준 바닥 높이(Z)로 강제 이동시킵니다. (외부 수동 업데이트 가능) */
 	void UpdateGroundPosition();
+
+protected:
 
 	/** 자식 메쉬의 생성 여부를 검사하고, 없을 경우 즉시 생성하여 설정 누락을 방지합니다. (지연 생성) */
 	void EnsureIndicatorMeshCompExists();

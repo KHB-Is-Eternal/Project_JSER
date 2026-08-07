@@ -4,6 +4,8 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillVfxCullingHelper.h"
+#include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 
 UGCN_FloatingText::UGCN_FloatingText()
 {
@@ -20,6 +22,12 @@ bool UGCN_FloatingText::OnExecute_Implementation(AActor* MyTarget, const FGamepl
 
 	UWorld* const World = MyTarget->GetWorld();
 	if (!IsValid(World))
+	{
+		return false;
+	}
+
+	const EVfxCullState CullState = USkillVfxCullingHelper::CheckVfxCulling(MyTarget, Parameters, false);
+	if (CullState == EVfxCullState::SkipSpawn)
 	{
 		return false;
 	}
@@ -65,6 +73,19 @@ bool UGCN_FloatingText::OnExecute_Implementation(AActor* MyTarget, const FGamepl
 		NiagaraComp->SetVariableFloat(FName(TEXT("Number")), ValueNumber);
 		NiagaraComp->SetVariableLinearColor(FName(TEXT("Color")), TextColor);
 		NiagaraComp->SetVariableFloat(FName(TEXT("Size")), TextSize);
+
+		// 초기 숨김 처리는 RegisterParticle이 등록 시점에 시야 상태로 확정함 (006 합-1/합-2)
+		if (CullState == EVfxCullState::SpawnAndTrackVision ||
+			CullState == EVfxCullState::SpawnHidden || 
+			CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen)
+		{
+			if (UVisionParticleManagerSubsystem* VisionSubsystem = World->GetSubsystem<UVisionParticleManagerSubsystem>())
+			{
+				const bool bTrackUntilSeen = (CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen);
+				VisionSubsystem->RegisterParticle(NiagaraComp, MyTarget, bTrackUntilSeen);
+			}
+		}
+
 		return true;
 	}
 

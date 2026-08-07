@@ -135,7 +135,7 @@ void UGridVisionMap::CacheObstacleData(const TArray<FObstacleMaskTile>& Tiles)
 //  Grid update
 // -------------------------------------------------------------------------- //
 
-void UGridVisionMap::UpdateGrid(float DeltaTime, float BlendSpeed, const TArray<FGridVisionProvider>& Providers)
+void UGridVisionMap::UpdateGrid(float DeltaTime, float BlendSpeed, float BlurSharpness, const TArray<FGridVisionProvider>& Providers)
 {
 	// Clear target grid
 	FMemory::Memzero(TargetVisibilityGrid.GetData(), TargetVisibilityGrid.Num());
@@ -146,7 +146,7 @@ void UGridVisionMap::UpdateGrid(float DeltaTime, float BlendSpeed, const TArray<
 		if (Provider.Alpha <= KINDA_SMALL_NUMBER)
 			continue;
 
-		ComputeProviderVisibility(Provider);
+		ComputeProviderVisibility(Provider, BlurSharpness);
 	}
 
 	// Temporal Blending
@@ -177,7 +177,7 @@ void UGridVisionMap::UpdateGrid(float DeltaTime, float BlendSpeed, const TArray<
 //  Per-provider ray marching
 // -------------------------------------------------------------------------- //
 
-void UGridVisionMap::ComputeProviderVisibility(const FGridVisionProvider& Provider)
+void UGridVisionMap::ComputeProviderVisibility(const FGridVisionProvider& Provider, float BlurSharpness)
 {
 	const FIntPoint CenterGrid = WorldToGrid(Provider.WorldPosition);
 	const float CellSize = (WorldExtent * 2.f) / GridResolution;
@@ -217,7 +217,9 @@ void UGridVisionMap::ComputeProviderVisibility(const FGridVisionProvider& Provid
 			if (DistSq > RadiusSq)
 				break;
 
-			const float Falloff = 1.f - (DistSq / RadiusSq);
+			// 시야 경계를 더 뚜렷하게(블러 영역 축소) 만들기 위해 감쇄 강도를 증폭합니다.
+			// 배수(예: 3.0f)가 클수록 외곽선이 선명해지고 블러가 줄어듭니다.
+			const float Falloff = FMath::Clamp((1.f - (DistSq / RadiusSq)) * BlurSharpness, 0.f, 1.f);
 			const uint8 Value = static_cast<uint8>(FMath::Clamp(
 				FMath::RoundToInt(Falloff * Provider.Alpha * 255.f), 0, 255));
 

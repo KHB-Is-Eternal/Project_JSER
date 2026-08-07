@@ -12,6 +12,7 @@
 #include "GameFramework/GameSession.h"
 #include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h"
 #include "Engine/GameInstance.h"
+#include "SignificanceManager.h"
 
 #include "Monster/BaseMonster.h"
 
@@ -83,7 +84,48 @@ void AER_InGameMode::BeginPlay()
 
 AER_InGameMode::AER_InGameMode()
 {
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+
 	bUseSeamlessTravel = true;
+}
+
+void AER_InGameMode::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// 최적화: 매 프레임 연산하지 않고 설정된 주기(기본 30FPS)마다 한 번씩만 연산합니다.
+	SignificanceUpdateTimer += DeltaSeconds;
+	if (SignificanceUpdateTimer >= SignificanceUpdateInterval)
+	{
+		SignificanceUpdateTimer = 0.f;
+
+		if (UWorld* World = GetWorld())
+		{
+			if (USignificanceManager* SignificanceManager = USignificanceManager::Get(World))
+			{
+				TArray<FTransform> TransformArray;
+
+				// 접속해 있는 모든 플레이어 폰의 위치를 수집하여 Significance 판단 기준(Viewpoint)으로 사용합니다.
+				for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+				{
+					if (APlayerController* PC = It->Get())
+					{
+						if (APawn* PlayerPawn = PC->GetPawn())
+						{
+							TransformArray.Add(PlayerPawn->GetTransform());
+						}
+					}
+				}
+
+				// 관전 상태이거나 아직 스폰되지 않아 폰이 하나도 없는 경우에는 계산하지 않습니다.
+				if (TransformArray.Num() > 0)
+				{
+					SignificanceManager->Update(TArrayView<FTransform>(TransformArray));
+				}
+			}
+		}
+	}
 }
 
 void AER_InGameMode::PostSeamlessTravel()
@@ -485,7 +527,22 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 	if (ABasePlayerController* ERPC = Cast<ABasePlayerController>(NewPlayer))
 	{
 		ERPC->Client_InGameInputMode();
-		ERPC->Client_StartPreload();
+		TArray<FSoftObjectPath> CharacterPaths;
+		if (AGameStateBase* GS = GetWorld()->GetGameState())
+		{
+			for (APlayerState* PS : GS->PlayerArray)
+			{
+				if (AER_PlayerState* ERPS = Cast<AER_PlayerState>(PS))
+				{
+					TSoftObjectPtr<UCharacterData> CharData = ERPS->GetSelectedCharacterData();
+					if (!CharData.IsNull())
+					{
+						CharacterPaths.AddUnique(CharData.ToSoftObjectPath());
+					}
+				}
+			}
+		}
+		ERPC->Client_StartPreload(CharacterPaths);
 	}
 
 	// 보존 데이터 제거
@@ -506,7 +563,22 @@ void AER_InGameMode::HandleStartingNewPlayer_Implementation(APlayerController* N
 	if (ABasePlayerController* PC = Cast<ABasePlayerController>(NewPlayer))
 	{
 		PC->Client_InGameInputMode();
-		PC->Client_StartPreload(); // 방에 들어온 클라이언트에게 에셋 로딩을 지시
+		TArray<FSoftObjectPath> CharacterPaths;
+		if (AGameStateBase* GS = GetWorld()->GetGameState())
+		{
+			for (APlayerState* PS : GS->PlayerArray)
+			{
+				if (AER_PlayerState* ERPS = Cast<AER_PlayerState>(PS))
+				{
+					TSoftObjectPtr<UCharacterData> CharData = ERPS->GetSelectedCharacterData();
+					if (!CharData.IsNull())
+					{
+						CharacterPaths.AddUnique(CharData.ToSoftObjectPath());
+					}
+				}
+			}
+		}
+		PC->Client_StartPreload(CharacterPaths); // 방에 들어온 클라이언트에게 에셋 로딩을 지시
 	}
 	UE_LOG(LogTemp, Warning, TEXT("[GM] HSNPlayer this=%p world=%p map=%s PI=%d/%d"),
 		this, GetWorld(), *GetWorld()->GetMapName(), PlayersInitialized, ExpectedPlayers);
@@ -759,6 +831,12 @@ void AER_InGameMode::StartGame_Internal()
 	if (NeutralSS)
 	{
 		NeutralSS->FirstSpawnNeutral();
+	}
+
+	// 카운트다운 종료 후 실제 게임 시작 시점 (미니맵 재캡처 트리거)
+	if (AER_GameState* ERGS = GetGameState<AER_GameState>())
+	{
+		ERGS->bGameStarted = true;
 	}
 
 	HandlePhaseTimeUp();

@@ -285,12 +285,14 @@ void UMoveBaseGEC::SnapToGround(FVector& InOutLocation, const AActor* Instigator
 	}
 
 	FHitResult FloorHit;
-	const FVector TraceEnd = InOutLocation - FVector(0.0f, 0.0f, this->GroundTraceDistance);
+	// 시작점을 기준 좌표보다 10m 위로 설정하여 지형에 묻히는 경우를 대비하고, 아래로 충분한 거리만큼 검출하도록 변경합니다.
+	const FVector TraceStart = InOutLocation + FVector(0.0f, 0.0f, 1000.0f);
+	const FVector TraceEnd = TraceStart - FVector(0.0f, 0.0f, 1000.0f + this->GroundTraceDistance);
 
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(Instigator);
 
-	if (World->LineTraceSingleByChannel(FloorHit, InOutLocation, TraceEnd, this->GroundTraceChannel, QueryParams))
+	if (World->LineTraceSingleByChannel(FloorHit, TraceStart, TraceEnd, this->GroundTraceChannel, QueryParams))
 	{
 		InOutLocation.Z = FloorHit.Location.Z;
 	}
@@ -415,3 +417,36 @@ void UMoveBaseGEC::RemoveMoveCue(UAbilitySystemComponent* ASC, const USkillNiaga
 	}
 }
 
+
+void UMoveBaseGEC::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+	Super::CollectNiagaraPaths(OutPaths);
+	if (StartVfxConfig && !StartVfxConfig->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(StartVfxConfig->NiagaraSystem.ToSoftObjectPath());
+	}
+	if (LoopVfxConfig && !LoopVfxConfig->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(LoopVfxConfig->NiagaraSystem.ToSoftObjectPath());
+	}
+	if (EndVfxConfig && !EndVfxConfig->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(EndVfxConfig->NiagaraSystem.ToSoftObjectPath());
+	}
+	for (const TSubclassOf<UBaseGameplayEffect>& GEClass : WallHitApplied)
+	{
+		if (GEClass)
+		{
+			if (const UBaseGameplayEffect* GE = GEClass->GetDefaultObject<UBaseGameplayEffect>())
+			{
+				for (const UGameplayEffectComponent* Component : GE->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						BaseGEC->CollectNiagaraPaths(OutPaths);
+					}
+				}
+			}
+		}
+	}
+}

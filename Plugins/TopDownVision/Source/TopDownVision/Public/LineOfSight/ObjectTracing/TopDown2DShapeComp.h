@@ -31,6 +31,11 @@ public:
     float GetTraceRadius() const;
     TEnumAsByte<E2DShapeType> GetShapeType() const { return ShapeType; }
 
+    // Configure the silhouette as a circle from C++ (Blueprints set ShapeType/Radius
+    // in the details panel instead). Without a shape the trace radius stays 0 and
+    // the wall check is skipped entirely.
+    void SetCircleShape(float InRadius);
+
     UFUNCTION(BlueprintCallable, Category="2DShapeComp")
     void DrawDebugShape(float Duration = 0.f) const;
 

@@ -146,6 +146,11 @@ void ABaseRangeOverlapEffectActor::InitializeEffectData(const TArray<FGameplayEf
 				{
 					OnVfxHandshakeCompleted_Implementation(VfxActor);
 				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("ABaseRangeOverlapEffectActor: Handshake Failed in InitializeEffectData. (Registering as Pending on Host)"));
+					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);
+				}
 			}
 		}
 	}
@@ -180,7 +185,7 @@ void ABaseRangeOverlapEffectActor::SetCollisionComponent(UShapeComponent* InColl
 
 	// 2. 물리 및 충돌 설정 (공통)
 	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	CollisionComponent->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+	CollisionComponent->SetCollisionProfileName(TEXT("SkillArea"));
 	CollisionComponent->SetGenerateOverlapEvents(true);
 
 	if (GetRootComponent() != CollisionComponent)

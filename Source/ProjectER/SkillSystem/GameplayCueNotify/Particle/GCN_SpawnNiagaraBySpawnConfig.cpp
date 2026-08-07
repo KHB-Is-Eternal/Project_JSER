@@ -4,6 +4,8 @@
 #include "SkillSystem/GameplayCueNotify/Particle/GCN_SpawnNiagaraBySpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnHelper.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillVfxCullingHelper.h"
+#include "SkillSystem/GameplayCueNotify/Particle/VisionParticleManagerSubsystem.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 #include "Engine/Blueprint.h"
@@ -42,107 +44,11 @@ namespace
 		}
 		return MyTarget->GetNetMode() == NM_DedicatedServer;
 	}
-
-	/** 파티클 스폰 컬링 최대 거리 (cm 단위) */
-	constexpr float MaxParticleSpawnDistanceSq = 1000.0f * 1000.0f;
-
-	/**
-	 * 원거리 파티클 컬링 판단.
-	 * 다음 조건 중 하나라도 만족하면 컬링하지 않음 (false 반환):
-	 *  1. 로컬 플레이어 캐릭터에서 1000 유닛 이내
-	 *  2. Instigator가 로컬 플레이어와 같은 팀 (아군 파티클)
-	 *  3. EffectCauser에 UProjectileMovementComponent가 있음 (투사체 파티클)
-	 * 위 조건을 모두 불만족하면 컬링함 (true 반환).
-	 */
-	bool ShouldCullParticle(const AActor* MyTarget, const FGameplayCueParameters& Parameters)
-	{
-		const UWorld* World = IsValid(MyTarget) ? MyTarget->GetWorld() : nullptr;
-		if (!IsValid(World))
-		{
-			return false;
-		}
-
-		const APlayerController* LocalPC = World->GetFirstPlayerController();
-		if (!IsValid(LocalPC))
-		{
-			return false;
-		}
-
-		const APawn* LocalPawn = LocalPC->GetPawn();
-		if (!IsValid(LocalPawn))
-		{
-			return false;
-		}
-
-		// --- 이벤트 소스 위치 결정 ---
-		FVector EffectLocation;
-		const AActor* EffectCauser = Cast<AActor>(Parameters.EffectCauser.Get());
-		if (!Parameters.Location.IsNearlyZero())
-		{
-			EffectLocation = Parameters.Location;
-		}
-		else if (IsValid(EffectCauser))
-		{
-			EffectLocation = EffectCauser->GetActorLocation();
-		}
-		else if (IsValid(MyTarget))
-		{
-			EffectLocation = MyTarget->GetActorLocation();
-		}
-		else
-		{
-			return false;
-		}
-
-		// --- 예외 1: 로컬 캐릭터 기준 1000 유닛 이내이면 무조건 표시 ---
-		if (FVector::DistSquared(LocalPawn->GetActorLocation(), EffectLocation) <= MaxParticleSpawnDistanceSq)
-		{
-			return false;
-		}
-
-		// --- 예외 2: Instigator가 아군(같은 팀)이면 무조건 표시 ---
-		const AActor* InstigatorActor = Cast<AActor>(Parameters.Instigator.Get());
-		if (IsValid(InstigatorActor))
-		{
-			const ITargetableInterface* InstigatorTeam = Cast<ITargetableInterface>(InstigatorActor);
-			const ITargetableInterface* LocalTeam = Cast<ITargetableInterface>(LocalPawn);
-			if (InstigatorTeam && LocalTeam)
-			{
-				const ETeamType InstigatorTeamType = InstigatorTeam->GetTeamType();
-				const ETeamType LocalTeamType = LocalTeam->GetTeamType();
-				if (InstigatorTeamType != ETeamType::None && InstigatorTeamType == LocalTeamType)
-				{
-					return false;
-				}
-			}
-		}
-
-		// --- 예외 3: EffectCauser에 ProjectileMovementComponent가 있으면 무조건 표시 ---
-		if (IsValid(EffectCauser) && EffectCauser->FindComponentByClass<UProjectileMovementComponent>())
-		{
-			return false;
-		}
-
-		// 모든 예외 규칙에 해당하지 않으면 컬링
-		return true;
-	}
 }
 
 bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) const
 {
 	if (ShouldSkipOnServer(MyTarget))
-	{
-		return false;
-	}
-
-	// 원거리 적 파티클 컬링 (아군/근거리/투사체 예외)
-	if (ShouldCullParticle(MyTarget, Parameters))
-	{
-		return false;
-	}
-
-	UWorld* const World = MyTarget->GetWorld();
-	if (!IsValid(World))
 	{
 		return false;
 	}
@@ -153,6 +59,20 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 		return false;
 	}
 
+	// [Optimization] 전역 시야 및 거리 최적화 판별
+	// 이 GCN은 파티클이 부착될 수도, 단발성일 수도 있습니다. 보통 bAttachToSource 등에 따라 지속형 여부를 판별합니다.
+	const bool bIsPersistent = SpawnConfig->bAttachToSource;
+	const EVfxCullState CullState = USkillVfxCullingHelper::CheckVfxCulling(MyTarget, Parameters, bIsPersistent);
+	if (CullState == EVfxCullState::SkipSpawn)
+	{
+		return false;
+	}
+
+	UWorld* const World = MyTarget->GetWorld();
+	if (!IsValid(World))
+	{
+		return false;
+	}
 	const FSkillNiagaraSpawnSettings SpawnSettings = SpawnConfig->ToSettings();
 	if (SpawnSettings.NiagaraSystem.IsNull())
 	{
@@ -231,6 +151,20 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnExecute_Implementation(AActor* MyTarget, 
 	UNiagaraComponent* const SpawnedComponent = SkillNiagaraSpawnHelper::SpawnNiagaraBySettings(World, SpawnSettings, SourceTransform, SourceActor, nullptr, Parameters.TargetAttachComponent.Get());
 	if (IsValid(SpawnedComponent))
 	{
+		const AActor* VisionTarget = IsValid(MyTarget) ? MyTarget : SourceActor;
+
+		// 초기 숨김 처리는 RegisterParticle이 등록 시점에 시야 상태로 확정함 (006 합-1/합-2)
+		if (CullState == EVfxCullState::SpawnAndTrackVision ||
+			CullState == EVfxCullState::SpawnHidden || 
+			CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen)
+		{
+			if (UVisionParticleManagerSubsystem* VisionSubsystem = World->GetSubsystem<UVisionParticleManagerSubsystem>())
+			{
+				const bool bTrackUntilSeen = (CullState == EVfxCullState::SpawnAndTrackVisionUntilSeen);
+				VisionSubsystem->RegisterParticle(SpawnedComponent, const_cast<AActor*>(VisionTarget), bTrackUntilSeen);
+			}
+		}
+
 		SpawnedComponent->ComponentTags.Add(Parameters.OriginalTag.GetTagName());
 		if (IsValid(SpawnConfig))
 		{

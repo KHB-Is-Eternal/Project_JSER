@@ -32,6 +32,9 @@ public:
 	virtual bool CanBePlaced(UAnimSequenceBase* Animation) const override;
 #endif
 
+	/** 외부 프리로드 등에서 안전하게 SpawnConfig에 접근할 수 있도록 하는 Getter입니다. */
+	FORCEINLINE const USkillNiagaraSpawnConfig* GetSpawnConfig() const { return SpawnConfig; }
+
 protected:
 	/** 시각 효과 설정을 담은 데이터 에셋입니다. 내부에 GameplayCue 태그 정보를 포함하고 있습니다. */
 	UPROPERTY(EditAnywhere, Category = "Skill", meta = (DisplayName = "Spawn Config"))

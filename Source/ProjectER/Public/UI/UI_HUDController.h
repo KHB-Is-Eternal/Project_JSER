@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -76,5 +76,23 @@ protected:
     TObjectPtr<APlayerState> PlayerState;
     TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
     TObjectPtr<UAttributeSet> AttributeSet;
+
+    // AddUObject 어트리뷰트 변경 콜백 함수 선언
+    // AddLambda([this]...) 대신 AddUObject(this, &...) 로 바인딩하여 댕글링 포인터 크래시 방지
+    void OnLevelAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnXPAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnHealthAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnMaxHealthAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnStaminaAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnMaxStaminaAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnAttackPowerAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnAttackSpeedAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnDefenseAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnSkillAmpAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnCriticalChanceAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnMoveSpeedAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnCooldownReductionAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnAttackRangeAttributeChanged(const FOnAttributeChangeData& Data);
+    void OnSkillPointAttributeChanged(const FOnAttributeChangeData& Data);
 	
 };

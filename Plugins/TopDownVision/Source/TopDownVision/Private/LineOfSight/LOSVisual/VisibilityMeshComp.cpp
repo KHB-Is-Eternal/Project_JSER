@@ -144,9 +144,9 @@ void UVisibilityMeshComp::Initialize()
 {
     if (SkeletalMeshTargets.IsEmpty() && StaticMeshTargets.IsEmpty())
     {
-        UE_LOG(VisibilityMeshComp, Warning,
-            TEXT("[%s] UVisibilityMeshComp::Initialize >> No mesh targets."),
-            *TopDownVisionDebug::GetClientDebugName(GetOwner()));
+        // UE_LOG(VisibilityMeshComp, Warning,
+        //     TEXT("[%s] UVisibilityMeshComp::Initialize >> No mesh targets."),
+        //     *TopDownVisionDebug::GetClientDebugName(GetOwner()));
         return;
     }
 
@@ -203,21 +203,13 @@ void UVisibilityMeshComp::SetMIDsFromPool(const FLOSVisibilityMIDSet& InSet)
         CacheOriginalMaterials();
     }
 
-    // Find the first valid tagged skeletal mesh — one per monster
-    USkeletalMeshComponent* TargetMesh = nullptr;
-    for (TSoftObjectPtr<USkeletalMeshComponent>& SoftMesh : SkeletalMeshTargets)
-    {
-        if (SoftMesh.IsValid())
-        {
-            TargetMesh = SoftMesh.Get();
-            break;
-        }
-    }
+    // Find the first valid tagged mesh — skeletal first, then static
+    UMeshComponent* TargetMesh = GetFirstTargetMesh();
 
     if (!IsValid(TargetMesh))
     {
         UE_LOG(VisibilityMeshComp, Warning,
-            TEXT("[%s] UVisibilityMeshComp::SetMIDsFromPool >> No valid skeletal mesh found"),
+            TEXT("[%s] UVisibilityMeshComp::SetMIDsFromPool >> No valid target mesh found"),
             *TopDownVisionDebug::GetClientDebugName(GetOwner()));
         return;
     }
@@ -269,15 +261,7 @@ void UVisibilityMeshComp::ClearPoolMIDs()
     if (!bMIDsArePooled)
         return;
 
-    USkeletalMeshComponent* TargetMesh = nullptr;
-    for (TSoftObjectPtr<USkeletalMeshComponent>& SoftMesh : SkeletalMeshTargets)
-    {
-        if (SoftMesh.IsValid())
-        {
-            TargetMesh = SoftMesh.Get();
-            break;
-        }
-    }
+    UMeshComponent* TargetMesh = GetFirstTargetMesh();
 
     if (IsValid(TargetMesh))
     {
@@ -295,6 +279,23 @@ void UVisibilityMeshComp::ClearPoolMIDs()
     UE_LOG(VisibilityMeshComp, Verbose,
         TEXT("[%s] UVisibilityMeshComp::ClearPoolMIDs >> Original materials restored"),
         *TopDownVisionDebug::GetClientDebugName(GetOwner()));
+}
+
+// -------------------------------------------------------------------------- //
+//  GetFirstTargetMesh
+// -------------------------------------------------------------------------- //
+
+UMeshComponent* UVisibilityMeshComp::GetFirstTargetMesh() const
+{
+    for (const TSoftObjectPtr<USkeletalMeshComponent>& SoftMesh : SkeletalMeshTargets)
+        if (SoftMesh.IsValid())
+            return SoftMesh.Get();
+
+    for (const TSoftObjectPtr<UStaticMeshComponent>& SoftMesh : StaticMeshTargets)
+        if (SoftMesh.IsValid())
+            return SoftMesh.Get();
+
+    return nullptr;
 }
 
 // -------------------------------------------------------------------------- //

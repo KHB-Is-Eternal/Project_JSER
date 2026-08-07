@@ -2,6 +2,7 @@
 
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
 #include "SkillSystem/GameAbility/SkillBase.h"
+#include "SkillSystem/GameplayCueNotify/Components/GroundIndicatorComponent.h"
 #include "SkillSystem/GameAbility/MouseTargetSkill.h"
 #include "SkillSystem/GameAbility/MouseClickSkill.h"
 #include "SkillSystem/GameAbility/InstantSkill.h"
@@ -20,9 +21,11 @@ const TArray<FSkillExecutionPhase>& UBaseSkillConfig::GetExecutionPhases() const
 	return EmptyPhases;
 }
 
+
 UActiveSkillConfig::UActiveSkillConfig()
 {
 	AbilityClass = USkillBase::StaticClass();
+	bAllowMovementDuringSkill = false;
 }
 
 UGameplayEffect* UActiveSkillConfig::CreateCostGameplayEffect(UObject* Outer)
@@ -83,6 +86,8 @@ UMouseClickSkillConfig::UMouseClickSkillConfig()
 	AbilityClass = UMouseClickSkill::StaticClass();
 }
 
+
+
 UInstantSkillConfig::UInstantSkillConfig()
 {
     AbilityClass = UInstantSkill::StaticClass();
@@ -102,4 +107,38 @@ UPassiveInstantSkillConfig::UPassiveInstantSkillConfig()
 UPassiveAccumulateSkillConfig::UPassiveAccumulateSkillConfig()
 {
 	AbilityClass = UWatchTagAbility_Accumulate::StaticClass();
+}
+
+FSkillRangeConfig::FSkillRangeConfig()
+{
+	Range = 0.f;
+	IndicatorMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/KHB/SharedIndicator/Material/M_RangeIndicator.M_RangeIndicator")));
+}
+
+UGroundIndicatorComponent* FSkillRangeConfig::MakeGroundIndicatorComponent(AActor* InOwner) const
+{
+	if (InOwner == nullptr)
+	{
+		return nullptr;
+	}
+
+	UGroundIndicatorComponent* DynComp = NewObject<UGroundIndicatorComponent>(InOwner, TEXT("DynamicRangeIndicatorComp"));
+	if (DynComp != nullptr)
+	{
+		DynComp->RegisterComponent();
+		DynComp->AttachToComponent(InOwner->GetRootComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+
+		if (Range > 0.f)
+		{
+			DynComp->SetIndicatorScale(FVector(Range / 50.f, Range / 50.f, 1.f));
+		}
+		
+		if (!IndicatorMaterial.IsNull())
+		{
+			DynComp->SetIndicatorMaterial(0, IndicatorMaterial.LoadSynchronous());
+		}
+
+		DynComp->SetTrackingDynamicGround(true);
+	}
+	return DynComp;
 }

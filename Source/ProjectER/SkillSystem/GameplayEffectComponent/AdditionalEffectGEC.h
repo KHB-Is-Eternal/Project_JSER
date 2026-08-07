@@ -42,4 +42,7 @@ public:
 	/** 버프가 활성화되어 있는 동안 재생할 사운드 효과 */
 	UPROPERTY(EditDefaultsOnly, Category = "Additional|SFX")
 	TObjectPtr<USkillSoundSpawnConfig> ActiveSoundConfig;
+
+public:
+	virtual void CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const override;
 };

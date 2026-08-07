@@ -101,9 +101,6 @@ protected:
 	
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Team")
-	EVisionChannel ConvertTeamToVisionChannel(ETeamType InTeamType);
-
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Team")
 	EVisionChannel GetVisionChannelFromPlayerStateComp();
 	
 protected:
@@ -435,15 +432,15 @@ public:
 	void OnLevelChanged();
 protected:
 	// 미니맵용 씬 캡처 컴포넌트
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Minimap")
-	class USceneCaptureComponent2D* MinimapCaptureComponent;
+	// UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Minimap")
+	// class USceneCaptureComponent2D* MinimapCaptureComponent;
 	
-	// 미니맵용 얼굴 아이콘
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
-	class UStaticMeshComponent* MinimapIconMesh;
+	// // 미니맵용 얼굴 아이콘
+	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
+	// class UStaticMeshComponent* MinimapIconMesh;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
-	class UStaticMeshComponent* MinimapLineMesh;
+	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
+	// class UStaticMeshComponent* MinimapLineMesh;
 
 	// 미니맵용 얼굴 마테리얼
 	UPROPERTY()
@@ -492,19 +489,14 @@ public:
 	void Multicast_ShowRecoveryText(int32 Amount, bool bIsMana);
 
 protected:
-	// 크래프팅 시야 판정용 타이머
-	FTimerHandle CraftingUIVisibilityTimer;
+	// 크래프팅 위젯 시야 판정 (Vision_VisualComp 델리게이트 구독 핸들러)
+	UFUNCTION()
 	void UpdateCraftingUIVisibility();
 
 #pragma endregion
 
 #pragma region Vision
 
-	UFUNCTION(BlueprintPure, BlueprintCallable, Category = "Vision")//Helper for getting the vision channel from the PlayerStateComp
-	EVisionChannel GetVisionChannelFromVisionPlayerStateComp();
-
-	
-	
 #pragma endregion
 	
 };

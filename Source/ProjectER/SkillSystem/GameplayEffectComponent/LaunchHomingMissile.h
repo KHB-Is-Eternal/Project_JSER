@@ -105,4 +105,7 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Missile|Sound")
 	TObjectPtr<USkillSoundSpawnConfig> ImpactSound;
+
+public:
+	virtual void CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const override;
 };

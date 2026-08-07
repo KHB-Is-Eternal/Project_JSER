@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/UI_ToolTipManager.h"
@@ -11,11 +11,12 @@ UUI_ToolTipManager::UUI_ToolTipManager()
 {
 }
 
-void UUI_ToolTipManager::ShowTooltip(UWidget* AnchorWidget, FText Name, FText ShortDesc, FText DetailDesc, FText CostDesc, bool showUpper)
+// [김현수 추가분] 매개변수 끝에 이름 폰트 색상(NameColor) 추가 및 UpdateTooltip으로 전달
+void UUI_ToolTipManager::ShowTooltip(UWidget* AnchorWidget, FText Name, FText ShortDesc, FText DetailDesc, FText CostDesc, bool showUpper, FLinearColor NameColor)
 {
     if (!TooltipInstance || !AnchorWidget) return;
     
-    TooltipInstance->UpdateTooltip(Name, ShortDesc, DetailDesc, CostDesc);
+    TooltipInstance->UpdateTooltip(Name, ShortDesc, DetailDesc, CostDesc, NameColor);
     TooltipInstance->SetVisibility(ESlateVisibility::HitTestInvisible);
 
     // 위젯의 위치 쓰던 말던 일단 가져오기

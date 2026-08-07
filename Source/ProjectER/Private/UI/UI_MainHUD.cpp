@@ -10,6 +10,16 @@
 #include "NavigationSystem.h" // 미니맵용
 #include "NavigationPath.h" // 미니맵용
 
+// CPU 미니맵용
+#include "Components/CanvasPanel.h"
+#include "UI/UI_MinimapProjection.h"
+#include "UI/UI_AMiniMapCapture.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/Texture2D.h"
+#include "EngineUtils.h" // TActorIterator
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerState.h"
+
 #include "Blueprint/SlateBlueprintLibrary.h" // 툴팁용
 #include "Blueprint/WidgetLayoutLibrary.h" // 툴팁용
 #include "UI/UI_ToolTip.h" // 툴팁용
@@ -283,6 +293,9 @@ void UUI_MainHUD::InitASCHud(UAbilitySystemComponent* _ASC)
     {
         ASC->AbilityActivatedCallbacks.AddUObject(this, &UUI_MainHUD::OnAbilityActivated);
 
+        // [Fix] 쿨타임 GE가 추가될 때마다 OnTimeChanged를 바인딩합니다. (예측본/복제본 모두 발화)
+        ASC->OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(this, &UUI_MainHUD::OnActiveGameplayEffectAddedToSelf);
+
         // Register cooldown tag events for each skill
         for (int32 i = 0; i < SkillDataAssets.Num(); ++i)
         {
@@ -312,21 +325,21 @@ void UUI_MainHUD::NativeConstruct()
     // [김현수 추가분]Grid_item이 BindWidget으로 바인딩 안됐으면 직접 찾기
     if (!Grid_item)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not bound, trying to find manually..."));
+        //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not bound, trying to find manually..."));
         Grid_item = Cast<UUniformGridPanel>(GetWidgetFromName(TEXT("Grid_item")));
 
         if (Grid_item)
         {
-            UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item found manually!"));
+            //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item found manually!"));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not found even manually!"));
+            //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not found even manually!"));
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item already bound via BindWidget!"));
+        //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item already bound via BindWidget!"));
     }
 
     EnsureInventorySlotWidgets();
@@ -500,6 +513,163 @@ void UUI_MainHUD::NativeConstruct()
     if (BTN_CraftPreview_4)
     {
         BTN_CraftPreview_4->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview4Clicked);
+    }
+}
+
+void UUI_MainHUD::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+
+    // CPU 미니맵 갱신 (MinimapUpdateInterval = 0이면 매 프레임)
+    MinimapUpdateAccum += InDeltaTime;
+    if (MinimapUpdateInterval > 0.f && MinimapUpdateAccum < MinimapUpdateInterval)
+    {
+        return;
+    }
+    MinimapUpdateAccum = 0.f;
+
+    UpdateMinimapView();
+}
+
+void UUI_MainHUD::UpdateMinimapView()
+{
+    const ABaseCharacter* LocalChar = Cast<ABaseCharacter>(GetOwningPlayerPawn());
+    if (!IsValid(LocalChar))
+    {
+        return;
+    }
+
+    EnsureMinimapRefs();
+
+    UpdateMinimapBackground(LocalChar->GetActorLocation());
+    UpdateMinimapIcons(LocalChar);
+}
+
+void UUI_MainHUD::EnsureMinimapRefs()
+{
+    // 전체맵 1회 캡처 액터 캐싱 (BasePlayerController와 동일 패턴)
+    if (!IsValid(MinimapCaptureActor))
+    {
+        for (TActorIterator<AUI_AMiniMapCapture> It(GetWorld()); It; ++It)
+        {
+            MinimapCaptureActor = *It;
+            break;
+        }
+    }
+
+    // 배경 MID 캐싱 — WBP에서 TEX_Minimap 브러시에 UVCenter/UVZoom 파라미터를 가진 머티리얼이 할당되어 있어야 함
+    if (!IsValid(MinimapBackgroundMID) && IsValid(TEX_Minimap))
+    {
+        MinimapBackgroundMID = TEX_Minimap->GetDynamicMaterial();
+    }
+}
+
+void UUI_MainHUD::UpdateMinimapBackground(const FVector& ViewCenter)
+{
+    if (!IsValid(MinimapBackgroundMID) || !IsValid(MinimapCaptureActor))
+    {
+        return;
+    }
+
+    const float MapWidth = MinimapCaptureActor->GetMapOrthoWidth();
+    if (MapWidth <= 0.f)
+    {
+        return;
+    }
+
+    // 줌/회전각은 런타임에 불변 — 최초 1회만 설정 (회전각은 아이콘 계산과 같은 프로퍼티를 공유해 어긋남 방지)
+    if (!bMinimapStaticParamsSet)
+    {
+        MinimapBackgroundMID->SetScalarParameterValue(FName("UVZoom"), MinimapViewWidth / MapWidth);
+        MinimapBackgroundMID->SetScalarParameterValue(FName("UVRotationDeg"), MinimapViewRotationDeg);
+        bMinimapStaticParamsSet = true;
+    }
+
+    const FVector2D UVCenter = FUI_MinimapProjection::WorldToMapUV(ViewCenter, MinimapCaptureActor->GetMapCenter(), MapWidth);
+    MinimapBackgroundMID->SetVectorParameterValue(FName("UVCenter"), FLinearColor(UVCenter.X, UVCenter.Y, 0.f, 0.f));
+}
+
+void UUI_MainHUD::UpdateMinimapIcons(const ABaseCharacter* LocalChar)
+{
+    if (!IsValid(MinimapIconCanvas))
+    {
+        return;
+    }
+
+    const FVector2D CanvasSize = MinimapIconCanvas->GetCachedGeometry().GetLocalSize();
+    if (CanvasSize.IsNearlyZero())
+    {
+        return;
+    }
+
+    AGameStateBase* GameState = GetWorld()->GetGameState();
+    if (!IsValid(GameState))
+    {
+        return;
+    }
+
+    // 전부 숨김 후 이번 프레임에 유효한 아이콘만 다시 표시 (사망/리스폰 잔상 방지)
+    for (auto& Pair : MinimapIcons)
+    {
+        if (Pair.Value.Face) Pair.Value.Face->SetVisibility(ESlateVisibility::Collapsed);
+        if (Pair.Value.Ring) Pair.Value.Ring->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+    const FVector ViewCenter = LocalChar->GetActorLocation();
+
+    for (APlayerState* PS : GameState->PlayerArray)
+    {
+        if (!IsValid(PS))
+        {
+            continue;
+        }
+
+        ABaseCharacter* Character = Cast<ABaseCharacter>(PS->GetPawn());
+        if (!IsValid(Character))
+        {
+            continue;
+        }
+
+        FMinimapIconPair* Icons = MinimapIcons.Find(Character);
+        if (!Icons)
+        {
+            FMinimapIconPair NewPair = FUI_MinimapProjection::CreateIconPair(this, MinimapIconCanvas, Character,
+                LocalChar, MinimapRingMaterial.LoadSynchronous(), MinimapRingIconSize,
+                MinimapFaceMaterial.LoadSynchronous(), MinimapFaceIconSize);
+            if (!NewPair.Face)
+            {
+                continue;
+            }
+            Icons = &MinimapIcons.Add(Character, NewPair);
+        }
+
+        // HeroData/TeamID가 늦게 리플리케이션된 경우 지연 적용
+        FUI_MinimapProjection::RefreshFaceTexture(*Icons, Character);
+        FUI_MinimapProjection::RefreshTeamColor(*Icons, Character, LocalChar);
+
+        // 뷰 범위 판정 + 시야 판정
+        const FVector2D Offset = FUI_MinimapProjection::WorldToViewOffset(
+            Character->GetActorLocation(), ViewCenter, MinimapViewWidth, MinimapViewRotationDeg);
+        const bool bInView = FMath::Abs(Offset.X) <= 0.5f && FMath::Abs(Offset.Y) <= 0.5f;
+
+        if (!bInView || !FUI_MinimapProjection::IsCharacterVisibleOnMinimap(Character, LocalChar))
+        {
+            continue;
+        }
+
+        const FVector2D CanvasPos((Offset.X + 0.5f) * CanvasSize.X, (Offset.Y + 0.5f) * CanvasSize.Y);
+        FUI_MinimapProjection::PlaceIconPair(*Icons, CanvasPos);
+    }
+
+    // 파괴된 캐릭터의 아이콘 정리
+    for (auto It = MinimapIcons.CreateIterator(); It; ++It)
+    {
+        if (!IsValid(It.Key()))
+        {
+            if (It.Value().Face) It.Value().Face->RemoveFromParent();
+            if (It.Value().Ring) It.Value().Ring->RemoveFromParent();
+            It.RemoveCurrent();
+        }
     }
 }
 
@@ -745,11 +915,25 @@ void UUI_MainHUD::initSkillDataAssets()
 
 void UUI_MainHUD::HandleMinimapClicked(const FPointerEvent& InMouseEvent)
 {
-    if (!IsValid(TEX_Minimap) || !IsValid(MinimapCaptureComponent)) return;
+    if (!IsValid(TEX_Minimap)) return;
+
+    // CPU 미니맵: 로컬 플레이어 위치 + 뷰 폭 기준 역변환 (기존 캡처 카메라 기준 수식 대체)
+    const ABaseCharacter* LocalChar = Cast<ABaseCharacter>(GetOwningPlayerPawn());
+    if (!IsValid(LocalChar)) return;
 
     FGeometry MapGeometry = TEX_Minimap->GetCachedGeometry();
     FVector2D LocalClickPos = MapGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
     FVector2D ImageSize = MapGeometry.GetLocalSize();
+    if (ImageSize.IsNearlyZero()) return;
+
+    const FVector2D ViewOffset(LocalClickPos.X / ImageSize.X - 0.5f, LocalClickPos.Y / ImageSize.Y - 0.5f);
+
+    FVector TargetWorldPos = FUI_MinimapProjection::ViewOffsetToWorld(
+        ViewOffset, LocalChar->GetActorLocation(), MinimapViewWidth, MinimapViewRotationDeg);
+
+    // [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 기존 SceneCapture 카메라 기준 수식
+    /*
+    if (!IsValid(MinimapCaptureComponent)) return;
 
     float AlphaX = LocalClickPos.X / ImageSize.X;
     float AlphaY = LocalClickPos.Y / ImageSize.Y;
@@ -772,6 +956,7 @@ void UUI_MainHUD::HandleMinimapClicked(const FPointerEvent& InMouseEvent)
     FVector CameraLoc = MinimapCaptureComponent->GetComponentLocation();
     // 최종 목적지 계산
     FVector TargetWorldPos = FVector(CameraLoc.X + RelativeWorldX, CameraLoc.Y + RelativeWorldY, CameraLoc.Z);
+    */
 
     // UE_LOG(LogTemp, Log, TEXT("최종 목적지 월드 좌표: %s"), *TargetWorldPos.ToString());
     
@@ -1063,19 +1248,6 @@ void UUI_MainHUD::OnCooldownTagChanged(const FGameplayTag Tag, int32 NewCount, i
             if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[SkillIndex]->SkillConfig->GetCooldownTags())
             {
                 GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration);
-
-                // [Fix] 쿨타임 반환(Refund) 등에 따른 실시간 시간 갱신을 받기 위해 OnTimeChanged 델리게이트를 구독합니다.
-                FGameplayEffectQuery const Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(*CooldownTags);
-                TArray<FActiveGameplayEffectHandle> ActiveHandles = ASC->GetActiveEffects(Query);
-                for (const FActiveGameplayEffectHandle& Handle : ActiveHandles)
-                {
-                    const FActiveGameplayEffect* ActiveGE = ASC->GetActiveGameplayEffect(Handle);
-                    if (ActiveGE)
-                    {
-                        FActiveGameplayEffect* MutableGE = const_cast<FActiveGameplayEffect*>(ActiveGE);
-                        MutableGE->EventSet.OnTimeChanged.AddUObject(this, &UUI_MainHUD::OnCooldownTimeChanged, SkillIndex);
-                    }
-                }
             }
             ProcessCooldown(SkillIndex, Duration, RemainingTime);
         }
@@ -1146,6 +1318,32 @@ void UUI_MainHUD::OnCooldownTimeChanged(FActiveGameplayEffectHandle Handle, floa
 
         // 변경된 남은 시간으로 로컬 타이머 및 UI 텍스트 갱신
         ProcessCooldown(SkillIndex, Duration, RemainingTime);
+    }
+}
+
+void UUI_MainHUD::OnActiveGameplayEffectAddedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle Handle)
+{
+    // [Fix] 쿨타임 반환(Refund) 등에 따른 실시간 시간 갱신을 받기 위해 OnTimeChanged 델리게이트를 구독합니다.
+    // 태그 이벤트(0→1) 시점 바인딩은 클라이언트에서 예측 GE에만 붙고, 이후 서버에서 복제된 GE에는
+    // 붙지 않아 환급이 UI에 반영되지 않았습니다. GE 추가 시점에 바인딩하면 복제본에도 항상 바인딩됩니다.
+    FGameplayTagContainer GrantedTags;
+    Spec.GetAllGrantedTags(GrantedTags);
+
+    for (int32 i = 0; i < SkillDataAssets.Num(); ++i)
+    {
+        if (SkillDataAssets[i] && SkillDataAssets[i]->SkillConfig)
+        {
+            if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[i]->SkillConfig->GetCooldownTags())
+            {
+                if (GrantedTags.HasAny(*CooldownTags))
+                {
+                    if (FOnActiveGameplayEffectTimeChange* TimeChangeDelegate = SourceASC->OnGameplayEffectTimeChangeDelegate(Handle))
+                    {
+                        TimeChangeDelegate->AddUObject(this, &UUI_MainHUD::OnCooldownTimeChanged, i);
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -20,7 +20,8 @@ public:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> Txt_ItemName;
 
-	/** 아이템 이름을 텍스트 블록에 설정합니다. */
+	/** 아이템 이름과 폰트 색상을 텍스트 블록에 설정합니다. */
+	// [김현수 추가분] 아이템 등급 색상 적용을 위해 매개변수 추가
 	UFUNCTION(BlueprintCallable, Category = "Item|UI")
-	void SetItemName(FText NewName);
+	void SetItemName(FText NewName, FLinearColor NameColor = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f));
 };

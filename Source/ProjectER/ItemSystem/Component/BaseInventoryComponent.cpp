@@ -13,6 +13,9 @@
 #include "TimerManager.h"
 #include "ItemSystem/Actor/BaseItemActor.h"
 #include "CharacterSystem/Character/BaseCharacter.h"
+#include "ItemSystem/Actor/BaseWardActor.h"
+#include "GlobalUtil/StaticGlobalUtils.h"
+#include "LineOfSight/Management/VisionPlayerStateComp.h"
 
 UBaseInventoryComponent::UBaseInventoryComponent()
 {
@@ -26,6 +29,29 @@ void UBaseInventoryComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	EnsureInventoryArraysValid();
+
+	// 서버 권한에서만 시작 아이템 지급 (클라이언트 중복 추가 방지)
+	if (const AActor* Owner = GetOwner(); Owner && Owner->HasAuthority())
+	{
+		for (const FStartingItemEntry& Entry : StartingItems)
+		{
+			if (Entry.Item == nullptr || Entry.Count <= 0)
+			{
+				continue;
+			}
+
+			for (int32 i = 0; i < Entry.Count; ++i)
+			{
+				// AddItem이 스택/빈 슬롯 분산 처리. 가득 차면 false → 초과분 버리고 다음 엔트리로
+				if (!AddItem(Entry.Item))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] StartingItems: inventory full, dropped %d of '%s'"),
+						Entry.Count - i, *Entry.Item->ItemName.ToString());
+					break;
+				}
+			}
+		}
+	}
 }
 
 void UBaseInventoryComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -224,7 +250,13 @@ void UBaseInventoryComponent::UseItem(const int32 SlotIndex)
 		return;
 	}
 
-	if (!UsableItem->bConsumable)
+	ConsumeUsedItem(SlotIndex, UsableItem);
+}
+
+// [김현수 추가분] 사용 성공 후 슬롯 스택 1 소모 (UseItem / PlaceWardAtLocation 공용)
+void UBaseInventoryComponent::ConsumeUsedItem(int32 SlotIndex, UUsableItemData* UsableItem)
+{
+	if (UsableItem == nullptr || !UsableItem->bConsumable)
 	{
 		return;
 	}
@@ -235,7 +267,10 @@ void UBaseInventoryComponent::UseItem(const int32 SlotIndex)
 	}
 	else
 	{
-		InventoryContents[SlotIndex] = nullptr;
+		if (InventoryContents.IsValidIndex(SlotIndex))
+		{
+			InventoryContents[SlotIndex] = nullptr;
+		}
 		if (InventoryStackCounts.IsValidIndex(SlotIndex))
 		{
 			InventoryStackCounts[SlotIndex] = 0;
@@ -332,6 +367,14 @@ FGameplayTag UBaseInventoryComponent::GetSetByCallerTagFromStatType(const EItemS
 		return ProjectER::Status::MaxStamina;
 	case EItemStatType::CriticalChance:
 		return ProjectER::Status::CritChance;
+	case EItemStatType::AttackRange:
+		return ProjectER::Status::AttackRange;
+	case EItemStatType::SkillAmp:
+		return ProjectER::Status::SkillAmp;
+	case EItemStatType::CooldownReduction:
+		return ProjectER::Status::CooldownReduction;
+	case EItemStatType::Tenacity:
+		return ProjectER::Status::Tenacity;
 	default:
 		return FGameplayTag();
 	}
@@ -359,6 +402,8 @@ bool UBaseInventoryComponent::ApplyItemEffect(UUsableItemData* ItemData)
 		return EnqueueFoodHeal(ItemData);
 	case EItemEffectType::ManaOverTime:
 		return EnqueueDrinkMana(ItemData);
+	case EItemEffectType::PlaceWard:
+		return ApplyPlaceWard(ASC, ItemData);
 	default:
 		UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] ApplyItemEffect: Unknown effect type"));
 		return false;
@@ -428,6 +473,137 @@ bool UBaseInventoryComponent::ApplyStatIncrease(UAbilitySystemComponent* ASC, UU
 
 	UE_LOG(LogTemp, Log, TEXT("[BaseInventoryComponent] Applied item GE. StatTag: %s, Value: %.2f"), *StatTag.ToString(), ItemData->EffectValue);
 	return true;
+}
+
+bool UBaseInventoryComponent::ApplyPlaceWard(UAbilitySystemComponent* ASC, UUsableItemData* ItemData, bool bUseTargetLocation, const FVector& TargetLocation)
+{
+	if (ASC == nullptr || ItemData == nullptr)
+	{
+		return false;
+	}
+
+	if (!ItemData->WardActorClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyPlaceWard: WardActorClass is not set for item %s"), *ItemData->ItemName.ToString());
+		return false;
+	}
+
+	AActor* const OwnerActor = GetOwner();
+	if (OwnerActor == nullptr)
+	{
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return false;
+	}
+
+	// 팀 시야 채널을 권위 소스(AER_PlayerState::TeamType)에서 먼저 해석한다.
+	// 플레이어 폰이 자기 시야 채널을 세팅하는 것과 동일 경로. 해석 실패 시 설치 취소.
+	ABaseCharacter* OwnerChar = Cast<ABaseCharacter>(OwnerActor);
+	if (OwnerChar == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyPlaceWard: Owner is not ABaseCharacter. Ward placement cancelled."));
+		return false;
+	}
+
+	const EVisionChannel VisionChannel = UStaticGlobalUtils::ConvertTeamToVisionChannel(OwnerChar->GetTeamType());
+
+	if (VisionChannel == EVisionChannel::None)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[BaseInventoryComponent] ApplyPlaceWard: failed to resolve team vision channel (None). Ward placement cancelled."));
+		return false;
+	}
+	// 채널 확정(None 아님) 후에만 스폰 (실패 시 orphan 액터 방지)
+	// [김현수 추가분] 좌클릭 배치 흐름에선 커서 히트 위치(TargetLocation)에, 아니면 기존 소유자 앞 방향에 스폰.
+	const FVector SpawnLocation = bUseTargetLocation
+		? TargetLocation
+		: OwnerActor->GetActorLocation() + (OwnerActor->GetActorForwardVector() * 150.f);
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = OwnerActor;
+	SpawnParams.Instigator = Cast<APawn>(OwnerActor);
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	AActor* SpawnedActor = World->SpawnActor<AActor>(ItemData->WardActorClass, SpawnLocation, FRotator::ZeroRotator, SpawnParams);
+	if (!SpawnedActor)
+	{
+		return false;
+	}
+
+	// Initialize team for ward (팀 타입 전달 → 와드 내부에서 시야 채널 파생)
+	if (ABaseWardActor* WardActor = Cast<ABaseWardActor>(SpawnedActor))
+	{
+		WardActor->InitializeWardTeam(OwnerChar->GetTeamType());
+		// [김현수 추가분] 메시 바닥이 지면에 밀착되도록 Z 보정 (서버에서 위치 확정 → 클라 복제)
+		WardActor->SnapToGround();
+	}
+
+	return true;
+}
+
+// [김현수 추가분] 좌클릭 배치 흐름: 지정 위치에 와드 스폰 후 스택 소모 (서버 권한)
+void UBaseInventoryComponent::PlaceWardAtLocation(int32 SlotIndex, const FVector& TargetLocation)
+{
+	AActor* const OwnerActor = GetOwner();
+	if (OwnerActor == nullptr || !OwnerActor->HasAuthority())
+	{
+		return;
+	}
+
+	if (!InventoryContents.IsValidIndex(SlotIndex))
+	{
+		return;
+	}
+
+	UUsableItemData* const UsableItem = Cast<UUsableItemData>(InventoryContents[SlotIndex]);
+	if (UsableItem == nullptr || UsableItem->EffectType != EItemEffectType::PlaceWard)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BaseInventoryComponent] PlaceWardAtLocation: Slot %d is not a ward"), SlotIndex);
+		return;
+	}
+
+	if (!CanUseItemsInCurrentLifeState())
+	{
+		return;
+	}
+
+	// 쿨타임 체크 (서버 재검증)
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (float* LastUseTime = LastItemUseTimes.Find(UsableItem))
+	{
+		if (CurrentTime - *LastUseTime < UsableItem->UseCooldown)
+		{
+			return;
+		}
+	}
+
+	// 사거리 재검증 (0이면 무제한). 초과 시 배치 취소.
+	if (UsableItem->WardPlaceRange > 0.f)
+	{
+		const float DistSq = FVector::DistSquared(OwnerActor->GetActorLocation(), TargetLocation);
+		if (DistSq > FMath::Square(UsableItem->WardPlaceRange))
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[BaseInventoryComponent] PlaceWardAtLocation: out of range"));
+			return;
+		}
+	}
+
+	UAbilitySystemComponent* const ASC = ResolveOwnerAbilitySystemComponent();
+	if (ASC == nullptr)
+	{
+		return;
+	}
+
+	if (!ApplyPlaceWard(ASC, UsableItem, /*bUseTargetLocation=*/true, TargetLocation))
+	{
+		return;
+	}
+
+	LastItemUseTimes.Add(UsableItem, CurrentTime);
+	ConsumeUsedItem(SlotIndex, UsableItem);
 }
 
 bool UBaseInventoryComponent::EnqueueFoodHeal(UUsableItemData* ItemData)

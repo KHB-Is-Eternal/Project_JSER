@@ -32,8 +32,8 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 			Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
 			Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
+			if (TargetASC->IsOwnerActorAuthoritative() || TargetASC->ScopedPredictionKey.IsLocalClientKey())
 			{
-				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 				TargetASC->AddGameplayCue(this->ActiveVfxConfig->CueTag, Params);
 			}
 
@@ -45,8 +45,10 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 				ensureMsgf(CustomASC != nullptr, TEXT("OnEffectRemoved: ASC is not UProjectERASC! Check Blueprint CDO."));
 				if (CustomASC)
 				{
-					FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
-					CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+					if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
+					{
+						CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+					}
 				}
 			});
 		}
@@ -59,8 +61,8 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 			Params.Instigator = ActiveGE.Spec.GetContext().GetInstigator();
 			Params.EffectCauser = ActiveGE.Spec.GetContext().GetEffectCauser();
 
+			if (TargetASC->IsOwnerActorAuthoritative() || TargetASC->ScopedPredictionKey.IsLocalClientKey())
 			{
-				FScopedPredictionWindow PredictionWindow(TargetASC, !TargetASC->GetPredictionKeyForNewAction().IsValidKey());
 				TargetASC->AddGameplayCue(this->ActiveSoundConfig->CueTag, Params);
 			}
 
@@ -72,8 +74,10 @@ bool UAdditionalEffectGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsCon
 				ensureMsgf(CustomASC != nullptr, TEXT("OnEffectRemoved: ASC is not UProjectERASC! Check Blueprint CDO."));
 				if (CustomASC)
 				{
-					FScopedPredictionWindow PredictionWindow(CustomASC, !CustomASC->GetPredictionKeyForNewAction().IsValidKey());
-					CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+					if (CustomASC->IsOwnerActorAuthoritative() || CustomASC->ScopedPredictionKey.IsLocalClientKey())
+					{
+						CustomASC->RemoveGameplayCueBySource(CueTag, WeakConfig.Get());
+					}
 				}
 			});
 		}
@@ -96,4 +100,29 @@ FSkillTooltipData UAdditionalEffectGEC::GetTooltipDescription(int32 Level, TSubc
 
 	Data.DetailedDescription = FText::FromString(DetailStr);
 	return Data;
+}
+
+void UAdditionalEffectGEC::CollectNiagaraPaths(TArray<FSoftObjectPath>& OutPaths) const
+{
+	Super::CollectNiagaraPaths(OutPaths);
+	if (ActiveVfxConfig && !ActiveVfxConfig->NiagaraSystem.IsNull())
+	{
+		OutPaths.AddUnique(ActiveVfxConfig->NiagaraSystem.ToSoftObjectPath());
+	}
+	for (const TSubclassOf<UBaseGameplayEffect>& GEClass : Bonus)
+	{
+		if (GEClass)
+		{
+			if (const UBaseGameplayEffect* GE = GEClass->GetDefaultObject<UBaseGameplayEffect>())
+			{
+				for (const UGameplayEffectComponent* Component : GE->GetGEComponents())
+				{
+					if (const UBaseGEC* BaseGEC = Cast<UBaseGEC>(Component))
+					{
+						BaseGEC->CollectNiagaraPaths(OutPaths);
+					}
+				}
+			}
+		}
+	}
 }

@@ -9,11 +9,13 @@
 #include "LineOfSight/ObjectTracing/TopDown2DShapeComp.h"
 
 #include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
+#include "LineOfSight/Management/Subsystem/LOSRequirementPoolSubsystem.h"
 #include "LineOfSight/VisionComps/Vision_EvaluatorComp.h"
 #include "ObstacleOcclusion/Manager/OcclusionSubsystem.h"
 
 #include "GameFramework/GameStateBase.h"
 #include "LineOfSight/Management/VisionGameStateComp.h"
+#include "LineOfSight/Management/VisionPlayerStateComp.h"
 #include "LineOfSight/MainVisionRTManager.h"
 #include "TopDownVisionDebug.h"
 
@@ -58,6 +60,10 @@ void UVision_VisualComp::EndPlay(const EEndPlayReason::Type EndPlayReason)
     if (ULOSVisionSubsystem* Subsystem = GetWorld()->GetSubsystem<ULOSVisionSubsystem>())
         Subsystem->UnregisterProvider(this, VisionChannel);
 
+    // 풀에서 받은 가시성 MID 세트 반납 (미보유 시 무시)
+    if (ULOSRequirementPoolSubsystem* PoolSub = GetWorld()->GetSubsystem<ULOSRequirementPoolSubsystem>())
+        PoolSub->ReleaseVisibilityMIDsFor(this);
+
     if (OcclusionTargetIndex != INDEX_NONE)
     {
         if (UOcclusionSubsystem* OccSub = GetWorld()->GetSubsystem<UOcclusionSubsystem>())
@@ -78,17 +84,18 @@ void UVision_VisualComp::Initialize()
     if (!ShouldRunClientLogic())
         return;
 
-    if (!IsSharedVisionChannel() && IndicatorRange > 0.f)
-    {
-        VisionRange    = IndicatorRange;
-        MaxVisionRange = IndicatorRange;
-    }
-
     // Grid Vision always skips allocating local rendering resources (Obstacle / Stamp)
     // and only initializes visibility fading mesh.
     if (VisibilityMesh)
     {
-        VisibilityMesh->Initialize();
+        // MeshKey가 설정된 액터는 풀에서 미리 만든 MID 세트를 우선 사용하고,
+        // 키 미등록/풀 고갈 시 기존처럼 메시의 머티리얼로 MID를 생성(소유 모드)한다.
+        bool bPooledMIDs = false;
+        if (ULOSRequirementPoolSubsystem* PoolSub = GetWorld()->GetSubsystem<ULOSRequirementPoolSubsystem>())
+            bPooledMIDs = PoolSub->AcquireVisibilityMIDsFor(this);
+
+        if (!bPooledMIDs)
+            VisibilityMesh->Initialize();
     }
 
     UE_LOG(LOSVision, Log,
@@ -103,7 +110,7 @@ void UVision_VisualComp::Initialize()
 
     if (UOcclusionSubsystem* OccSub = GetWorld()->GetSubsystem<UOcclusionSubsystem>())
         if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent()))
-            OcclusionTargetIndex = OccSub->RegisterTarget(Root, nullptr, VisionRange);
+            OcclusionTargetIndex = OccSub->RegisterTarget(Root, nullptr, GetVisibleRange());
 }
 
 void UVision_VisualComp::SetIndicatorRange(float NewIndicatorRange) { IndicatorRange = NewIndicatorRange; }
@@ -224,6 +231,27 @@ void UVision_VisualComp::SetVisionChannel(EVisionChannel InVC)
 {
     FString TempDebug = TopDownVisionDebug::GetClientDebugName(GetOwner());
     VisionChannel = InVC;
+
+    RefreshOcclusionAndEvaluatorRadius();
+}
+
+void UVision_VisualComp::RefreshOcclusionAndEvaluatorRadius()
+{
+    if (OcclusionTargetIndex != INDEX_NONE)
+    {
+        if (UWorld* World = GetWorld())
+        {
+            if (UOcclusionSubsystem* OccSub = World->GetSubsystem<UOcclusionSubsystem>())
+            {
+                OccSub->UpdateTargetByIndex(OcclusionTargetIndex, VisibilityAlpha, GetVisibleRange());
+            }
+        }
+    }
+
+    if (CachedEvaluatorComp)
+    {
+        CachedEvaluatorComp->SyncDetectionRadius();
+    }
 }
 
 void UVision_VisualComp::UpdateVisionRange(float NewRange)
@@ -238,11 +266,35 @@ bool UVision_VisualComp::IsSharedVisionChannel() const
 
 EVisionChannel UVision_VisualComp::GetLocalPlayerVisionChannel() const
 {
-    AGameStateBase* GS = GetWorld()->GetGameState();
-    if (!GS) return EVisionChannel::None;
-    UVisionGameStateComp* GSComp = GS->FindComponentByClass<UVisionGameStateComp>();
-    if (!GSComp) return EVisionChannel::None;
-    return GSComp->GetLocalPlayerTeamChannel();
+    if (UWorld* World = GetWorld())
+    {
+        if (ULOSVisionSubsystem* Subsystem = World->GetSubsystem<ULOSVisionSubsystem>())
+        {
+            if (UVisionPlayerStateComp* LocalVPS = Subsystem->GetLocalVisionPS(World))
+            {
+                return LocalVPS->GetTeamChannel();
+            }
+        }
+    }
+    return EVisionChannel::None;
+}
+
+float UVision_VisualComp::GetVisibleRange() const
+{
+    if (!IsSharedVisionChannel() && IndicatorRange > 0.f)
+    {
+        return IndicatorRange;
+    }
+    return VisionRange;
+}
+
+float UVision_VisualComp::GetMaxVisibleRange() const
+{
+    if (!IsSharedVisionChannel() && IndicatorRange > 0.f)
+    {
+        return IndicatorRange;
+    }
+    return MaxVisionRange;
 }
 
 bool UVision_VisualComp::ShouldRunClientLogic() const

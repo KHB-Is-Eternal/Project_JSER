@@ -46,4 +46,7 @@ private:
 	// VM external function implementations
 	void VMApplyOverlayMaterial(FVectorVMExternalFunctionContext& Context);
 	void VMClearOverlayMaterial(FVectorVMExternalFunctionContext& Context);
+
+	UFUNCTION()
+	void OnNiagaraComponentDeactivated(UActorComponent* Component);
 };

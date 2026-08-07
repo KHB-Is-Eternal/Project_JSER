@@ -7,9 +7,7 @@
 #include "GameFramework/PlayerState.h"
 #include "LineOfSight/Management/VisionPlayerStateComp.h"
 #include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
-#include "LineOfSight/ObjectTracing/VolumeVisibilityEvaluator2D.h"
 #include "LineOfSight/ObjectTracing/WallVisibilityEvaluator2D.h"
-#include "LineOfSight/WorldObstacle/LOSObstacleDrawerComponent.h"
 
 UVision_EvaluatorComp::UVision_EvaluatorComp()
 {
@@ -213,6 +211,14 @@ void UVision_EvaluatorComp::SyncDetectionRadius()
         TEXT("[%s] SyncDetectionRadius >> Radius set to %.1f"),
         *TopDownVisionDebug::GetClientDebugName(GetOwner()),
         DetectionRadius);
+}
+
+void UVision_EvaluatorComp::AddVisionTargetChannel(ECollisionChannel InChannel)
+{
+    if (!DetectionSphere)
+        return;
+
+    DetectionSphere->SetCollisionResponseToChannel(InChannel, ECR_Overlap);
 }
 
 void UVision_EvaluatorComp::BP_DrawDebugSphereComp(float DrawTime)
@@ -478,18 +484,6 @@ bool UVision_EvaluatorComp::EvaluateWallObstacle(
         Target->GetActorLocation(),
         ShapeComp,
         WallTraceChannel);
-}
-
-bool UVision_EvaluatorComp::EvaluateVolumeObstacle(
-    AActor* Target, UTopDown2DShapeComp* ShapeComp)
-{
-    return UVolumeVisibilityEvaluator2D::EvaluateVisibility(
-        CachedVisualComp->GetObstacleDrawer()->GetObstacleRenderTarget(),
-        CachedVisualComp->GetMaxVisibleRange(),
-        GetOwner()->GetActorLocation(),
-        Target->GetActorLocation(),
-        ShapeComp,
-        OcclusionThreshold);
 }
 
 // -------------------------------------------------------------------------- //

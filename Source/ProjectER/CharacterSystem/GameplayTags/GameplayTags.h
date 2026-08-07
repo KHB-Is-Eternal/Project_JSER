@@ -452,9 +452,14 @@ namespace ProjectER
 	{
 		namespace Animation
 		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Aiming);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Casting);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Active);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Backswing);
+		}
+		namespace Option
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(AllowMovement);
 		}
 		namespace Data
 		{

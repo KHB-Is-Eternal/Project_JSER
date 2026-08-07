@@ -25,10 +25,14 @@ public:
 	AActor* GetTargetUnderCursorInRange();
 	bool IsTargetActorInRange(AActor* InTargetActor) const;
 protected:
+	virtual void ExecuteSmartCast(const FGameplayEventData& EventData) override;
+	virtual void StartIndicatorMode(bool bIsManual) override;
+
 	virtual void ExecuteSkill() override;
 	virtual void CompleteFinishSkill() override;
 	virtual void OnCancelAbility() override;
-	void SetWaitTargetTask();
+	virtual TSubclassOf<class AGameplayAbilityTargetActor> GetTargetActorClass() const override;
+
 	void SetWaitExternalTargetEventTask();
 	void SubmitExternalTargetActor(AActor* InTargetActor);
 	bool ConsumePendingExternalTargetActor(AActor*& OutTargetActor);
@@ -38,20 +42,20 @@ protected:
 	void ApplyEffectsTarget(AActor* TargetActor, const TArray<TSubclassOf<UBaseGameplayEffect>>& SkillEffectDataAssets, const TArray<FSkillMagnitudeCalculation>& Calculators);
 	void CleanUpSkill();
 
-	UFUNCTION()
-	void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle);
-	UFUNCTION()
-	void OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataHandle);
+	virtual void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle) override;
+	virtual void OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataHandle) override;
 	UFUNCTION()
 	void OnExternalTargetActorReceived(FGameplayEventData Payload);
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
+
 private:
 
 public:
 
 protected:
 	TWeakObjectPtr<AActor> AffectedActor;
-	TWeakObjectPtr<ATargetActor> CurrentTargetActor;
 	TWeakObjectPtr<AActor> PendingExternalTargetActor;
 	FGameplayTag ExternalTargetActorEventTag;
+
 private:
 };

@@ -114,7 +114,8 @@ void ABasePlayerController::BeginPlay()
 
 	// [김현수 추가분] HUDController 찾기
 	FTimerHandle TimerHandle;
-	GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
+	FTimerDelegate TimerDel;
+	TimerDel.BindWeakLambda(this, [this]()
 		{
 			TArray<UObject*> FoundControllers;
 			GetObjectsOfClass(UUI_HUDController::StaticClass(), FoundControllers, true, RF_NoFlags);
@@ -127,7 +128,8 @@ void ABasePlayerController::BeginPlay()
 			{
 				UE_LOG(LogTemp, Warning, TEXT("[BasePlayerController] HUDController not found yet"));
 			}
-		}, 0.5f, false);
+		});
+	GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDel, 0.5f, false);
 
 	if (IsLocalController())
 	{
@@ -232,6 +234,18 @@ void ABasePlayerController::SetupInputComponent()
 				EnhancedInputComponent->BindAction(Action.InputAction, ETriggerEvent::Started, this, &ABasePlayerController::AbilityInputTagPressed, Action.InputTag);
 
 				// Released 바인딩 (차징 스킬 등을 위해 필요)
+				EnhancedInputComponent->BindAction(Action.InputAction, ETriggerEvent::Completed, this, &ABasePlayerController::AbilityInputTagReleased, Action.InputTag);
+			}
+		}
+
+		for (const FInputData& Action : InputConfig->ManualAbilityInputAction)
+		{
+			if (Action.InputAction && Action.InputTag.IsValid())
+			{
+				// Pressed 바인딩 (수동 조준 전용 핸들러 호출)
+				EnhancedInputComponent->BindAction(Action.InputAction, ETriggerEvent::Started, this, &ABasePlayerController::AbilityManualInputTagPressed, Action.InputTag);
+
+				// Released 바인딩 (릴리즈 핸들러 공유)
 				EnhancedInputComponent->BindAction(Action.InputAction, ETriggerEvent::Completed, this, &ABasePlayerController::AbilityInputTagReleased, Action.InputTag);
 			}
 		}
@@ -523,6 +537,13 @@ void ABasePlayerController::CheckHoveredActor()
 
 void ABasePlayerController::OnMoveStarted()
 {
+	// [김현수 추가분] 와드 배치 무장 중 우클릭은 이동 대신 배치 취소로 소비.
+	if (PendingWardSlot >= 0)
+	{
+		CancelWardPlacement();
+		return;
+	}
+
 	if (bIsAttackInputMode)
 	{
 		CancelAttackMode();
@@ -927,6 +948,38 @@ void ABasePlayerController::CheckInteractionDistance()
 
 void ABasePlayerController::OnConfirm()
 {
+	// [김현수 추가분] 와드 배치 무장 중이면 좌클릭 위치에 배치 요청 (공격/ASC 분기로 흘리지 않음).
+	if (PendingWardSlot >= 0)
+	{
+		FHitResult Hit;
+		if (GetCurvedHitResultUnderCursor(MouseTraceChannel, false, Hit) && Hit.bBlockingHit)
+		{
+			bool bInRange = true;
+			if (APawn* P = GetPawn())
+			{
+				if (UBaseInventoryComponent* Inv = P->FindComponentByClass<UBaseInventoryComponent>())
+				{
+					if (UUsableItemData* Usable = Cast<UUsableItemData>(Inv->GetItemAt(PendingWardSlot)))
+					{
+						if (Usable->WardPlaceRange > 0.f)
+						{
+							bInRange = FVector::DistSquared(P->GetActorLocation(), Hit.Location) <= FMath::Square(Usable->WardPlaceRange);
+						}
+					}
+				}
+			}
+
+			if (bInRange)
+			{
+				Server_PlaceWardAtLocation(PendingWardSlot, Hit.Location);
+				PendingWardSlot = -1;
+			}
+			// 사거리 초과: 무효 클릭 취급 → 무장 유지
+		}
+		// 바닥 미히트: 무장 유지
+		return;
+	}
+
 	if (!bIsAttackInputMode)
 	{
 		APawn* ControlledPawn = GetPawn();
@@ -953,6 +1006,9 @@ void ABasePlayerController::OnConfirm()
 }
 
 void ABasePlayerController::OnCanceled() {
+	// [김현수 추가분] ESC/취소 입력 시 와드 배치 무장 해제.
+	CancelWardPlacement();
+
 	APawn* ControlledPawn = GetPawn();
 	if (!ControlledPawn) return;
 
@@ -1183,29 +1239,80 @@ void ABasePlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 		return; // 레벨업이 우선이므로 이후 공격 처리 로직은 실행하지 않음
 	}
 
+	// 마우스 커서 하단 위치/타겟 정보 획득
+	FHitResult CursorHit;
+	GetHitResultUnderCursor(MouseTraceChannel, false, CursorHit);
+
+	FGameplayEventData Payload;
+	Payload.EventTag = InputTag;
+	Payload.Instigator = ControlledPawn;
+	
+	// 스마트 캐스트: 마우스 위치/타겟 정보를 TargetData에 실어서 전달
+	if (CursorHit.bBlockingHit)
+	{
+		Payload.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(CursorHit);
+		Payload.Target = CursorHit.GetActor();
+	}
+
 	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
 	{
 		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
 		{
 			if (Spec.IsActive())
 			{
-				// [방법 2 핵심] 태그를 담은 이벤트를 어빌리티에 직접 쏩니다.
-				FGameplayEventData Payload;
-				Payload.EventTag = InputTag; // 전달할 태그
-				Payload.Instigator = this;   // 보낸 사람
-
-				// 활성화된 어빌리티에게 이벤트를 전달합니다.
+				// 활성화된 어빌리티에게 이벤트 전달
 				ASC->HandleGameplayEvent(InputTag, &Payload);
-				UE_LOG(LogTemp, Log, TEXT("Gameplay Event Sent: %s"), *InputTag.ToString());
+				UE_LOG(LogTemp, Log, TEXT("Gameplay Event Sent (Active): %s"), *InputTag.ToString());
 			}
 			else
 			{
-				ASC->TryActivateAbility(Spec.Handle);
+				// 🌟 TriggerAbilityFromGameplayEvent로 즉시 시전 데이터 주입 실행
+				ASC->TriggerAbilityFromGameplayEvent(Spec.Handle, ASC->AbilityActorInfo.Get(), InputTag, &Payload, *ASC);
 			}
+			break;
 		}
 	}
+}
 
-	// GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, FString::Printf(TEXT("Input Tag Pressed: %s"), *InputTag.ToString()));
+void ABasePlayerController::AbilityManualInputTagPressed(FGameplayTag InputTag)
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn) return;
+
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn);
+	if (!ASC) return;
+
+	// // ctrl 눌려 있을 경우 스킬 레벨업 처리 _ mpyi
+	// if (IsInputKeyDown(EKeys::LeftControl))
+	// {
+	// 	OnSkillLevelUp(InputTag);
+	// 	return;
+	// }
+
+	FGameplayEventData Payload;
+	Payload.EventTag = InputTag;
+	Payload.Instigator = ControlledPawn;
+	
+	// 수동 조준(노멀 캐스트): Payload.TargetData와 Target을 의도적으로 비운 채로 실행하여 조준 상태 진입 유도
+	Payload.TargetData = FGameplayAbilityTargetDataHandle();
+	Payload.Target = nullptr;
+
+	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	{
+		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
+		{
+			if (Spec.IsActive())
+			{
+				ASC->HandleGameplayEvent(InputTag, &Payload);
+			}
+			else
+			{
+				// 🌟 TriggerAbilityFromGameplayEvent로 실행하되, 데이터가 비어있어 조준선 모드로 진입
+				ASC->TriggerAbilityFromGameplayEvent(Spec.Handle, ASC->AbilityActorInfo.Get(), InputTag, &Payload, *ASC);
+			}
+			break;
+		}
+	}
 }
 
 void ABasePlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
@@ -1314,20 +1421,15 @@ void ABasePlayerController::Client_ReturnToMainMenu_Implementation(const FString
 	UGameplayStatics::OpenLevel(this, FName(TEXT("/Game/Level/Level_MainMenu")));
 }
 
-void ABasePlayerController::Client_StartPreload_Implementation()
+void ABasePlayerController::Client_StartPreload_Implementation(const TArray<FSoftObjectPath>& CharacterPaths)
 {
 	UE_LOG(LogTemp, Warning, TEXT("[Client] Client_StartPreload_Implementation called."));
-
-	//Client_OpenLoadingUI();
-
 	if (UGameInstance* GI = GetGameInstance())
 	{
 		if (UER_AssetPreloadSubsystem* PSS = GI->GetSubsystem<UER_AssetPreloadSubsystem>())
 		{
-			// 이벤트 바인딩
 			PSS->OnPreloadComplete.AddDynamic(this, &ABasePlayerController::OnPreloadComplete);
-			// 로드 요청
-			PSS->StartPreloadMonsterAssets();
+			PSS->StartPreloadAssets(CharacterPaths);
 		}
 	}
 }
@@ -1823,10 +1925,13 @@ void ABasePlayerController::ShowScoreboard()
 		NoShowScoreBoard = true;
 		if (IsValid(ScoreboardWidget))
 		{
+			// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 배경은 레벨 로드 시 1회 캡처로 대체됨 (아이콘은 UI_Scoreboard가 CPU로 갱신)
+			/*
 			if (CachedMiniMapActor)
 			{
 				CachedMiniMapActor->UpdateMiniMap();
 			}
+			*/
 
 			ScoreboardWidget->SetVisibility(ESlateVisibility::Visible);
 			// 실시간 데이터 갱신 함수 호출 추가? 해야 됨?
@@ -1952,6 +2057,21 @@ void ABasePlayerController::UseInventorySlot(int32 SlotIndex)
 		return;
 	}
 
+	// [김현수 추가분] 와드 아이템이면 즉시 사용하지 않고 좌클릭 배치 모드로 무장한다.
+	if (UUsableItemData* Usable = Cast<UUsableItemData>(InventoryComp->GetItemAt(SlotIndex)))
+	{
+		if (Usable->EffectType == EItemEffectType::PlaceWard)
+		{
+			PendingWardSlot = SlotIndex;
+			CancelAttackMode(); // 공격 모드와 상호 배타
+			if (IsLocalController() && ClickSound)
+			{
+				UGameplayStatics::PlaySound2D(this, ClickSound);
+			}
+			return;
+		}
+	}
+
 	// 슬롯 인덱스 사용 (0부터 시작)
 	InventoryComp->UseItem(SlotIndex);
 
@@ -1999,6 +2119,32 @@ void ABasePlayerController::UseInventoryForUI(int32 _ind)
 	UseInventorySlot(_ind);
 }
 
+// [김현수 추가분] 와드 배치 무장 해제
+void ABasePlayerController::CancelWardPlacement()
+{
+	PendingWardSlot = -1;
+}
+
+// [김현수 추가분] 좌클릭 위치에 와드 배치 요청 (서버 재검증)
+bool ABasePlayerController::Server_PlaceWardAtLocation_Validate(int32 SlotIndex, FVector_NetQuantize Location)
+{
+	return SlotIndex >= 0 && SlotIndex < 64;
+}
+
+void ABasePlayerController::Server_PlaceWardAtLocation_Implementation(int32 SlotIndex, FVector_NetQuantize Location)
+{
+	APawn* PlayerPawn = GetPawn();
+	if (!PlayerPawn)
+	{
+		return;
+	}
+
+	if (UBaseInventoryComponent* InventoryComp = PlayerPawn->FindComponentByClass<UBaseInventoryComponent>())
+	{
+		InventoryComp->PlaceWardAtLocation(SlotIndex, Location);
+	}
+}
+
 void ABasePlayerController::setChatMessage(const FString& Message)
 {
 	if (ChatWidgetInstance)
@@ -2009,11 +2155,8 @@ void ABasePlayerController::setChatMessage(const FString& Message)
 
 void ABasePlayerController::OnEnterPressed()
 {
-	UE_LOG(LogTemp, Error, TEXT("1"));
-
 	if (ChatWidgetInstance)
 	{
-		UE_LOG(LogTemp, Error, TEXT("OnEnterPressed: Showing chat input"));
 		ChatWidgetInstance->SetChatInputVisible(true);		
 
 		// 입력 모드를 UI로 변경

@@ -3,6 +3,7 @@
 
 #include "SkillSystem/SkillDataAsset.h"
 #include "GameplayEffect.h"
+#include "SkillSystem/Actor/SkillIndicatorActor.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayAbilitySpec.h"
 #include "GameAbility/SkillBase.h"
@@ -71,7 +72,6 @@ FSkillTooltipData USkillDataAsset::GetSkillTooltipData(int32 InLevel) const
 	{
 		AllEffects.Append(Phase.Effects);
 	}
-
 	if (const UMouseTargetSkillConfig* TargetConfig = Cast<UMouseTargetSkillConfig>(SkillConfig))
 	{
 		for (const FTargetExecutionPhase& TargetPhase : TargetConfig->GetTargetPhases())

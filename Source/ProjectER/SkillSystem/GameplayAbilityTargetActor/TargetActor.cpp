@@ -1,14 +1,39 @@
 // Fill out your copyright notice in the Description page of Project Settings.
+// Force recompilation to clear UBT link cache
 
 
 #include "SkillSystem/GameplayAbilityTargetActor/TargetActor.h"
 #include "GameFramework/Actor.h"
 #include "SkillSystem/GameAbility/MouseTargetSkill.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 
 ATargetActor::ATargetActor()
 {
-    //bDestroyOnConfirmation = true;
+	PrimaryActorTick.bCanEverTick = true;
+	bReplicates = false;
+}
+
+void ATargetActor::Setup(float InMaxRange)
+{
+	MaxRange = InMaxRange;
+}
+
+void ATargetActor::StartTargeting(UGameplayAbility* Ability)
+{
+	Super::StartTargeting(Ability);
+	SetActorTickEnabled(true);
+}
+
+void ATargetActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATargetActor::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
 }
 
 void ATargetActor::ConfirmTargetingAndContinue()

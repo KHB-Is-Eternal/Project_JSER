@@ -28,8 +28,8 @@ void UMouseTargetSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	// 1. 이벤트 데이터 기반 즉시 실행 (Fast Track)
-	// ShouldAbilityRespondToEvent에서 이미 사거리/타겟 검증이 완료되었으므로 타겟 유무만 확인합니다.
+	bool bHasValidTarget = false;
+
 	if (TriggerEventData)
 	{
 		AActor* TargetActor = nullptr;
@@ -52,14 +52,48 @@ void UMouseTargetSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 		if (IsValid(TargetActor))
 		{
-			AffectedActor = TargetActor;
-			RotateToTarget(TargetActor);
-			PrepareToActiveSkill();
-			return;
+			bHasValidTarget = true;
+			if (IsTargetActorInRange(TargetActor))
+			{
+				ExecuteSmartCast(*TriggerEventData);
+				return;
+			}
 		}
 	}
 
-	// 2. 이벤트 데이터가 없는 일반 케이스 (마우스 입력 대기)
+	const bool bIsManual = (TriggerEventData != nullptr && !bHasValidTarget);
+	StartIndicatorMode(bIsManual);
+}
+
+void UMouseTargetSkill::ExecuteSmartCast(const FGameplayEventData& EventData)
+{
+	AActor* TargetActor = nullptr;
+
+	if (EventData.TargetData.IsValid(0))
+	{
+		TArray<AActor*> TargetActors = UAbilitySystemBlueprintLibrary::GetActorsFromTargetData(EventData.TargetData, 0);
+		if (TargetActors.Num() > 0)
+		{
+			TargetActor = TargetActors[0];
+		}
+	}
+
+	if (!IsValid(TargetActor) && IsValid(EventData.Target))
+	{
+		TargetActor = const_cast<AActor*>(EventData.Target.Get());
+	}
+
+	if (IsValid(TargetActor))
+	{
+		AffectedActor = TargetActor;
+		RotateToTarget(TargetActor);
+		PrepareToActiveSkill();
+	}
+}
+
+void UMouseTargetSkill::StartIndicatorMode(bool bIsManual)
+{
+	Super::StartIndicatorMode(bIsManual);
 	SetWaitExternalTargetEventTask();
 	SetWaitTargetTask();
 }
@@ -89,11 +123,15 @@ bool UMouseTargetSkill::ShouldAbilityRespondToEvent(const FGameplayAbilityActorI
 		TargetActor = const_cast<AActor*>(Payload->Target.Get());
 	}
 
-	// 타겟이 있는 경우 개별 검증 수행
+	// 타겟이 있는 경우 사거리 및 관계 검증
 	if (IsValid(TargetActor))
 	{
 		if (!IsTargetActorInRange(TargetActor))
 		{
+			if (ActorInfo->PlayerController.IsValid())
+			{
+				return true;
+			}
 			UE_LOG(LogTemp, Warning, TEXT("[MouseTargetSkill] Rejected: Target out of range or invalid relationship."));
 			return false;
 		}
@@ -135,39 +173,9 @@ void UMouseTargetSkill::OnCancelAbility()
 	Super::OnCancelAbility();
 }
 
-void UMouseTargetSkill::SetWaitTargetTask()
+TSubclassOf<class AGameplayAbilityTargetActor> UMouseTargetSkill::GetTargetActorClass() const
 {
-	UAbilityTask_WaitTargetData* WaitTargetTask = UAbilityTask_WaitTargetData::WaitTargetData(
-		this,
-		TEXT("WaitTargetTask"),
-		EGameplayTargetingConfirmation::UserConfirmed,
-		ATargetActor::StaticClass()
-	);
-
-	WaitTargetTask->ValidData.AddDynamic(this, &UMouseTargetSkill::OnTargetDataReady);
-	WaitTargetTask->Cancelled.AddDynamic(this, &UMouseTargetSkill::OnTargetCancelled);
-
-	AGameplayAbilityTargetActor* SpawnedActor = nullptr;
-	ATargetActor* MyTargetActor = nullptr;
-	if (WaitTargetTask->BeginSpawningActor(this, ATargetActor::StaticClass(), SpawnedActor))
-	{
-		MyTargetActor = Cast<ATargetActor>(SpawnedActor);
-		if (MyTargetActor)
-		{
-			CurrentTargetActor = MyTargetActor;
-			MyTargetActor->PrimaryPC = Cast<APlayerController>(GetActorInfo().PlayerController);
-			WaitTargetTask->FinishSpawningActor(this, SpawnedActor);
-		}
-	}
-
-	WaitTargetTask->ReadyForActivation();
-
-	if (IsLocallyControlled())
-	{
-		if (IsValid(MyTargetActor)) {
-			MyTargetActor->TryConfirmMouseTarget();
-		}
-	}
+	return ATargetActor::StaticClass();
 }
 
 void UMouseTargetSkill::SetWaitExternalTargetEventTask()
@@ -189,9 +197,9 @@ void UMouseTargetSkill::SubmitExternalTargetActor(AActor* InTargetActor)
 		return;
 	}
 
-	if (CurrentTargetActor.IsValid())
+	if (ATargetActor* TargetActor = Cast<ATargetActor>(CurrentTargetActor.Get()))
 	{
-		CurrentTargetActor->SubmitExternalTarget(InTargetActor);
+		TargetActor->SubmitExternalTarget(InTargetActor);
 		return;
 	}
 
@@ -210,6 +218,8 @@ bool UMouseTargetSkill::ConsumePendingExternalTargetActor(AActor*& OutTargetActo
 
 void UMouseTargetSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle)
 {
+	Super::OnTargetDataReady(DataHandle);
+
 	TArray<AActor*> TargetActors = UAbilitySystemBlueprintLibrary::GetActorsFromTargetData(DataHandle, 0);
 
 	if (TargetActors.Num() <= 0)
@@ -233,8 +243,7 @@ void UMouseTargetSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle
 
 void UMouseTargetSkill::OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataHandle)
 {
-	CurrentTargetActor = nullptr;
-	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+	Super::OnTargetCancelled(DataHandle);
 }
 
 void UMouseTargetSkill::OnExternalTargetActorReceived(FGameplayEventData Payload)
@@ -364,6 +373,11 @@ void UMouseTargetSkill::ApplyEffectsTarget(AActor* TargetActor, const TArray<TSu
 
 void UMouseTargetSkill::CleanUpSkill()
 {
-	CurrentTargetActor = nullptr;
 	AffectedActor = nullptr;
 }
+
+void UMouseTargetSkill::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
+{
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+

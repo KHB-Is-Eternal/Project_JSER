@@ -61,7 +61,7 @@ void UAnimNotifyState_SkillSoundGameplayCue::NotifyBegin(USkeletalMeshComponent*
 				Parameters.AbilityLevel = Ability->GetAbilityLevel();
 			}
 		}
-		ASC->AddGameplayCue(GameplayCueTag, Parameters);
+		ASC->InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::OnActive, Parameters);
 	}
 	else
 	{
@@ -141,7 +141,7 @@ void UAnimNotifyState_SkillSoundGameplayCue::NotifyEnd(USkeletalMeshComponent* M
 
 	if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(OwnerActor))
 	{
-		ASC->RemoveGameplayCue(GameplayCueTag);
+		ASC->InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::Removed, Parameters);
 	}
 	else
 	{

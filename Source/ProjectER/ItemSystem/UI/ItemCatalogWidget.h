@@ -37,6 +37,13 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Catalog")
 	TSubclassOf<UItemCatalogSlotWidget> SlotWidgetClass;
 
+	// [김현수 추가분] 필터 탭 강조색 (선택 탭 = Active, 나머지 = Inactive). BP에서 조정.
+	UPROPERTY(EditAnywhere, Category = "Catalog|Style")
+	FLinearColor ActiveFilterColor = FLinearColor(0.20f, 0.55f, 0.90f, 1.f);
+
+	UPROPERTY(EditAnywhere, Category = "Catalog|Style")
+	FLinearColor InactiveFilterColor = FLinearColor::White;
+
 	// === Filter Buttons ===
 	UPROPERTY(meta = (BindWidgetOptional))
 	UButton* Btn_FilterAll;
@@ -49,6 +56,13 @@ protected:
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	UButton* Btn_FilterMaterial;
+
+	// [김현수 추가분] 레어도 정렬 토글 버튼 + 현재 방향 라벨
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_SortRarity;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UTextBlock* Text_SortRarity;
 
 	// === Pagination UI ===
 	UPROPERTY(meta = (BindWidgetOptional))
@@ -76,14 +90,26 @@ private:
 	UFUNCTION() void OnClickPrevPage();
 	UFUNCTION() void OnClickNextPage();
 
+	// [김현수 추가분] 레어도 정렬 토글 (누를 때마다 낮은순 ↔ 높은순)
+	UFUNCTION() void OnClickSortRarity();
+
+	// [김현수 추가분] 정렬 버튼 라벨 갱신
+	void UpdateSortLabel();
+
 	// 모든 아이템 데이터를 불러와 컨테이너에 추가하는 함수
 	void LoadAllItems(ECatalogFilter FilterType = ECatalogFilter::All);
 
 	// 페이지 버튼 상태 및 텍스트 갱신
 	void UpdatePaginationUI();
 
+	// [김현수 추가분] 현재 필터에 해당하는 탭만 강조색으로 표시
+	void UpdateFilterButtonStyles();
+
 	// 페이징 상태 변수
 	int32 CurrentPage = 0;
 	int32 MaxPage = 0;
 	ECatalogFilter CurrentFilter = ECatalogFilter::All;
+
+	// [김현수 추가분] 레어도 정렬 방향. true=낮은순(Normal→Unique), false=높은순.
+	bool bRaritySortAscending = true;
 };

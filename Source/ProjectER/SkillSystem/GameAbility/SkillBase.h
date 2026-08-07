@@ -42,6 +42,10 @@ public:
 	virtual const FGameplayTagContainer* GetCooldownTags() const override;
 
 protected:
+	bool bIsManualAiming = false;
+	virtual void ExecuteSmartCast(const FGameplayEventData& EventData) {}
+	virtual void StartIndicatorMode(bool bIsManual);
+
 	virtual void ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const override;
 	virtual UGameplayEffect* GetCostGameplayEffect() const override;
 	virtual void ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const;
@@ -122,8 +126,18 @@ protected:
 	/** 클라이언트로부터 직렬화되어 전달된 정확한 시전 시작 시간 (동기화 및 렉보상용) */
 	float SyncedActivationTime = 0.0f;
 
+	UFUNCTION(BlueprintPure, Category = "Skill")
+	USkillDataAsset* GetSkillDataAsset() const;
+
+protected:
+	/** 스킬 데이터 에셋 원본 포인터 캐싱 */
+	TWeakObjectPtr<class USkillDataAsset> CachedDataAsset;
+
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UBaseSkillConfig> CachedConfig;
+
+	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
+	FGameplayTag AimingTag;
 
 	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
 	FGameplayTag CastingTag;
@@ -133,6 +147,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
 	FGameplayTag BackswingTag;
+
+	UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
+	FGameplayTag AllowMovementTag;
 
 	//UPROPERTY(VisibleAnywhere, Category = "Skill|Tags")
 	//FGameplayTag FailedOutOfRangeTag;
@@ -148,5 +165,48 @@ protected:
 	TObjectPtr<UGameplayEffect> DynamicCostGE;
 
 protected:
+	UPROPERTY()
+	FTimerHandle FallbackEndTimerHandle;
+
+	UPROPERTY()
+	TArray<FTimerHandle> FallbackActiveTimerHandles;
+
+	UPROPERTY()
+	int32 MaxExpectedActiveCount = 0;
+
+	UPROPERTY()
+	bool bHasFallbackTriggeredActive = false;
+
+	/** CommitAbility로 선차감된 쿨타임 GE 핸들. 스킬 발동(Active)이 한 번도 실행되지 않은 채 종료되면 환불에 사용합니다. (const ApplyCooldown에서 기록하므로 mutable) */
+	mutable FActiveGameplayEffectHandle AppliedCooldownHandle;
+
+	void SetupFallbackTimers();
+	void ClearFallbackTimers();
+	void Fallback_TriggerActiveTag(int32 TargetPhaseIndex);
+	void Fallback_TriggerCastingTag();
+
 	void SetWaitEventBackswingTag();
+
+	void StopCharacterMove();
+
+	virtual TSubclassOf<class AGameplayAbilityTargetActor> GetTargetActorClass() const { return nullptr; }
+
+	UFUNCTION()
+	virtual void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle);
+
+	UFUNCTION()
+	virtual void OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataHandle);
+
+	void SetWaitTargetTask();
+	void SpawnIndicators();
+	void ClearIndicators();
+	float GetMaxRange() const;
+
+	UPROPERTY()
+	TWeakObjectPtr<class UGroundIndicatorComponent> ActiveRangeIndicatorComp;
+
+	UPROPERTY()
+	TObjectPtr<class ASkillIndicatorActor> ActiveDirectionIndicator;
+	
+	TWeakObjectPtr<class AGameplayAbilityTargetActor> CurrentTargetActor;
 };

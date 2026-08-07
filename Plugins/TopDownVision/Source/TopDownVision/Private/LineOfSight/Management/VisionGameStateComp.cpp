@@ -3,50 +3,8 @@
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/GameStateBase.h"
 #include "LineOfSight/Management/VisionPlayerStateComp.h"
-#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
-#include "Net/UnrealNetwork.h"
-#include "LineOfSight/VisionComps/Vision_VisualComp.h"
 
 DEFINE_LOG_CATEGORY(VisionGameStateComp);
-
-// -------------------------------------------------------------------------- //
-//  FastArray callbacks — fire on clients only
-// -------------------------------------------------------------------------- //
-
-void FVisibleActorArray::PostReplicatedAdd(
-    const TArrayView<int32>& AddedIndices, int32 FinalSize)
-{
-    if (!OwnerComp) return;
-    for (int32 Idx : AddedIndices)
-        if (Items.IsValidIndex(Idx))
-            OwnerComp->OnTargetBecameVisible(Items[Idx].Target, Items[Idx].ObserverTeam);
-}
-
-void FVisibleActorArray::PreReplicatedRemove(
-    const TArrayView<int32>& RemovedIndices, int32 FinalSize)
-{
-    if (!OwnerComp) return;
-
-    // NOTE: at the point PreReplicatedRemove fires, the items are still in
-    // the array (they are removed after this callback returns).
-    // ReevaluateTargetVisibility must therefore NOT count on the array
-    // already reflecting the removal.  We pass Team so the evaluator can
-    // exclude this specific entry if needed — but for correctness the
-    // simpler path is to call OnTargetBecameHidden after removal, which is
-    // what happens on the server side.  On clients we fire early, but since
-    // ReevaluateTargetVisibility scans for CanSeeTeam across ALL entries it
-    // finds at scan time, any mis-timing is harmless: worst case the actor
-    // stays visible for one extra frame.
-    for (int32 Idx : RemovedIndices)
-        if (Items.IsValidIndex(Idx))
-            OwnerComp->OnTargetBecameHidden(Items[Idx].Target, Items[Idx].ObserverTeam);
-}
-
-void FVisibleActorArray::PostReplicatedChange(
-    const TArrayView<int32>& ChangedIndices, int32 FinalSize)
-{
-    // Entries are only added or removed — no change events expected.
-}
 
 // -------------------------------------------------------------------------- //
 //  Component lifecycle
@@ -58,21 +16,12 @@ UVisionGameStateComp::UVisionGameStateComp()
     SetIsReplicatedByDefault(true);
 }
 
-void UVisionGameStateComp::BeginPlay()
-{
-    Super::BeginPlay();
-    VisibleActors.OwnerComp = this;
-}
-
-void UVisionGameStateComp::GetLifetimeReplicatedProps(
-    TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-    DOREPLIFETIME(UVisionGameStateComp, VisibleActors);
-}
-
 // -------------------------------------------------------------------------- //
 //  Server API
+//
+//  [005 부록 A] 이 스토어는 서버 전용이다. 클라이언트로의 전파는
+//  PushEntryToEligiblePlayers가 각 플레이어의 VisionPlayerStateComp
+//  (COND_OwnerOnly FastArray)에 항목을 써 넣는 방식으로만 일어난다.
 // -------------------------------------------------------------------------- //
 
 void UVisionGameStateComp::SetActorVisibleToTeam(AActor* Target, EVisionChannel Team)
@@ -84,16 +33,19 @@ void UVisionGameStateComp::SetActorVisibleToTeam(AActor* Target, EVisionChannel 
         return;
     }
 
+    // 서버 권위 — 클라이언트 호출(예: HandleProviderRegistered)은 무시.
+    // 아군 가시성은 CanSeeTeam 단락으로 이미 보장되므로 클라 측 항목이 필요 없다.
+    if (!GetOwner()->HasAuthority())
+        return;
+
     if (IsActorVisibleToTeam(Target, Team))
         return;
 
-    FVisibleActorEntry& Entry = VisibleActors.Items.AddDefaulted_GetRef();
+    FVisibleActorEntry& Entry = VisibleActors.AddDefaulted_GetRef();
     Entry.Target       = Target;
     Entry.ObserverTeam = Team;
-    VisibleActors.MarkItemDirty(Entry);
 
-    // Fire locally — PostReplicatedAdd only runs on remote clients.
-    OnTargetBecameVisible(Target, Team);
+    PushEntryToEligiblePlayers(Target, Team, /*bAdd=*/true);
 
     UE_LOG(VisionGameStateComp, Verbose,
         TEXT("SetActorVisibleToTeam >> %s visible to team [%s]"),
@@ -109,19 +61,18 @@ void UVisionGameStateComp::ClearActorVisibleToTeam(AActor* Target, EVisionChanne
         return;
     }
 
-    for (int32 i = VisibleActors.Items.Num() - 1; i >= 0; --i)
+    if (!GetOwner()->HasAuthority())
+        return;
+
+    for (int32 i = VisibleActors.Num() - 1; i >= 0; --i)
     {
-        const FVisibleActorEntry& Entry = VisibleActors.Items[i];
+        const FVisibleActorEntry& Entry = VisibleActors[i];
         if (Entry.Target != Target || Entry.ObserverTeam != Team)
             continue;
 
-        VisibleActors.Items.RemoveAt(i);
-        VisibleActors.MarkArrayDirty();
+        VisibleActors.RemoveAt(i);
 
-        // Entry is already gone from the array before we call this,
-        // so ReevaluateTargetVisibility will correctly find only the
-        // remaining entries when it scans.
-        OnTargetBecameHidden(Target, Team);
+        PushEntryToEligiblePlayers(Target, Team, /*bAdd=*/false);
 
         UE_LOG(VisionGameStateComp, Verbose,
             TEXT("ClearActorVisibleToTeam >> %s hidden from team [%s]"),
@@ -136,7 +87,7 @@ void UVisionGameStateComp::ClearActorVisibleToTeam(AActor* Target, EVisionChanne
 
 bool UVisionGameStateComp::IsActorVisibleToTeam(AActor* Target, EVisionChannel Team) const
 {
-    for (const FVisibleActorEntry& Entry : VisibleActors.Items)
+    for (const FVisibleActorEntry& Entry : VisibleActors)
     {
         if (Entry.Target != Target)
             continue;
@@ -176,71 +127,48 @@ EVisionChannel UVisionGameStateComp::GetLocalPlayerTeamChannel() const
 }
 
 // -------------------------------------------------------------------------- //
-//  Client callbacks — both now call ReevaluateTargetVisibility
-//
-//  OnTargetBecameVisible: a new entry arrived — re-eval may reveal the actor.
-//  OnTargetBecameHidden:  an entry was removed — re-eval checks whether ANY
-//                         remaining entry is still visible to this player.
-//                         If TeamA's entry exists, the actor stays visible.
-//                         This is the fix for the shared-vision corruption bug.
+//  Fan-out to eligible players
 // -------------------------------------------------------------------------- //
 
-void UVisionGameStateComp::OnTargetBecameVisible(AActor* Target, EVisionChannel Team)
+void UVisionGameStateComp::PushEntryToEligiblePlayers(
+    AActor* Target, EVisionChannel Team, bool bAdd) const
 {
-    if (!Target) return;
+    AGameStateBase* GS = GetWorld()->GetGameState();
+    if (!GS) return;
 
-    UVisionPlayerStateComp* VisionPS = ULOSVisionSubsystem::GetLocalVisionPS(GetWorld());
-    if (!VisionPS)
+    for (APlayerState* PS : GS->PlayerArray)
     {
-        UE_LOG(VisionGameStateComp, Verbose,
-            TEXT("OnTargetBecameVisible >> VisionPS not ready, queuing %s"),
-            *Target->GetName());
-        PendingReveals.Add({ Target, Team });
-        return;
-    }
+        if (!PS) continue;
 
-    VisionPS->ReevaluateTargetVisibility(Target);
-}
+        UVisionPlayerStateComp* VisionPS =
+            PS->FindComponentByClass<UVisionPlayerStateComp>();
+        if (!VisionPS) continue;
 
-void UVisionGameStateComp::OnTargetBecameHidden(AActor* Target, EVisionChannel Team)
-{
-    if (!Target) return;
-
-    UVisionPlayerStateComp* VisionPS = ULOSVisionSubsystem::GetLocalVisionPS(GetWorld());
-    if (!VisionPS)
-    {
-        PendingReveals.Add({ Target, Team });
-        return;
-    }
-
-   // Pass Team as ExcludeObserverTeam so the entry that is still physically
-   VisionPS->ReevaluateTargetVisibility(Target, Team);
-}
-
-// -------------------------------------------------------------------------- //
-//  Pending queue drain
-// -------------------------------------------------------------------------- //
-
-void UVisionGameStateComp::FlushPendingReveals(UVisionPlayerStateComp* VisionPS)
-{
-    if (!VisionPS || PendingReveals.IsEmpty())
-        return;
-
-    UE_LOG(VisionGameStateComp, Verbose,
-        TEXT("FlushPendingReveals >> Flushing %d queued entries"),
-        PendingReveals.Num());
-
-    // Deduplicate — multiple pending entries for the same target collapse to
-    // one reeval call, same as RefreshVisibility does.
-    TSet<AActor*> Evaluated;
-    for (const FPendingVisibilityEntry& Entry : PendingReveals)
-    {
-        if (!Entry.Target.IsValid() || Evaluated.Contains(Entry.Target.Get()))
+        if (!VisionPS->CanSeeTeam(Team))
             continue;
 
-        Evaluated.Add(Entry.Target.Get());
-        VisionPS->ReevaluateTargetVisibility(Entry.Target.Get());
+        if (bAdd)
+            VisionPS->AddTeamVisibleEntry(Target, Team);
+        else
+            VisionPS->RemoveTeamVisibleEntry(Target, Team);
+    }
+}
+
+void UVisionGameStateComp::RebuildPlayerVisibleEntries(UVisionPlayerStateComp* VisionPS) const
+{
+    if (!VisionPS || !GetOwner()->HasAuthority())
+        return;
+
+    TArray<FVisibleActorEntry> Filtered;
+    for (const FVisibleActorEntry& Entry : VisibleActors)
+    {
+        if (VisionPS->CanSeeTeam(Entry.ObserverTeam))
+            Filtered.Add(Entry);
     }
 
-    PendingReveals.Empty();
+    VisionPS->ResetTeamVisibleEntries(Filtered);
+
+    UE_LOG(VisionGameStateComp, Verbose,
+        TEXT("RebuildPlayerVisibleEntries >> %s rebuilt with %d entries"),
+        *VisionPS->GetOwner()->GetName(), Filtered.Num());
 }

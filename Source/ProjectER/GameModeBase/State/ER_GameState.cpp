@@ -17,7 +17,8 @@ void AER_GameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AER_GameState, CurrentPhase);
 	DOREPLIFETIME(AER_GameState, PhaseServerTime);
 	DOREPLIFETIME(AER_GameState, PhaseDuration);
-	
+	DOREPLIFETIME(AER_GameState, bGameStarted);
+
 }
 
 void AER_GameState::BuildTeamCache()
@@ -160,6 +161,11 @@ void AER_GameState::OnRep_Phase()
 	OnPhaseChanged.Broadcast(GetCurrentPhase());
 }
 
+void AER_GameState::OnRep_GameStarted()
+{
+	OnGameStarted.Broadcast();
+}
+
 float AER_GameState::GetPhaseRemainingTime() const
 {
 	const float NowServer = GetServerWorldTimeSeconds();
@@ -169,6 +175,11 @@ float AER_GameState::GetPhaseRemainingTime() const
 const TArray<TSoftObjectPtr<UCharacterData>>& AER_GameState::GetAvailableCharacterData() const
 {
 	return AvailableCharacterData;
+}
+
+void AER_GameState::NotifyHazardVisualsFinished()
+{
+	OnHazardVisualsFinished.Broadcast();
 }
 
 void AER_GameState::Multicast_OnHazardPhaseChanged_Implementation(const TArray<int32>& NewDangerZoneIDs)

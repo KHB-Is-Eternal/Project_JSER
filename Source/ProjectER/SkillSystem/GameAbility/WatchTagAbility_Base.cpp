@@ -340,6 +340,11 @@ void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor, float Even
 		return;
 	}
 
+	// ServerOnly 패시브는 클라이언트가 아무것도 예측하지 않았으므로,
+	// 이벤트 체인(TargetData RPC 윈도우)에서 새어 들어온 클라 예측 키를 스코프 동안 차단한다.
+	// 키가 남아 있으면 시전한 클라이언트가 GameplayCue(VFX/SFX) 재생을 스킵한다.
+	FScopedPredictionWindow CleanWindow(MyASC, FPredictionKey(), /*InSetReplicatedPredictionKey=*/false);
+
 	// 발동 시 쿨타임 적용 (USkillBase의 쿨타임 로직 재사용)
 	CommitAbilityCooldown(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, false);
 
@@ -355,7 +360,25 @@ void UWatchTagAbility_Base::ExecuteTriggerAction(AActor* TargetActor, float Even
 
 void UWatchTagAbility_Base::ApplyTriggerEffects(AActor* TargetActor, float EventMagnitude)
 {
-	if (PassiveConfig->Effects.IsEmpty() || TargetActor == nullptr)
+	if (TargetActor == nullptr)
+	{
+		return;
+	}
+
+	bool bHasAnyEffect = !PassiveConfig->Effects.IsEmpty();
+	if (!bHasAnyEffect)
+	{
+		for (const FSkillMagnitudeCalculation& Calc : PassiveConfig->MagnitudeCalculators)
+		{
+			if (IsValid(Calc.TargetGameplayEffect))
+			{
+				bHasAnyEffect = true;
+				break;
+			}
+		}
+	}
+
+	if (!bHasAnyEffect)
 	{
 		return;
 	}

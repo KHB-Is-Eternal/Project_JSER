@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "CharacterSystem/Interface/TargetableInterface.h"
+#include "LineOfSight/VisionData.h"
 #include "StaticGlobalUtils.generated.h"
 
 #define LOOT_INTERACT_DISTANCE 300.f
@@ -21,6 +23,10 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "GlobalUtils")
 	static FVector GetApproachLocationForActor(UWorld* World, const AActor* TargetActor, const FVector& FromLocation);
+
+	// ETeamType -> EVisionChannel 매핑의 단일 변환 경로 (중복 스위치 금지)
+	UFUNCTION(BlueprintPure, Category = "GlobalUtils")
+	static EVisionChannel ConvertTeamToVisionChannel(ETeamType InTeamType);
 
 
 	// static float LootInteractDistance = 300.f; // << Define이동

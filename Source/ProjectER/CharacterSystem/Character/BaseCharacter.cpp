@@ -47,8 +47,10 @@
 #include "UI/UI_HP_Bar.h" // HP바 위젯용
 
 #include "GameModeBase/State/ER_PlayerState.h"
+#include "GlobalUtil/StaticGlobalUtils.h"
 #include "LineOfSight/MainVisionRTManager.h"
-#include "LineOfSight/Management/VisionPlayerStateComp.h"
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
+#include "LineOfSight/VisionComps/Vision_VisualComp.h"
 
 // 길찾기 성능 프로파일링 — 콘솔: stat ProjectER_Pathfinding
 DECLARE_STATS_GROUP(TEXT("ProjectER_Pathfinding"), STATGROUP_ERPathfinding, STATCAT_Advanced);
@@ -148,6 +150,8 @@ ABaseCharacter::ABaseCharacter()
 
 	bIsAttackMoving = false;
 
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — CPU 미니맵(UI_MainHUD)으로 대체됨
+	/*
 	// 26.01.29. mpyi
 	// 미니맵을 위한 씬 컴포넌트 2D <- 차후 '카메라' 시스템으로 이동할 예정
 	MinimapCaptureComponent = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MinimapCaptureComponent"));
@@ -192,15 +196,25 @@ ABaseCharacter::ABaseCharacter()
 	MinimapLineMesh->SetRelativeScale3D(FVector(6.0f, 6.0f, 6.0f));	// 얼굴 아이콘 크기 조절
 	MinimapLineMesh->SetAbsolute(false, true, false); // 회전값 고정 (중요함....)
 	MinimapLineMesh->SetCastShadow(false);	// 그림자 없애기
+	*/
 
-	// 캐릭터 메쉬는 미니맵에 안보이게
+	// 캐릭터 메쉬는 미니맵에 안보이게 (TopDownVision 등 다른 캡처에도 영향 가능 — 유지)
 	GetMesh()->SetHiddenInSceneCapture(true);
+
+	// 시야 시스템의 VisibilityMeshComp가 페이드 대상 메시로 인식하도록 태그 추가
+	GetMesh()->ComponentTags.Add(TEXT("VisibilityMesh"));
+
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정
+	/*
 	// 미니맵 아이콘은 미니맵에 보이게
 	MinimapIconMesh->SetVisibleInSceneCaptureOnly(true);
 	MinimapLineMesh->SetVisibleInSceneCaptureOnly(true);
 
 	MinimapIconMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	MinimapLineMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	MinimapIconMesh->SetGenerateOverlapEvents(false); // [최적화] 불필요한 오버랩 연산 제거
+	MinimapLineMesh->SetGenerateOverlapEvents(false);
+	*/
 
 	// HP Bar 생성
 	HP_MP_BarWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("HPBarWidget"));
@@ -216,8 +230,10 @@ ABaseCharacter::ABaseCharacter()
 
 	HP_MP_BarWidget->SetDrawAtDesiredSize(true);
 
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정
+	/*
 	/// 최적화 필요시 아래 플래그 조절해가면서 해결해 보기
-	
+
 	MinimapCaptureComponent->ShowFlags.SetDynamicShadows(false); // 동적 그림자
 	MinimapCaptureComponent->ShowFlags.SetGlobalIllumination(false); // 루멘
 	//MinimapCaptureComponent->ShowFlags.SetMotionBlur(false); // 잔상 제거용
@@ -231,6 +247,7 @@ ABaseCharacter::ABaseCharacter()
 	MinimapCaptureComponent->ShowFlags.SetAntiAliasing(false);
 	MinimapCaptureComponent->ShowFlags.SetMotionBlur(false);
 	MinimapCaptureComponent->ShowFlags.SetVolumetricFog(false);
+	*/
 	
 }
 
@@ -511,34 +528,13 @@ void ABaseCharacter::Server_SetTeamID_Implementation(ETeamType NewTeamID)
 	OnRep_TeamID();
 }
 
-EVisionChannel ABaseCharacter::ConvertTeamToVisionChannel(ETeamType InTeamType)
-{
-	switch (InTeamType)
-	{
-		case ETeamType::None:
-		return EVisionChannel::None;
-		
-		case ETeamType::Team_A:
-		return EVisionChannel::TeamA;
-		
-		case ETeamType::Team_B:
-		return EVisionChannel::TeamB;
-		
-		case ETeamType::Team_C:
-		return EVisionChannel::TeamC;
-
-		default:
-		return EVisionChannel::None;
-	}
-}
-
 EVisionChannel ABaseCharacter::GetVisionChannelFromPlayerStateComp()
 {
 	if (const AER_PlayerState* ERPS = GetPlayerState<AER_PlayerState>())
 	{
-		return ConvertTeamToVisionChannel( ERPS->GetTeamType());
+		return UStaticGlobalUtils::ConvertTeamToVisionChannel( ERPS->GetTeamType());
 	}
-	
+
 	//failed to get the vision channel -> return none
 	return EVisionChannel::None;
 }
@@ -1096,8 +1092,13 @@ void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 		static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
 		static const FGameplayTag ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
 		static const FGameplayTag BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+		static const FGameplayTag AllowMovementTag = FGameplayTag::RequestGameplayTag(FName("Skill.Option.AllowMovement"));
 
-		if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
+		if (AbilitySystemComponent->HasMatchingGameplayTag(AllowMovementTag))
+		{
+			// 이동 허용 태그가 있다면 시전/발동 상태이더라도 차단하지 않습니다.
+		}
+		else if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
 			AbilitySystemComponent->HasMatchingGameplayTag(ActiveTag))
 		{
 			return; // 시전/발동 중에는 이동 차단
@@ -1289,7 +1290,7 @@ void ABaseCharacter::RequestAsyncPath(const FVector& Destination)
 	NavSys->FindPathAsync(
 			FNavAgentProperties::DefaultProperties,
 			Query,
-			FNavPathQueryDelegate::CreateLambda([this, CapturedRequestID](uint32 InQueryID, ENavigationQueryResult::Type InResult, FNavPathSharedPtr InNavPath)
+			FNavPathQueryDelegate::CreateWeakLambda(this, [this, CapturedRequestID](uint32 InQueryID, ENavigationQueryResult::Type InResult, FNavPathSharedPtr InNavPath)
 			{
 				// StopMove 후 도착한 오래된 콜백은 무시
 				if (CapturedRequestID != CurrentPathRequestID) return;
@@ -2066,7 +2067,8 @@ void ABaseCharacter::InitUI()
 			{
 				HUD->InitOverlay(PC, GetPlayerState(), GetAbilitySystemComponent(), GetPlayerState<ABasePlayerState>()->GetAttributeSet());
 			}
-			HUD->InitMinimapComponent(MinimapCaptureComponent);
+			// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — CPU 미니맵은 UI_MainHUD가 자체적으로 캡처 액터를 찾음
+			// HUD->InitMinimapComponent(MinimapCaptureComponent);
 			HUD->InitHeroDataFactory(HeroData);
 			HUD->InitASCFactory(GetAbilitySystemComponent());
 			PC->setMainHud(HUD->getMainHUD());
@@ -2139,6 +2141,8 @@ void ABaseCharacter::InitUI()
 
 	}
 
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 0.1초 GPU 캡처 타이머 (CPU 미니맵으로 대체됨)
+	/*
 	/// 미니맵 설정
 	if (!IsLocallyControlled())
 	{
@@ -2158,10 +2162,13 @@ void ABaseCharacter::InitUI()
 			&ABaseCharacter::UpdateMinimapCapture,
 			MinimapUpdateRate, true);
 	}
+	*/
 
 	// 방장(Listen Server)과 클라이언트 모두 HP Bar 및 미니맵 아이콘 초기화 필요
 	UpdateOverheadUI();
 
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 팀색/얼굴은 UI_MinimapProjection::CreateIconPair에서 처리
+	/*
 	// mpyi _ 미니맵용 얼굴 아이콘 마테리얼 인스턴스 초기화
 
 	if (MinimapIconMesh && HeroData && HeroData->CharacterIcon)
@@ -2211,7 +2218,8 @@ void ABaseCharacter::InitUI()
 			UpdateMinimapVisuals(teamColor);
 		}
 	}
-	
+	*/
+
 }
 
 void ABaseCharacter::UpdateOverheadUI()
@@ -2280,7 +2288,8 @@ void ABaseCharacter::OnHealthChanged()
 		}
 		else
 		{
-			APlayerController* LocalPC = GetWorld()->GetFirstPlayerController();
+			// 리슨 호스트 월드에는 PC가 여러 개 — 로컬 PC를 명시적으로 조회 (006 리슨 버그)
+			APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(GetWorld());
 			if (LocalPC)
 			{
 				AER_PlayerState* MyPS = LocalPC->GetPlayerState<AER_PlayerState>();
@@ -2346,30 +2355,22 @@ void ABaseCharacter::OnLevelChanged()
 
 void ABaseCharacter::UpdateMinimapCapture()
 {
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — CPU 미니맵으로 대체됨
+	/*
 	if (MinimapCaptureComponent && MinimapCaptureComponent->IsActive())
 		MinimapCaptureComponent->CaptureScene();
+	*/
 }
 
 void ABaseCharacter::UpdateMinimapVisuals(FLinearColor n_teamColor)
 {
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 팀색은 UI_MinimapProjection::GetTeamColor에서 처리
+	/*
 	if (MinimapLineMaterial)
 	{
 		MinimapLineMaterial->SetVectorParameterValue(FName("TeamColor"), n_teamColor);
 	}
-}
-
-EVisionChannel ABaseCharacter::GetVisionChannelFromVisionPlayerStateComp()
-{
-	if (APlayerState* PC=GetPlayerState())
-	{
-		if (UVisionPlayerStateComp* PVC=PC->FindComponentByClass<UVisionPlayerStateComp>())
-		{
-			return PVC->GetTeamChannel();
-		}
-	}
-
-	//failed to get the vision channel
-	return EVisionChannel::None;
+	*/
 }
 
 void ABaseCharacter::InitPlayer()
@@ -2435,14 +2436,12 @@ void ABaseCharacter::Multicast_ToggleCraftingUI_Implementation(bool bShow)
 			CraftingWidgetComp->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform);
 			CraftingWidgetComp->SetRelativeLocation(FVector(0.f, 0.f, 400.f)); // HP바(300.f)보다 더 높은 위치로 지정
 
-			// 시야 판정 타이머 시작 (0.1초마다 검사)
-			GetWorld()->GetTimerManager().SetTimer(
-				CraftingUIVisibilityTimer,
-				this,
-				&ABaseCharacter::UpdateCraftingUIVisibility,
-				0.3f,
-				true
-			);
+			// 시야 상태 변화 델리게이트 구독 (폴링 타이머 대체 — 006 합-2)
+			if (UVision_VisualComp* VisionComp = FindComponentByClass<UVision_VisualComp>())
+			{
+				VisionComp->OnTargetRevealed.AddUniqueDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+				VisionComp->OnTargetHidden.AddUniqueDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+			}
 
 			// 즉시 1회 실행하여 최초 상태 반영
 			UpdateCraftingUIVisibility();
@@ -2456,8 +2455,12 @@ void ABaseCharacter::Multicast_ToggleCraftingUI_Implementation(bool bShow)
 			CraftingWidgetComp = nullptr;
 		}
 
-		// 시작했던 타이머 초기화 (파괴)
-		GetWorld()->GetTimerManager().ClearTimer(CraftingUIVisibilityTimer);
+		// 델리게이트 구독 해제 (파괴)
+		if (UVision_VisualComp* VisionComp = FindComponentByClass<UVision_VisualComp>())
+		{
+			VisionComp->OnTargetRevealed.RemoveDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+			VisionComp->OnTargetHidden.RemoveDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+		}
 	}
 }
 
@@ -2465,7 +2468,8 @@ void ABaseCharacter::UpdateCraftingUIVisibility()
 {
 	if (!CraftingWidgetComp) return;
 
-	APlayerController* LocalPC = GetWorld()->GetFirstPlayerController();
+	// 리슨 호스트 월드에는 PC가 여러 개 — 로컬 PC를 명시적으로 조회 (006 리슨 버그)
+	APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(GetWorld());
 	if (!LocalPC) return;
 
 	ABaseCharacter* LocalChar = Cast<ABaseCharacter>(LocalPC->GetPawn());
@@ -2478,63 +2482,13 @@ void ABaseCharacter::UpdateCraftingUIVisibility()
 		return;
 	}
 
-	// 2. 적이거나 중립일 때 1000거리 이상이면 가림
-	float Dist = FVector::Dist(this->GetActorLocation(), LocalChar->GetActorLocation());
-	if (Dist > 1000.f)
+	// 2. 시야(Vision) 플러그인 연동: 단일 질의 API로 판정 (거리 폴백 제거 — 006 합-1)
+	if (const ULOSVisionSubsystem* VisionSubsystem = GetWorld()->GetSubsystem<ULOSVisionSubsystem>())
 	{
-		CraftingWidgetComp->SetVisibility(false);
-		return;
-	}
-
-	// 3. 거리 1000 안쪽이면 시야(장애물) 라인트레이스 확인 (월드 스태틱만 감지)
-	TArray<FHitResult> HitResults;
-	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(this);
-	QueryParams.AddIgnoredActor(LocalChar);
-
-	FCollisionObjectQueryParams ObjectParams;
-	ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
-
-	// 중간에 겹치는 투명 볼륨(PCGVolume 등)을 통과하기 위해 MultiTrace 사용
-	bool bHit = GetWorld()->LineTraceMultiByObjectType(
-		HitResults,
-		LocalChar->GetActorLocation(),
-		this->GetActorLocation(),
-		ObjectParams,
-		QueryParams
-	);
-
-	bool bBlockedByWall = false;
-
-	if (bHit)
-	{
-		for (const FHitResult& Hit : HitResults)
-		{
-			AActor* HitActor = Hit.GetActor();
-			
-			// 충돌한 액터가 '볼륨(Volume)' 클래스 계열이면 무시하고 통과시킴
-			if (HitActor && !HitActor->IsA<AVolume>())
-			{
-				bBlockedByWall = true;
-				
-				// 디버깅용 로그: 진짜 벽을 가린 녀석 출력
-				FString HitName = HitActor->GetName();
-				FString CompName = Hit.GetComponent() ? Hit.GetComponent()->GetName() : TEXT("UnknownComp");
-				UE_LOG(LogTemp, Warning, TEXT("[Crafting UI Visibility] Blocked by Actor: %s / Component: %s"), *HitName, *CompName);
-				
-				break; // 하나라도 진짜 벽에 막혔으면 더 검사할 필요 없음
-			}
-		}
-	}
-
-	if (bBlockedByWall)
-	{
-		// 중간에 진짜 장애물(벽 등)이 있으면 가림
-		CraftingWidgetComp->SetVisibility(false);
+		CraftingWidgetComp->SetVisibility(VisionSubsystem->IsActorVisibleToLocalPlayer(this));
 	}
 	else
 	{
-		// 안 가려져 있으면 보임
 		CraftingWidgetComp->SetVisibility(true);
 	}
 }

@@ -1,4 +1,4 @@
-﻿#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
 
 #include "TopDownVision/Public/LineOfSight/VisionComps/Vision_VisualComp.h"
 #include "LineOfSight/Management/VisionGameStateComp.h"
@@ -7,6 +7,37 @@
 #include "GameFramework/PlayerState.h"
 
 DEFINE_LOG_CATEGORY(LOSVisionSubsystem);
+
+// -------------------------------------------------------------------------- //
+//  Unified visibility query
+// -------------------------------------------------------------------------- //
+
+bool ULOSVisionSubsystem::IsActorVisibleToLocalPlayer(const AActor* Target) const
+{
+    if (!Target)
+        return false;
+
+    const UVision_VisualComp* VisualComp =
+        Target->FindComponentByClass<UVision_VisualComp>();
+    if (!VisualComp)
+    {
+        // 정책: 게이팅 대상은 Vision_VisualComp 부착. 미부착 = 게이팅 대상 아님(항상 보임).
+        if (!MissingVisualCompWarned.Contains(Target))
+        {
+            MissingVisualCompWarned.Add(Target);
+            UE_LOG(LOSVisionSubsystem, Warning,
+                TEXT("IsActorVisibleToLocalPlayer >> No Vision_VisualComp on '%s' — treated as always visible. Attach the component if this actor should be vision-gated."),
+                *Target->GetName());
+        }
+        return true;
+    }
+
+    UVisionPlayerStateComp* VisionPS = GetLocalVisionPS(GetWorld());
+    if (!VisionPS)
+        return true; // 로컬 팀 정보 미수신 단계 — 게이팅 보류 (GetProvidersVisibleToLocalPlayer와 동일한 폴백)
+
+    return VisionPS->ComputeTargetVisibility(Target, VisualComp);
+}
 
 // -------------------------------------------------------------------------- //
 //  Local player lookup
@@ -58,6 +89,10 @@ bool ULOSVisionSubsystem::RegisterProvider(
             TEXT("RegisterProvider >> Null provider"));
         return false;
     }
+    if (!Provider->IsVisionProvider())
+    {
+        return false;
+    }
     if (InVisionChannel == EVisionChannel::None)
     {
         UE_LOG(LOSVisionSubsystem, Error,
@@ -105,9 +140,12 @@ void ULOSVisionSubsystem::UnregisterProvider(
         }
     }
 
-    UE_LOG(LOSVisionSubsystem, Warning,
-        TEXT("UnregisterProvider >> Could not find %s on channel %d"),
-        *Provider->GetOwner()->GetName(), (uint8)InVisionChannel);
+    if (Provider->IsVisionProvider())
+    {
+        UE_LOG(LOSVisionSubsystem, Warning,
+            TEXT("UnregisterProvider >> Could not find %s on channel %d"),
+            *Provider->GetOwner()->GetName(), (uint8)InVisionChannel);
+    }
 }
 
 TArray<UVision_VisualComp*> ULOSVisionSubsystem::GetProvidersForTeam(
@@ -174,13 +212,26 @@ void ULOSVisionSubsystem::HandleProviderRegistered(
     if (!GSComp)
         return;
 
+    const bool bHasAuthority = GSComp->GetOwner()->HasAuthority();
+    UVisionPlayerStateComp* LocalVisionPS = GetLocalVisionPS(GetWorld());
+
     for (UVision_VisualComp* Existing : GetProvidersForTeam(Channel))
     {
         if (!Existing || !Existing->GetOwner())
             continue;
 
-        // Fixed: was SetActorVisibleByTeam
-        GSComp->SetActorVisibleToTeam(Existing->GetOwner(), Channel);
+        if (bHasAuthority)
+        {
+            // 서버: 권위 스토어 기록 → 팀별 OwnerOnly 팬아웃 (005 부록 A)
+            GSComp->SetActorVisibleToTeam(Existing->GetOwner(), Channel);
+        }
+        else if (LocalVisionPS)
+        {
+            // 클라: 스토어 쓰기가 권위 가드로 차단되므로 로컬 재평가를 직접 호출.
+            // 자기/아군 폰은 CanSeeTeam 단락으로 즉시 표시(자기 시야 원의 알파를 살림),
+            // 적 프로바이더는 즉시 숨김 — Phase 3 이전의 클라 로컬 표시 경로 대체.
+            LocalVisionPS->ReevaluateTargetVisibility(Existing->GetOwner());
+        }
 
         UE_LOG(LOSVisionSubsystem, Verbose,
             TEXT("HandleProviderRegistered >> Revealed %s to channel [%s]"),
@@ -252,11 +303,11 @@ void ULOSVisionSubsystem::ReportTargetVisibility(
         return;
 
     // ------------------------------------------------------------------ //
-    //  CLIENT: apply locally right now. GSComp->GetVisibleActors() is a  //
-    //  server-replicated array — reading it here would stall until the   //
-    //  RPC makes a full round trip. Instead, trust the local vote map    //
-    //  (just updated above) and call ReevaluateTargetVisibility directly. //
-    //  The server RPC will update GSComp and replicate to other clients.  //
+    //  CLIENT: apply locally right now — waiting for the server RPC       //
+    //  round trip would add latency. Trust the local vote map (just       //
+    //  updated above) and call ReevaluateTargetVisibility directly.       //
+    //  The server RPC updates the GSComp store, which fans the entry out  //
+    //  to eligible players' owner-only arrays (005 부록 A).               //
     // ------------------------------------------------------------------ //
     if (GetWorld()->GetNetMode() == NM_Client)
     {

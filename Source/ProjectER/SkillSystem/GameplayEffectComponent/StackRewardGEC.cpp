@@ -53,11 +53,13 @@ bool UStackRewardGEC::OnActiveGameplayEffectAdded(FActiveGameplayEffectsContaine
         return bResult;
     }
 
-    // 람다 바인딩: 스택이 변경될 때마다 호출
-    ActiveGE.EventSet.OnStackChanged.AddLambda(
-        [this, TargetASC](FActiveGameplayEffectHandle InHandle, int32 NewStack, int32 OldStack)
+    // AddWeakLambda를 사용하여 this(GEC) 또는 TargetASC가 소멸해도 크래시를 방지합니다.
+    TWeakObjectPtr<UAbilitySystemComponent> WeakASC = TargetASC;
+    ActiveGE.EventSet.OnStackChanged.AddWeakLambda(this,
+        [this, WeakASC](FActiveGameplayEffectHandle InHandle, int32 NewStack, int32 OldStack)
         { 
-			ProcessStackRewards(TargetASC, InHandle, NewStack);
+			if (!WeakASC.IsValid()) return;
+			ProcessStackRewards(WeakASC.Get(), InHandle, NewStack);
         });
 
     // 3. 최초 부여 시점(1스택) 체크 로그
@@ -105,8 +107,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorVfxConfig.Get();
 
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorVfxConfig->CueTag, Params);
 						}
 					}
@@ -122,8 +124,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 						
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.TargetVfxConfig->CueTag, Params);
 						}
 					}
@@ -136,8 +138,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 						FGameplayCueParameters Params(Effect->Spec);
 						Params.SourceObject = RewardInfo.InstigatorSoundConfig.Get();
 
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.InstigatorSoundConfig->CueTag, Params);
 						}
 					}
@@ -152,8 +154,8 @@ void UStackRewardGEC::ProcessStackRewards(UAbilitySystemComponent* TargetASC, FA
 							Params.TargetAttachComponent = TargetAvatar->GetRootComponent();
 						}
 
+						if (SourceASC->IsOwnerActorAuthoritative() || SourceASC->ScopedPredictionKey.IsLocalClientKey())
 						{
-							FScopedPredictionWindow PredictionWindow(SourceASC, !SourceASC->GetPredictionKeyForNewAction().IsValidKey());
 							SourceASC->ExecuteGameplayCue(RewardInfo.TargetSoundConfig->CueTag, Params);
 						}
 					}
