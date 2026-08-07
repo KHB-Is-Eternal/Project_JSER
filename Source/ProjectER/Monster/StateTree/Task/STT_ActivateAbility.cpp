@@ -23,18 +23,35 @@ const UStruct* FSTT_ActivateAbility::GetInstanceDataType() const
 
 EStateTreeRunStatus FSTT_ActivateAbility::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(&Actor);
-
-	FInstanceDataType& InstnaceData = Context.GetInstanceData(*this);
-	FGameplayTagContainer Container = InstnaceData.AbilityTag.GetSingleTagContainer();
-
-	if (ASC->TryActivateAbilitiesByTag(Container))
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
 	{
-		return EStateTreeRunStatus::Running;
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateAbility::EnterState : Not ActorHandle"));
+		return EStateTreeRunStatus::Failed;
+	}
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Actor);
+	if (IsValid(ASC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateAbility::EnterState : Not ASC"));
+		return EStateTreeRunStatus::Failed;
 	}
 
-	return EStateTreeRunStatus::Failed;
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	if (InstanceData.AbilityTag.IsValid() == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateAbility::EnterState : Not AbilityTag"));
+		return EStateTreeRunStatus::Failed;
+	}
+	FGameplayTagContainer Container = InstanceData.AbilityTag.GetSingleTagContainer();
+
+	if (ASC->TryActivateAbilitiesByTag(Container) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateAbility::EnterState : Not ActivateAbilitiesByTag"));
+		return EStateTreeRunStatus::Failed;
+	}
+
+	return EStateTreeRunStatus::Running;
 }
 
 void FSTT_ActivateAbility::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const

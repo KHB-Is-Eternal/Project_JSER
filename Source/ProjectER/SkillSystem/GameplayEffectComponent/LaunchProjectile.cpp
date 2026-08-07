@@ -7,37 +7,28 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "GameplayEffect.h"
 #include "GameFramework/Actor.h"
-#include "SkillSystem/GameplayEffectComponent/BaseGECConfig.h"
 #include "SkillSystem/Actor/BaseRangeOverlapEffectActor/BaseRangeOverlapEffectActor.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
-#include "SkillSystem/GameAbility/SkillBase.h"
 
-#include "SkillSystem/GameplayEffectComponent/LaunchProjectile.h"
-#include "SkillSystem/GameplayEffectComponent/SummonRangeAtBone.h"
+//#include "SkillSystem/GameplayEffectComponent/SummonRangeAtBone.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/GameState.h"
 
 ULaunchProjectile::ULaunchProjectile()
 {
-	ConfigClass = ULaunchProjectileConfig::StaticClass();
 }
 
-TSubclassOf<UBaseGECConfig> ULaunchProjectile::GetRequiredConfigClass() const
+void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters, const FGameplayEffectSpec& ParentSpec) const
 {
-	return ULaunchProjectileConfig::StaticClass();
-}
+	Super::InitializeRangeActor(RangeActor, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters, ParentSpec);
 
-void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, const USummonRangeBaseConfig* Config, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
-{
-	Super::InitializeRangeActor(RangeActor, Config, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
-
-	const ULaunchProjectileConfig* const ProjectileConfig = Cast<ULaunchProjectileConfig>(Config);
-
-	if (IsValid(RangeActor) && IsValid(ProjectileConfig))
+	if (IsValid(RangeActor))
 	{
-		RangeActor->bDestroyOnOverlap = ProjectileConfig->bDestroyOnHit;
+		RangeActor->bDestroyOnOverlap = this->bDestroyOnHit;
 		
 		// 필수: 동적 이동 컴포넌트의 위치 변화가 클라이언트에 복제되도록 설정
 		RangeActor->SetReplicateMovement(true);
@@ -50,10 +41,17 @@ void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* Range
 			MovementComp->SetIsReplicated(true);
 
 			// 이동에 필요한 기본 속성 할당
-			float Speed = ProjectileConfig->InitialSpeed;
+			float Speed = this->InitialSpeed;
 			MovementComp->InitialSpeed = Speed;
 			MovementComp->MaxSpeed = Speed;
-			MovementComp->ProjectileGravityScale = ProjectileConfig->GravityScale;
+			MovementComp->ProjectileGravityScale = this->GravityScale;
+			
+			// [Optimization] 투사체의 속도와 수명을 기반으로 네트워크 컬링 거리를 동적으로 계산합니다.
+			// (기본 15,000 유닛 유지, 그 이상 비행하는 장거리 투사체는 사거리 끝까지 보이도록 거리 확장)
+			float MaxTravelDistance = Speed * this->LifeSpan;
+			float CullDistance = FMath::Max(15000.0f, MaxTravelDistance + 2000.0f); // 2000 유닛 여유분
+			RangeActor->NetCullDistanceSquared = FMath::Square(CullDistance);
+
 			
 			// 컴포넌트를 액터 인스턴스에 등록
 			MovementComp->RegisterComponent();
@@ -61,16 +59,39 @@ void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* Range
 
 			// 기준 컴포넌트 지정 (반드시 Register 이후에 호출)
 			MovementComp->SetUpdatedComponent(RangeActor->GetRootComponent());
+			// [Revert] UProjectileMovementComponent는 bInitialVelocityInLocalSpace가 기본 true이므로, 항상 (1,0,0)을 주어야 올바른 정면 방향으로 날아갑니다.
 			MovementComp->Velocity = FVector::ForwardVector * Speed;
 			MovementComp->Activate(true);
 		}
 	}
 }
 
+FSkillTooltipData ULaunchProjectile::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	if (bDestroyOnHit)
+	{
+		Data.ShortDescription = FText::FromString(TEXT("투사체를 발사합니다."));
+		Data.DetailedDescription = FText::FromString(TEXT("투사체 발사 : 전방으로 투사체를 날립니다."));
+	}
+	else
+	{
+		Data.ShortDescription = FText::FromString(TEXT("투과체를 발사합니다."));
+		Data.DetailedDescription = FText::FromString(TEXT("투과체 발사 : 전방으로 투과체를 날립니다."));
+	}
+
+	FText EffectsText = FormatAppliedEffects(Applied, Level);
+	if (!EffectsText.IsEmpty())
+	{
+		Data.DetailedDescription = FText::FromString(FString::Printf(TEXT("%s\n%s"), *Data.DetailedDescription.ToString(), *EffectsText.ToString()));
+	}
+
+	return Data;
+}
+
 FTransform ULaunchProjectile::CalculateSpawnTransform(const FGameplayEffectSpec& GESpec, const AActor* Instigator, const AActor* TargetActor) const
 {
-	const ULaunchProjectileConfig* Config = ResolveTypedConfigFromSpec<ULaunchProjectileConfig>(GESpec);
-	if (!IsValid(Config) || !IsValid(Instigator))
+	if (!IsValid(Instigator))
 	{
 		return FTransform::Identity;
 	}
@@ -79,25 +100,25 @@ FTransform ULaunchProjectile::CalculateSpawnTransform(const FGameplayEffectSpec&
 	FRotator SpawnRotation = Instigator->GetActorRotation();
 
 	// 1. 기본 위치 및 회전 결정 (Bone 고려)
-	if (!Config->BoneName.IsNone())
+	if (!this->BoneName.IsNone())
 	{
 		const ACharacter* const Character = Cast<ACharacter>(Instigator);
 		const USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : Instigator->FindComponentByClass<USkeletalMeshComponent>();
 		
-		if (IsValid(Mesh) && Mesh->DoesSocketExist(Config->BoneName))
+		if (IsValid(Mesh) && Mesh->DoesSocketExist(this->BoneName))
 		{
-			SpawnLocation = Mesh->GetSocketLocation(Config->BoneName);
+			SpawnLocation = Mesh->GetSocketLocation(this->BoneName);
 			
 			// bUseInstigatorRotation이 false일 때만 본의 회전을 사용
-			if (!Config->bUseInstigatorRotation)
+			if (!this->bUseInstigatorRotation)
 			{
-				SpawnRotation = Mesh->GetSocketRotation(Config->BoneName);
+				SpawnRotation = Mesh->GetSocketRotation(this->BoneName);
 			}
 		}
 	}
 
 	// 2. 발사 방향 결정 (Targeting - 타겟 위치가 있을 경우)
-	if (Config->bUseEffectContextDirection)
+	if (this->bUseEffectContextDirection)
 	{
 		FVector TargetLocation = SpawnLocation;
 		const FGameplayEffectContextHandle &Context = GESpec.GetContext();
@@ -125,7 +146,7 @@ FTransform ULaunchProjectile::CalculateSpawnTransform(const FGameplayEffectSpec&
 	}
 
 	// 3. 공통 오프셋 및 지면 보정 적용
-	ApplyCommonSpawnOptions(SpawnLocation, SpawnRotation, Config, Instigator);
+	ApplyCommonSpawnOptions(SpawnLocation, SpawnRotation, Instigator);
 
 	return FTransform(SpawnRotation, SpawnLocation);
-}
+}

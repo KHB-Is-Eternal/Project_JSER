@@ -19,6 +19,7 @@ class UGameplayEffect;
 class UCharacterData;
 class UWidgetComponent; // 체력 바 머리 위에 띄우는 용
 class UUI_HP_Bar; // 체력 바 머리 위에 띄우는 용
+class AW_FloatingRecoveryTextActor; // [김현수 추가분] 체력,마나 회복 아이템 플로팅 텍스트용
 
 class UTopDownCameraComp;//main camera comp
 
@@ -100,9 +101,6 @@ protected:
 	
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Team")
-	EVisionChannel ConvertTeamToVisionChannel(ETeamType InTeamType);
-
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Team")
 	EVisionChannel GetVisionChannelFromPlayerStateComp();
 	
 protected:
@@ -132,7 +130,7 @@ protected:
 public:
 	// 레벨업 시 AttributeSet에서 호출
 	UFUNCTION(BlueprintCallable, Category = "GAS")
-	virtual void HandleLevelUp();
+	virtual void HandleLevelUp(float OldLevel, float NewLevel);
 	
 	UFUNCTION(BlueprintCallable, Category = "GAS")
 	float GetCharacterLevel() const;
@@ -160,6 +158,7 @@ protected:
 
 	void InitAbilitySystem(); // ASC 초기화
 	void InitAttributes(); // AttributeSet 초기화
+	void UpgradeAttributes(float OldLevel, float NewLevel); // 레벨업 시 델타 상승 적용
 	void InitVisuals(); // 메시, 애니메이션 로드
 	void InitPlayer(); // 플레이어(카메라 등) 로컬 초기화 통합 함수
 	
@@ -170,6 +169,10 @@ public:
 	// 스탯 초기화 이펙트 클래스
 	UPROPERTY(EditDefaultsOnly,Category = "GAS") 
 	TSubclassOf<UGameplayEffect> InitStatusEffectClass;
+	
+	// 레벨업 시 스탯 상승 처리를 위한 즉발성(Instant Additive) GE 클래스
+	UPROPERTY(EditDefaultsOnly, Category = "GAS")
+	TSubclassOf<UGameplayEffect> UpgradeStatusEffectClass;
 	
 	// 패시브 재생(Regen) 이펙트 클래스
 	UPROPERTY(EditDefaultsOnly, Category = "GAS|Life")
@@ -209,12 +212,14 @@ protected:
 
 #pragma region MoveToLocation
 public:
+	/** 클라이언트 → 서버: 목적지만 전달 (서버가 비동기 경로 계산) */
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_MoveToLocation(FVector TargetLocation); 
 	
 	UFUNCTION(Server, Reliable)
 	void Server_StopMove();
 	
+	/** 클라이언트 진입점 — 서버에 요청 + 임시 직선 이동 시작 */
 	void MoveToLocation(FVector TargetLocation);
 	void StopMove();
 	
@@ -222,20 +227,57 @@ protected:
 	void UpdatePathFollowing();
 	void StopPathFollowing();
 
+	// ─── Phase 2: 비동기 길찾기 ───
+
+	/** 서버 전용 — 비동기 경로 탐색 요청 */
+	void RequestAsyncPath(const FVector& Destination);
+
+	/** 비동기 경로 탐색 완료 콜백 (서버에서만 호출됨) */
+	void OnAsyncPathFound(uint32 QueryID, ENavigationQueryResult::Type Result, FNavPathSharedPtr NavPath);
+
+	/** 경로 성공 시 공통 적용 로직 (서버) */
+	void ApplyPathResult(const TArray<FVector>& InPathPoints, const FVector& Destination);
+
+	/** Moving GE 적용 헬퍼 */
+	void ApplyMovingStateEffect();
+
 private:
 	// 현재 추적 중인 경로 포인트들
 	UPROPERTY()
 	TArray<FVector> PathPoints;
 
 	// 현재 목표 웨이포인트 인덱스
-	int32 CurrentPathIndex;
+	int32 CurrentPathIndex = INDEX_NONE;
 
 	// 도착 판정 임계값 (제곱)
-	const float ArrivalDistanceSq = 2500.f; 
+	static constexpr float ArrivalDistanceSq = 2500.f; 
 	
 	// 갱신 타이머
 	float PathfindingTimer = 0.0f;
 	
+	// ─── 경로 캐싱 (Phase 1) ───
+	/** 마지막으로 경로를 계산한 목적지 */
+	FVector LastPathDestination = FVector::ZeroVector;
+	/** 경로 재계산을 건너뛸 거리 임계값 (cm) */
+	static constexpr float PathReuseThreshold = 100.0f;
+	/** 캐싱된 경로가 생성된 이후 경과 시간 (초) */
+	float TimeSinceLastPathCalc = 0.0f;
+	/** 최대 캐싱 유효기간 (초) — 초과 시 강제 재계산 */
+	static constexpr float MaxPathCacheAge = 1.0f;
+
+	// ─── Phase 2: 클라 임시 직선 이동 ───
+	/** 클라이언트가 서버 응답 전 임시로 향하는 목적지 */
+	FVector PendingMoveDestination = FVector::ZeroVector;
+	
+	/** 임시 직선 이동 중 여부 (서버 경로 도착 전) */
+	uint8 bIsStraightLineMoving : 1;
+
+	/** 비동기 경로 요청 진행 중 여부 */
+	uint8 bAsyncPathInProgress : 1;
+
+	/** 경로 요청 ID — StopMove 후 도착하는 오래된 콜백 무효화용 */
+	uint32 CurrentPathRequestID = 0;
+
 #pragma endregion
 	
 #pragma region Combat
@@ -301,6 +343,12 @@ protected:
 	//  공격 명령 (A키 입력) 상태 확인 플래그
 	uint8 bIsAttackMoving : 1;
 	
+	// ─── Phase 3: 스캔 스로틀 ───
+	/** 적 스캔 간격 타이머 (매 프레임 → 0.15초 간격) */
+	float ScanTimer = 0.0f;
+	/** 적 스캔 주기 (초) */
+	static constexpr float ScanInterval = 0.15f;
+	
 	// 평타 순환용 인덱스 (0, 1, 2)
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Combat|Combo")
 	int32 AutoAttackIndex = 0;
@@ -317,6 +365,21 @@ protected:
 	TObjectPtr<UNiagaraSystem> CachedBasicHitVFX;
 	
 #pragma endregion
+	
+#pragma region CrowdControl
+public:
+	// CC 태그 변경 감지 콜백 (ASC 델리게이트 바인딩)
+	void OnCCTagChanged(const FGameplayTag Tag, int32 NewCount);
+
+	// 이동 차단 CC가 활성화되어 있는지
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "CC")
+	bool IsMovementBlocked() const;
+
+protected:
+	// ASC에 CC 태그 감시 델리게이트 등록
+	void RegisterCCTagCallbacks();
+#pragma endregion
+
 
 #pragma region DeathRevive
 public:
@@ -369,15 +432,15 @@ public:
 	void OnLevelChanged();
 protected:
 	// 미니맵용 씬 캡처 컴포넌트
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Minimap")
-	class USceneCaptureComponent2D* MinimapCaptureComponent;
+	// UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Minimap")
+	// class USceneCaptureComponent2D* MinimapCaptureComponent;
 	
-	// 미니맵용 얼굴 아이콘
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
-	class UStaticMeshComponent* MinimapIconMesh;
+	// // 미니맵용 얼굴 아이콘
+	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
+	// class UStaticMeshComponent* MinimapIconMesh;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
-	class UStaticMeshComponent* MinimapLineMesh;
+	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Minimap")
+	// class UStaticMeshComponent* MinimapLineMesh;
 
 	// 미니맵용 얼굴 마테리얼
 	UPROPERTY()
@@ -419,20 +482,21 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_ToggleCraftingUI(bool bShow);
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|FloatingText")
+	TSubclassOf<AW_FloatingRecoveryTextActor> FloatingRecoveryTextActorClass;
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_ShowRecoveryText(int32 Amount, bool bIsMana);
+
 protected:
-	// 크래프팅 시야 판정용 타이머
-	FTimerHandle CraftingUIVisibilityTimer;
+	// 크래프팅 위젯 시야 판정 (Vision_VisualComp 델리게이트 구독 핸들러)
+	UFUNCTION()
 	void UpdateCraftingUIVisibility();
 
 #pragma endregion
 
 #pragma region Vision
 
-	UFUNCTION(BlueprintPure, BlueprintCallable, Category = "Vision")//Helper for getting the vision channel from the PlayerStateComp
-	EVisionChannel GetVisionChannelFromVisionPlayerStateComp();
-
-	
-	
 #pragma endregion
 	
 };

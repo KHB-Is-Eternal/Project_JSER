@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
@@ -58,6 +58,10 @@ public:
 	void RegisterPoint(AActor* Point);
 	void UnregisterPoint(AActor* Point);
 
+	// 임시 안전 구역 제어
+	void SpawnSafeZone(int32 NextHazardRegionID);
+	void DespawnSafeZone();
+
 public:
 	TArray<TWeakObjectPtr<AActor>> Points;
 
@@ -74,6 +78,13 @@ private:
 
 	// 보스 스폰 위치를 모아둘 배열
 	TArray<FObjectInfo> BossPoints;
+
+	// 임시 안전 구역 위치를 모아둘 배열
+	TArray<FObjectInfo> SafePoints;
+
+	// 현재 스폰된 임시 안전 구역 액터 (하나만 추적)
+	UPROPERTY()
+	AActor* SpawnedSafeZoneActor = nullptr;
 
 	// 선정된 항공 보급 위치 저장용 배열
 	UPROPERTY()

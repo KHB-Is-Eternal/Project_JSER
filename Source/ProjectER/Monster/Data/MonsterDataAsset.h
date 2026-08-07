@@ -1,9 +1,10 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
 #include "StateTree.h"
+#include "ItemSystem/Data/BaseItemData.h"
 #include "MonsterDataAsset.generated.h"
 
 class UGameplayAbility;
@@ -12,24 +13,6 @@ class USkillDataAsset;
 class UNiagaraSystem;
 struct FGameplayTag;
 
-UENUM(BlueprintType)
-enum class EMonsterMontageType : uint8
-{
-	Idle,
-	Alert,
-	Move,
-	Attack,
-	QSkill,
-	WSkill,
-	ESkill,
-	RSkill,
-	Dead,
-	
-	FlyStart,
-	FlyAttack,
-	FlyEnd,
-	None
-};
 
 UENUM(BlueprintType)
 enum class EMonsterActionType : uint8
@@ -126,6 +109,8 @@ struct FMonsterDecalData
 };
 
 
+// [김현수 추가분] FDropItemInfo는 ItemSystem/Data/BaseItemData.h 로 이동(몬스터·Lootable 공용).
+
 // 몬스터 데이터
 UCLASS()
 class PROJECTER_API UMonsterDataAsset : public UPrimaryDataAsset
@@ -163,7 +148,7 @@ public:
 
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Montage")
-	TMap<EMonsterMontageType, TObjectPtr<UAnimMontage>> Montages;
+	TMap<EMonsterActionType, TObjectPtr<UAnimMontage>> Montages;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Effect")
 	TMap<EMonsterActionType, FMonsterNiagaraData> Niagaras;
@@ -194,20 +179,25 @@ public:
 	TSubclassOf<UAnimInstance> Anim;
 
 
-	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|RangeSphere")
-	float RangeSphereRadius = 1000.f;
-
 
 	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|Reward")
 	int Exp;
 
-	// 안씀
-	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|Reward")
-	int Gold;
+	// [김현수 추가분] 개별 몬스터 드랍 테이블 가챠 연동용 변수
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	TMap<EItemRarity, float> RarityDropRates;
 
-	// 이거는 죽었을 때 로드해서
-	UPROPERTY(EditDefaultsOnly, Category = "MonsterData|Reward")
-	TArray<UBaseItemData*> ItemList;
+	// [김현수 추가분] 레어도별 최대 드랍 가능 개수 제한 (0이거나 설정되지 않으면 무제한)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	TMap<EItemRarity, int32> MaxRarityDropCounts;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	TArray<FDropItemInfo> DropItemPool;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	int32 MinDropCount = 1;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "MonsterData|Reward")
+	int32 MaxDropCount = 3;
 
 };

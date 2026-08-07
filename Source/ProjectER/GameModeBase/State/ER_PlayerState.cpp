@@ -1,8 +1,10 @@
-﻿#include "ER_PlayerState.h"
+#include "ER_PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "AbilitySystemComponent.h"
+#include "CharacterSystem/GAS/ProjectERASC.h"
 #include "CharacterSystem/GAS/AttributeSet/BaseAttributeSet.h"
 #include "CharacterSystem/Data/CharacterData.h"
+#include "CharacterSystem/GameplayTags/GameplayTags.h"
 
 #include "UI/UI_HUDFactory.h"	// UI연결용
 #include "UI/UI_MainHUD.h"	// UI연결용
@@ -12,7 +14,7 @@ AER_PlayerState::AER_PlayerState()
 	bReplicates = true;
 
 	// ASC 생성 및 설정
-	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>("AbilitySystemComponent");
+	AbilitySystemComponent = CreateDefaultSubobject<UProjectERASC>("AbilitySystemComponent");
 	AbilitySystemComponent->SetIsReplicated(true); // ASC 상태 복제
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed); // ReplicationMode 설정
 
@@ -96,6 +98,34 @@ void AER_PlayerState::GetAssists(float Now, float WindowSec, APlayerState* Kille
 void AER_PlayerState::ResetDamageContrib()
 {
 	DamageContribMap.Reset();
+}
+
+bool AER_PlayerState::IsCombatEffective() const
+{
+	if (bIsDead)
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("[ER_PS] IsCombatEffective: False because bIsDead is true. (Player: %s)"), *GetPlayerName());
+		return false;
+	}
+
+	if (!AbilitySystemComponent)
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("[ER_PS] IsCombatEffective: AbilitySystemComponent is Null for Player %s"), *GetPlayerName());
+	}
+	else
+	{
+		bool bHasDownTag = AbilitySystemComponent->HasMatchingGameplayTag(ProjectER::State::Life::Down);
+		//UE_LOG(LogTemp, Log, TEXT("[ER_PS] IsCombatEffective: Down Tag Check for Player %s - %s"), *GetPlayerName(), bHasDownTag ? TEXT("TRUE") : TEXT("FALSE"));
+		
+		if (bHasDownTag)
+		{
+			//UE_LOG(LogTemp, Warning, TEXT("[ER_PS] IsCombatEffective: False because player has Down tag. (Player: %s)"), *GetPlayerName());
+			return false;
+		}
+	}
+
+	//UE_LOG(LogTemp, Log, TEXT("[ER_PS] IsCombatEffective: True (Player: %s) is alive and effective."), *GetPlayerName());
+	return true;
 }
 
 void AER_PlayerState::Server_SetStartPoint_Implementation(int32 idx)

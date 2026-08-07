@@ -36,8 +36,23 @@ class UUI_Scoreboard;
 
 class ABaseItemActor; // [김현수 추가분]
 class UAudioComponent; // [김현수 추가분]
+class UBaseItemData; // [김현수 추가분]
+class UDataTable; // [김현수 추가분]
+class UBaseInventoryComponent; // [김현수 추가분]
 
 struct FInputActionValue;
+
+USTRUCT(BlueprintType)
+struct FCraftableItemPreviewData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<UBaseItemData> ResultItem = nullptr;
+
+	UPROPERTY(BlueprintReadOnly)
+	int32 Priority = 0;
+};
 
 //Log
 DECLARE_LOG_CATEGORY_EXTERN(Controller_Camera, Log, All);
@@ -53,6 +68,7 @@ public:
 	// UI 로직 내 호출을 위해 protected -> public 변경
 	// 키 입력 시, 어빌리티 호출
 	void AbilityInputTagPressed(FGameplayTag InputTag);
+	void AbilityManualInputTagPressed(FGameplayTag InputTag);
 	void AbilityInputTagReleased(FGameplayTag InputTag);
 	
 protected:
@@ -171,6 +187,12 @@ protected:
 	// 기존 Move 함수를 확장하여 상호작용 판정 포함
 	void ProcessMouseInteraction();
 
+	// [김현수 추가분] 와드 배치 무장 상태. -1이면 비무장, >=0이면 해당 슬롯 와드를 좌클릭 배치 대기 중.
+	int32 PendingWardSlot = -1;
+
+	// [김현수 추가분] 와드 배치 무장 해제 (우클릭 이동 / ESC 취소용)
+	void CancelWardPlacement();
+
 private:
 	// 조합식 DataTable
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting", meta = (AllowPrivateAccess = "true"))
@@ -204,7 +226,7 @@ private:
 
 
 	// 재료가 인벤토리에 있는지 확인
-	bool HasMaterialsInInventory(const FItemRecipeRow* Recipe, int32& OutMat1Index, int32& OutMat2Index);
+	bool HasMaterialsInInventory(const FItemRecipeRow* Recipe, int32& OutMat1Index, int32& OutMat2Index) const;
 
 	// 결과 아이템을 넣을 빈 슬롯 찾기
 	int32 FindFirstEmptySlot();
@@ -216,8 +238,14 @@ public:
 	UFUNCTION(Server, Reliable)
 	void Server_DropInventoryItem(int32 SlotIndex, FVector_NetQuantize DropLocation);
 
+	// [김현수 추가분] 좌클릭한 위치에 와드 배치 요청 (서버에서 재검증 후 스폰·소비)
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_PlaceWardAtLocation(int32 SlotIndex, FVector_NetQuantize Location);
+
 	UPROPERTY(EditDefaultsOnly, Category = "Item|Drop")
 	TSubclassOf<ABaseItemActor> DroppedItemActorClass;
+
+	bool CanInteractWithItemsInCurrentLifeState(APawn* InPawn) const;
 
 	// ===== 아이템 조합 시스템 =====
 protected:
@@ -226,17 +254,29 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_NotifyCraftingUI(bool bIsCraftingStarted);
 
+	// UI에서 접근을 위해 Public으로 노출
+public:
 	/** 크래프팅 시도 */
 	UFUNCTION(BlueprintCallable, Category = "Interaction|Crafting")
 	void TryStartCrafting();
 
-public:
 	// 조합 취소
 	void CancelCrafting();
 
 	// 조합 중 여부
 	UFUNCTION(BlueprintPure, Category = "Crafting")
 	bool IsCrafting() const { return bIsCrafting; }
+
+	UFUNCTION(BlueprintCallable, Category = "Craft")
+	TArray<FCraftableItemPreviewData> GetCraftableItemsForUI() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Craft")
+	void TryStartCraftingByResult(UBaseItemData* DesiredResultItem);
+
+	bool FindBestAvailableRecipeByResult(UBaseItemData* DesiredResultItem, FItemRecipeRow*& OutRecipe, int32& OutMat1Index, int32& OutMat2Index) const;
+
+protected:
+	bool FindMaterialIndicesForRecipe(const FItemRecipeRow& Recipe, int32& OutMat1Index, int32& OutMat2Index) const;
 /// [김현수 추가분] - 끝
 
 //-----------------------------------------------------------
@@ -244,7 +284,7 @@ public:
 /// [전민성 추가분] - 시작
 public:
 	UFUNCTION(BlueprintCallable, Category = "Network")
-	void ConnectToDedicatedServer(const FString& Ip, int32 Port, const FString& PlayerName);
+	void ReturnToMainMenu();
 
 	// Clinet RPC
 	UFUNCTION(BlueprintCallable, Client, Reliable)
@@ -273,7 +313,7 @@ public:
 
 	// [Asset Preloading]
 	UFUNCTION(BlueprintCallable, Client, Reliable)
-	void Client_StartPreload();
+	void Client_StartPreload(const TArray<FSoftObjectPath>& CharacterPaths);
 
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_NotifyLoadComplete();
@@ -315,6 +355,10 @@ public:
 	UFUNCTION(BlueprintCallable, Client, Reliable)
 	void Client_CloseLoadingUI();
 
+	// 빈사에서 리스폰 UI 클릭 시 Handle Death 추가
+	UFUNCTION(BlueprintCallable, Server, Reliable)
+	void Server_RequestHandleDeath();
+
 	// 클라이언트가 캐릭터 선택창 진입 요청
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_RequestCharacterSelection();
@@ -350,6 +394,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_RequestTeleport(int32 RegionIndex);
+
+	// 아군 타겟 텔레포트 서버 요청
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "ProjectER|Teleport")
+	void Server_RequestTeleportToTeam(class APlayerState* TargetAllyPS);
 
 	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void Server_BeginTeleportInteract(class UER_TeleportComponent* TeleportComp);
@@ -387,6 +435,10 @@ protected:
 	UUI_Scoreboard* ScoreboardWidget;
 	void ShowScoreboard();
 	void HideScoreboard();
+
+	// 사운드를 담아둘 변수
+	UPROPERTY()
+	TObjectPtr<USoundBase> ClickSound;
 	//
 
 private:
@@ -463,6 +515,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> RespawnTeleportUIInstance;
+
+	// 메인 메뉴 이동을 위한 지정
+	UPROPERTY(EditDefaultsOnly, Category = "Level Config")
+	TSoftObjectPtr<UWorld> MainMenuMap;
 	
 	// 거리 측정을 위한 타겟 캐싱
 	UPROPERTY(Transient)
@@ -484,6 +540,8 @@ private:
 
 	void UseInventorySlot(int32 SlotIndex);
 
+	UFUNCTION()
+	void OnSkillLevelUp(FGameplayTag what_skill);
 
 	// 사운드
 	UPROPERTY(EditDefaultsOnly)
@@ -502,6 +560,16 @@ public:
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Chat")
 	TSubclassOf<class UUI_ChatSystem> ChatWidgetClass;
+
+	// === Item Catalog UI ===
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Catalog")
+	TSubclassOf<class UItemCatalogWidget> CatalogWidgetClass;
+
+	UPROPERTY()
+	class UItemCatalogWidget* CatalogWidgetInstance;
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Catalog")
+	void ToggleCatalog();
 
 	UPROPERTY()
 	class UUI_ChatSystem* ChatWidgetInstance;

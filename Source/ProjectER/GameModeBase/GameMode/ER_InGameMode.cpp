@@ -1,4 +1,4 @@
-#include "GameModeBase/GameMode/ER_InGameMode.h"
+﻿#include "GameModeBase/GameMode/ER_InGameMode.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "GameModeBase/State/ER_GameState.h"
 #include "GameModeBase/Subsystem/Respawn/ER_RespawnSubsystem.h"
@@ -10,8 +10,9 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
-#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h" // 호스트 스팀 세션 파괴 위해 추가
+#include "GameModeBase/Subsystem/Session/ER_SessionSubsystem.h"
 #include "Engine/GameInstance.h"
+#include "SignificanceManager.h"
 
 #include "Monster/BaseMonster.h"
 
@@ -25,6 +26,49 @@
 
 #include "LevelManagement/LevelGraphManager/LevelAreaGameStateComp/LevelAreaGameModeComponent.h"
 #include "LevelManagement/LevelAreaTrackerComponent.h"
+
+namespace ERInGameModeAttributeCache
+{
+	const TArray<FGameplayAttribute>& GetCachedBaseAttributes()
+	{
+		static TArray<FGameplayAttribute> CachedAttributes;
+		if (CachedAttributes.Num() > 0)
+		{
+			return CachedAttributes;
+		}
+
+		for (TFieldIterator<FProperty> It(UBaseAttributeSet::StaticClass()); It; ++It)
+		{
+			if (const FStructProperty* StructProp = CastField<FStructProperty>(*It))
+			{
+				if (StructProp->Struct == FGameplayAttributeData::StaticStruct())
+				{
+					CachedAttributes.Emplace(*It);
+				}
+			}
+		}
+
+		return CachedAttributes;
+	}
+
+	const TMap<FName, FGameplayAttribute>& GetCachedBaseAttributeMap()
+	{
+		static TMap<FName, FGameplayAttribute> CachedAttributeMap;
+		if (CachedAttributeMap.Num() > 0)
+		{
+			return CachedAttributeMap;
+		}
+
+		const TArray<FGameplayAttribute>& CachedAttributes = GetCachedBaseAttributes();
+		CachedAttributeMap.Reserve(CachedAttributes.Num());
+		for (const FGameplayAttribute& Attribute : CachedAttributes)
+		{
+			CachedAttributeMap.Add(FName(*Attribute.GetName()), Attribute);
+		}
+
+		return CachedAttributeMap;
+	}
+}
 
 void AER_InGameMode::BeginPlay()
 {
@@ -40,7 +84,48 @@ void AER_InGameMode::BeginPlay()
 
 AER_InGameMode::AER_InGameMode()
 {
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+
 	bUseSeamlessTravel = true;
+}
+
+void AER_InGameMode::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// 최적화: 매 프레임 연산하지 않고 설정된 주기(기본 30FPS)마다 한 번씩만 연산합니다.
+	SignificanceUpdateTimer += DeltaSeconds;
+	if (SignificanceUpdateTimer >= SignificanceUpdateInterval)
+	{
+		SignificanceUpdateTimer = 0.f;
+
+		if (UWorld* World = GetWorld())
+		{
+			if (USignificanceManager* SignificanceManager = USignificanceManager::Get(World))
+			{
+				TArray<FTransform> TransformArray;
+
+				// 접속해 있는 모든 플레이어 폰의 위치를 수집하여 Significance 판단 기준(Viewpoint)으로 사용합니다.
+				for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+				{
+					if (APlayerController* PC = It->Get())
+					{
+						if (APawn* PlayerPawn = PC->GetPawn())
+						{
+							TransformArray.Add(PlayerPawn->GetTransform());
+						}
+					}
+				}
+
+				// 관전 상태이거나 아직 스폰되지 않아 폰이 하나도 없는 경우에는 계산하지 않습니다.
+				if (TransformArray.Num() > 0)
+				{
+					SignificanceManager->Update(TArrayView<FTransform>(TransformArray));
+				}
+			}
+		}
+	}
 }
 
 void AER_InGameMode::PostSeamlessTravel()
@@ -125,8 +210,6 @@ void AER_InGameMode::Logout(AController* Exiting)
 						PC->UnPossess();
 					}
 
-					// ★ 핵심: Owner 체인을 끊어야 PC 파괴 시 Pawn이 같이 파괴되지 않음
-					// UnPossess()는 Controller 포인터만 null로 만들 뿐, Owner는 여전히 PC를 가리킴
 					OwnedPawn->SetOwner(nullptr);
 
 					Data.PreservedPawn = OwnedPawn;
@@ -147,18 +230,19 @@ void AER_InGameMode::Logout(AController* Exiting)
 					Data.AssistCount     = ERPS->AssistCount;
 
 					// ASC Attribute 데이터 추출
-					if (UAbilitySystemComponent* ASC = ERPS->GetAbilitySystemComponent())
+					if (ERPS->GetAbilitySystemComponent())
 					{
-						for (TFieldIterator<FProperty> It(UBaseAttributeSet::StaticClass()); It; ++It)
+						const UAttributeSet* AttributeSet = ERPS->GetAttributeSet();
+						const TArray<FGameplayAttribute>& CachedAttributes = ERInGameModeAttributeCache::GetCachedBaseAttributes();
+						Data.SavedAttributes.Reserve(CachedAttributes.Num());
+
+						for (const FGameplayAttribute& Attribute : CachedAttributes)
 						{
-							if (FStructProperty* StructProp = CastField<FStructProperty>(*It))
+							if (!Attribute.IsValid())
 							{
-								if (StructProp->Struct == FGameplayAttributeData::StaticStruct())
-								{
-									FGameplayAttribute Attribute(*It);
-									Data.SavedAttributes.Add(It->GetName(), Attribute.GetNumericValue(ERPS->GetAttributeSet()));
-								}
+								continue;
 							}
+							Data.SavedAttributes.Add(Attribute.GetName(), Attribute.GetNumericValue(AttributeSet));
 						}
 						
 						UE_LOG(LogTemp, Warning, TEXT("[GM] Logout >> Captured %d attributes for player: %s"), 
@@ -168,22 +252,13 @@ void AER_InGameMode::Logout(AController* Exiting)
 					// 인벤토리 데이터 추출
 					if (UBaseInventoryComponent* Inv = OwnedPawn->FindComponentByClass<UBaseInventoryComponent>())
 					{
-						// Internal array 직접 접근을 못하므로 getter가 필요할 수 있으나, 
-						// .h에서 InventoryContents가 protected이므로 헬퍼가 필요함.
-						// 일단 리플렉션이나 다른 방법을 고려하거나, .h를 수정하여 접근 허용.
-						// (이미 h에서 protected이므로 파생클래스가 아니면 접근 불가)
-						// 하지만 TFieldIterator로 가져올 수 있음.
-						for (TFieldIterator<FArrayProperty> It(UBaseInventoryComponent::StaticClass()); It; ++It)
+						if (FArrayProperty* ArrayProp = FindFProperty<FArrayProperty>(UBaseInventoryComponent::StaticClass(), TEXT("InventoryContents")))
 						{
-							if (It->GetName() == TEXT("InventoryContents"))
+							FScriptArrayHelper Helper(ArrayProp, ArrayProp->ContainerPtrToValuePtr<void>(Inv));
+							for (int32 i = 0; i < Helper.Num(); ++i)
 							{
-								FScriptArrayHelper Helper(*It, It->ContainerPtrToValuePtr<void>(Inv));
-								for (int32 i = 0; i < Helper.Num(); ++i)
-								{
-									UBaseItemData* Item = *reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i));
-									Data.SavedInventory.Add(Item);
-								}
-								break;
+								UBaseItemData* Item = *reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i));
+								Data.SavedInventory.Add(Item);
 							}
 						}
 						
@@ -192,9 +267,6 @@ void AER_InGameMode::Logout(AController* Exiting)
 					}
 				}
 
-				// [전민성 요구사항] 도중 퇴장한 플레이어 강제 사망 및 팀 승패 처리
-				// 데이터(HP, 인벤토리 등)를 살아있던 원 상태 그대로 데이터 구조체(Data)에 안전하게 보존한 뒤,
-				// 실제 게임 월드 상의 폰은 사망(Death) 처리하여 팀 탈락 여부(EndGame) 로직을 정상 진행시킵니다.
 				if (!Data.bIsDead && ERPS)
 				{
 					if (OwnedPawn)
@@ -307,7 +379,7 @@ void AER_InGameMode::PreLogin(const FString& InAddress, const FString& Options, 
 	{
 		const FDisconnectedPlayerData& Data = DisconnectedPlayers[UniqueIdStr];
 
-		// [전민성 요구사항] 탈락 확정(Eliminated) 팀은 재접속 불가
+		// 탈락 확정 팀은 재접속 불가
 		if (AER_GameState* ERGS = GetGameState<AER_GameState>())
 		{
 			const int32 TeamIdx = static_cast<int32>(Data.TeamType);
@@ -387,24 +459,14 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 		// Attribute 데이터 복원
 		if (UAbilitySystemComponent* ASC = NewERPS->GetAbilitySystemComponent())
 		{
+			const TMap<FName, FGameplayAttribute>& CachedAttributeMap = ERInGameModeAttributeCache::GetCachedBaseAttributeMap();
 			// ASC ActorInfo가 먼저 설정되어 있어야 함 (Possess 이후 시점이므로 안전)
 			for (const auto& Pair : FoundData->SavedAttributes)
 			{
-				FGameplayAttribute Attribute;
-				for (TFieldIterator<FProperty> It(UBaseAttributeSet::StaticClass()); It; ++It)
+				const FGameplayAttribute* Attribute = CachedAttributeMap.Find(FName(*Pair.Key));
+				if (Attribute && Attribute->IsValid())
 				{
-					if (It->GetName() == Pair.Key)
-					{
-						Attribute = FGameplayAttribute(*It);
-						break;
-					}
-				}
-
-				if (Attribute.IsValid())
-				{
-					ASC->SetNumericAttributeBase(Attribute, Pair.Value);
-					// 현재 값도 동일하게 맞춤 (GE에 인한 보정 전 기본값)
-					ASC->SetNumericAttributeBase(Attribute, Pair.Value); 
+					ASC->SetNumericAttributeBase(*Attribute, Pair.Value);
 				}
 			}
 
@@ -417,17 +479,13 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 		{
 			if (UBaseInventoryComponent* Inv = PreservedPawn->FindComponentByClass<UBaseInventoryComponent>())
 			{
-				for (TFieldIterator<FArrayProperty> It(UBaseInventoryComponent::StaticClass()); It; ++It)
+				if (FArrayProperty* ArrayProp = FindFProperty<FArrayProperty>(UBaseInventoryComponent::StaticClass(), TEXT("InventoryContents")))
 				{
-					if (It->GetName() == TEXT("InventoryContents"))
+					FScriptArrayHelper Helper(ArrayProp, ArrayProp->ContainerPtrToValuePtr<void>(Inv));
+					Helper.EmptyAndAddValues(FoundData->SavedInventory.Num());
+					for (int32 i = 0; i < FoundData->SavedInventory.Num(); ++i)
 					{
-						FScriptArrayHelper Helper(*It, It->ContainerPtrToValuePtr<void>(Inv));
-						Helper.EmptyAndAddValues(FoundData->SavedInventory.Num());
-						for (int32 i = 0; i < FoundData->SavedInventory.Num(); ++i)
-						{
-							*reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i)) = FoundData->SavedInventory[i];
-						}
-						break;
+						*reinterpret_cast<UBaseItemData**>(Helper.GetRawPtr(i)) = FoundData->SavedInventory[i];
 					}
 				}
 				
@@ -440,8 +498,6 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 			*UniqueIdStr, static_cast<int32>(NewERPS->TeamType), NewERPS->KillCount, NewERPS->DeathCount, NewERPS->AssistCount);
 	}
 
-	// [전민성 요구사항] 재접속에 성공하면 다시 생존 상태(Revive)로 복귀
-	// (로그아웃 직전에 살아있었음 -> FoundData->bIsDead == false 이므로 NewERPS->bIsDead 도 이미 false로 복원됨)
 	if (FoundData->PreservedPawn.IsValid() && !FoundData->bIsDead) 
 	{
 		if (ABaseCharacter* Char = Cast<ABaseCharacter>(FoundData->PreservedPawn.Get()))
@@ -471,7 +527,22 @@ void AER_InGameMode::PostLogin(APlayerController* NewPlayer)
 	if (ABasePlayerController* ERPC = Cast<ABasePlayerController>(NewPlayer))
 	{
 		ERPC->Client_InGameInputMode();
-		ERPC->Client_StartPreload();
+		TArray<FSoftObjectPath> CharacterPaths;
+		if (AGameStateBase* GS = GetWorld()->GetGameState())
+		{
+			for (APlayerState* PS : GS->PlayerArray)
+			{
+				if (AER_PlayerState* ERPS = Cast<AER_PlayerState>(PS))
+				{
+					TSoftObjectPtr<UCharacterData> CharData = ERPS->GetSelectedCharacterData();
+					if (!CharData.IsNull())
+					{
+						CharacterPaths.AddUnique(CharData.ToSoftObjectPath());
+					}
+				}
+			}
+		}
+		ERPC->Client_StartPreload(CharacterPaths);
 	}
 
 	// 보존 데이터 제거
@@ -492,7 +563,22 @@ void AER_InGameMode::HandleStartingNewPlayer_Implementation(APlayerController* N
 	if (ABasePlayerController* PC = Cast<ABasePlayerController>(NewPlayer))
 	{
 		PC->Client_InGameInputMode();
-		PC->Client_StartPreload(); // 방에 들어온 클라이언트에게 에셋 로딩을 지시
+		TArray<FSoftObjectPath> CharacterPaths;
+		if (AGameStateBase* GS = GetWorld()->GetGameState())
+		{
+			for (APlayerState* PS : GS->PlayerArray)
+			{
+				if (AER_PlayerState* ERPS = Cast<AER_PlayerState>(PS))
+				{
+					TSoftObjectPtr<UCharacterData> CharData = ERPS->GetSelectedCharacterData();
+					if (!CharData.IsNull())
+					{
+						CharacterPaths.AddUnique(CharData.ToSoftObjectPath());
+					}
+				}
+			}
+		}
+		PC->Client_StartPreload(CharacterPaths); // 방에 들어온 클라이언트에게 에셋 로딩을 지시
 	}
 	UE_LOG(LogTemp, Warning, TEXT("[GM] HSNPlayer this=%p world=%p map=%s PI=%d/%d"),
 		this, GetWorld(), *GetWorld()->GetMapName(), PlayersInitialized, ExpectedPlayers);
@@ -563,8 +649,6 @@ void AER_InGameMode::DisConnectClient(APlayerController* PC)
 		ERPC->Client_ReturnToMainMenu(TEXT("GameOver"));
 	}
 
-	// 호스트(Listen Server 본인)는 자신을 Kick 할 수 없습니다. 
-	// 호스트는 OpenLevel을 통해 메인 메뉴로 이동하면 자동으로 방이 터지고 넷드라이버가 닫힙니다.
 	if (PC->IsLocalController())
 	{
 		return;
@@ -749,6 +833,12 @@ void AER_InGameMode::StartGame_Internal()
 		NeutralSS->FirstSpawnNeutral();
 	}
 
+	// 카운트다운 종료 후 실제 게임 시작 시점 (미니맵 재캡처 트리거)
+	if (AER_GameState* ERGS = GetGameState<AER_GameState>())
+	{
+		ERGS->bGameStarted = true;
+	}
+
 	HandlePhaseTimeUp();
 }
 
@@ -920,7 +1010,7 @@ void AER_InGameMode::HandlePhaseTimeUp()
 	{
 		return;
 	}
-	if (ERGS->GetCurrentPhase() < 5)
+	if (ERGS->GetCurrentPhase() < 7)
 	{
 		ERGS->SetCurrentPhase(ERGS->GetCurrentPhase() + 1);
 		// 페이즈에 따라 작동할 코드 넣기
@@ -931,27 +1021,39 @@ void AER_InGameMode::HandlePhaseTimeUp()
 			AreaGSComp->SetPhase(ERGS->GetCurrentPhase());
 		}
 
-		/*//Updated -> Internally the ULevelAreaGameModeComponent does not make danger zone on first phase
-		AreaGSComp->SetPhase(ERGS->GetCurrentPhase());*/
-
-		//FString Text = "";
-		//for (auto& aa : AreaGSComp->HazardOrder)
-		//{
-		//	Text.Append(" -> ");
-		//	Text.AppendInt(aa);
-
-		//}
-		//UE_LOG(LogTemp, Log, TEXT("[GM] AreaGSComp->HazardOrder : %s"), *Text);
+		// 다음 페이즈에서 위험해질 구역을 미리 노란색(경고)으로 표시
+		const TArray<int32> NextZoneIDs = AreaGSComp->GetNextPhaseZoneIDs(ERGS->GetCurrentPhase());
+		if (NextZoneIDs.Num() > 0)
+		{
+			ERGS->Multicast_SetHazardIntensity(NextZoneIDs, 0.5f);
+		}
 
 		UER_ObjectSubsystem* ObjectSS = GetWorld()->GetSubsystem<UER_ObjectSubsystem>();
 		if (ObjectSS)
 		{
+			// 6페이즈 돌입 시: HazardOrder의 마지막 노드 = 7페이즈에 마지막으로 위험해지는 구역
+			// NextZoneIDs는 Phase 7 이후 정의된 항목이 없어 비어있으므로 HazardOrder.Last()를 직접 사용
+			if (ERGS->GetCurrentPhase() == 5 && !AreaGSComp->HazardOrder.IsEmpty())
+			{
+				ObjectSS->SpawnSafeZone(AreaGSComp->HazardOrder.Last());
+			}
+			// 7페이즈 돌입 시: 안전 지대 완전 디스폰
+			else if (ERGS->GetCurrentPhase() == 7)
+			{
+				ObjectSS->DespawnSafeZone();
+			}
+
 			// (항공 보급 생성)
 			ObjectSS->SpawnSupplyObject();
 			// (오브젝트 스폰)
 			ObjectSS->SpawnBossObject();
 		}
-		
+
+		UER_NeutralSpawnSubsystem* NeutralSS = GetWorld()->GetSubsystem<UER_NeutralSpawnSubsystem>();
+		if (NeutralSS)
+		{
+			NeutralSS->KillMonstersInHazards();
+		}
 	}
 
 	// 이후에 10초에서 180초로 수정

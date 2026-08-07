@@ -1,10 +1,11 @@
-﻿#include "Monster/StateTree/Task/STT_ActivateGroundSkill.h"
+#include "Monster/StateTree/Task/STT_ActivateGroundSkill.h"
 #include "StateTreeLinker.h"
 #include "StateTreeExecutionContext.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Monster/BaseMonster.h"
+#include "SkillSystem/GameAbility/SkillBase.h"
 
 FSTT_ActivateGroundSkill::FSTT_ActivateGroundSkill()
 {
@@ -24,67 +25,89 @@ const UStruct* FSTT_ActivateGroundSkill::GetInstanceDataType() const
 
 EStateTreeRunStatus FSTT_ActivateGroundSkill::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
-	UAbilitySystemComponent* ASC = 
-		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(&Actor);
-
-	for (FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
 	{
-		if (Spec.DynamicAbilityTags.HasTagExact(InstanceData.AbilityTag))
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateGroundSkill::EnterState : Not ActorHandle"));
+		return EStateTreeRunStatus::Failed;
+	}
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Actor);
+	if (IsValid(ASC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateGroundSkill::EnterState : Not ASC"));
+		return EStateTreeRunStatus::Failed;
+	}
+
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	if (InstanceData.AbilityTag.IsValid() == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateGroundSkill::EnterState : Not AbilityTag"));
+		return EStateTreeRunStatus::Failed;
+	}
+
+	ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
+	if (!Monster || !Monster->GetTargetPlayer())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateGroundSkill::EnterState : Invalid Monster or Target"));
+		return EStateTreeRunStatus::Failed;
+	}
+
+	AActor* TargetActor = Monster->GetTargetPlayer();
+	FVector TargetLocation = TargetActor->GetActorLocation();
+
+	// [Fast Track] 데이터 주입 시전
+	FGameplayEventData Payload;
+	Payload.Instigator = Actor;
+	Payload.Target = TargetActor;
+	FHitResult Hit; Hit.Location = TargetLocation;
+	Payload.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(Hit);
+	Payload.EventTag = InstanceData.AbilityTag;
+
+	// [Fast Track] 엔진 함수인 TriggerAbilityFromGameplayEvent를 직접 사용하여 확정적 시전 시도
+	FGameplayAbilitySpecHandle SpecHandle;
+	for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	{
+		if (Spec.GetDynamicSpecSourceTags().HasTagExact(InstanceData.AbilityTag))
 		{
-			if (ASC->TryActivateAbility(Spec.Handle))
-			{
-				FGameplayEventData Payload;
-				Payload.Instigator = &Actor;
-				if (ABaseMonster* Monster = Cast<ABaseMonster>(&Actor))
-				{
-					AActor* TargetActor = Monster->GetTargetPlayer();
-					if (IsValid(TargetActor))
-					{
-						Payload.Target = TargetActor;
-
-						FVector TargetLocation = TargetActor->GetActorLocation();
-						FHitResult HitResult;
-						HitResult.Location = TargetLocation;
-
-						Payload.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(HitResult);
-
-						UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(&Actor, InstanceData.EventTag, Payload);
-
-						FGameplayCueParameters Params;
-						Params.Instigator = &Actor;
-						Params.Location = TargetLocation;
-						ASC->AddGameplayCue(InstanceData.GameplayCueTag, Params);
-						
-						return EStateTreeRunStatus::Running;
-					}
-				}
-			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("Try Activate Skill Fail"));
-
-				return EStateTreeRunStatus::Failed;
-			}
+			SpecHandle = Spec.Handle;
 			break;
 		}
 	}
 
-	return EStateTreeRunStatus::Failed;
+	if (ASC->TriggerAbilityFromGameplayEvent(SpecHandle, ASC->AbilityActorInfo.Get(), InstanceData.AbilityTag, &Payload, *ASC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateGroundSkill::EnterState : TriggerAbilityFromGameplayEvent Fail (Tag: %s)"), *InstanceData.AbilityTag.ToString());
+		return EStateTreeRunStatus::Failed;
+	}
+
+	if (InstanceData.GameplayCueTag.IsValid())
+	{
+		FGameplayCueParameters Params; Params.Instigator = Actor; Params.Location = TargetLocation;
+		ASC->AddGameplayCue(InstanceData.GameplayCueTag, Params);
+	}
+	return EStateTreeRunStatus::Running;
 }
 
 void FSTT_ActivateGroundSkill::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	AActor& Actor = Context.GetExternalData(ActorHandle);
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
-	UAbilitySystemComponent* ASC =
-		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(&Actor);
-
-	if (ASC && InstanceData.GameplayCueTag.IsValid())
+	AActor* Actor = Context.GetExternalDataPtr(ActorHandle);
+	if (IsValid(Actor) == false)
 	{
-		ASC->RemoveGameplayCue(InstanceData.GameplayCueTag);
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateGroundSkill::ExitState : Not ActorHandle"));
+		return;
 	}
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Actor);
+	if (IsValid(ASC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateGroundSkill::ExitState : Not ASC"));
+		return;
+	}
+
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	if (InstanceData.GameplayCueTag.IsValid() == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_ActivateGroundSkill::ExitState : Not GameplayCueTag"));
+		return;
+	}
+	ASC->RemoveGameplayCue(InstanceData.GameplayCueTag);
 }

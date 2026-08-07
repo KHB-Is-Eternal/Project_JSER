@@ -87,14 +87,47 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage); // 피해량
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(IncomingXP); // 경험치 습득량
 		}
+		
+		namespace CC
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Duration);  // SetByCaller 예비용
+		}
+
+		namespace Source
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Skill);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attack);
+		}
 	}
 	
 	
 	namespace Event
 	{
+		namespace Data
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damage);
+		}
+
 		namespace Action
 		{
-			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Hit);
+			namespace Hit
+			{
+				namespace BasicAttack
+				{
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Critical);
+				}
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Damaged);
+				
+				namespace Skill
+				{
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Q);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(W);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(E);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(R);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Passive);
+				}
+			}
+
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Attack);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(BeginSearch);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(EndSearch);
@@ -105,6 +138,27 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Return);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase1);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase2);
+
+			namespace Skill
+			{
+				namespace Execute
+				{
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Q);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(W);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(E);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(R);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Passive);
+				}
+
+				namespace End
+				{
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Q);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(W);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(E);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(R);
+					UE_DECLARE_GAMEPLAY_TAG_EXTERN(Passive);
+				}
+			}
 		}
 
 		namespace State
@@ -152,6 +206,8 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(OpenBox);    // 상자 오픈
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Teleport);   // 텔레포트 상호작용
 		}
+
+
 	}
 
 	namespace GameplayCue
@@ -199,6 +255,8 @@ namespace ProjectER
 				UE_DECLARE_GAMEPLAY_TAG_EXTERN(E);
 				UE_DECLARE_GAMEPLAY_TAG_EXTERN(R);
 			}
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Summoner);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(HitTarget);
 		}
 		namespace Decal
 		{
@@ -223,12 +281,23 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(TryRevive);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(LevelUp);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Death);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(DamageText);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(RecoveryText);
+		}
+		
+		namespace CC
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Slow);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Root);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Silence);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stun);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Airborne);
 		}
 
 		namespace Skill
 		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Actor);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Summoner);
-			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Range);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(HitTarget);
 		}
 	}
@@ -248,6 +317,7 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(FlyStart);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(FlyAttack);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(FlyEnd);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Skill);
 		}
 
 		namespace Buff
@@ -288,6 +358,11 @@ namespace ProjectER
 		{
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Unselectable); // 적 타겟팅은 되지만 일부 스킬 불가(Down 시 부여)
 		}*/
+
+		namespace Zone
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Safe);    // 임시 안전 지대에 위치
+		}
 	}
 	
 	namespace Status // 스탯
@@ -368,6 +443,27 @@ namespace ProjectER
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(CriticalHit);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(TryRevive);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Revive);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Stun);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Airborne);
+		}
+	}
+
+	namespace Skill
+	{
+		namespace Animation
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Aiming);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Casting);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Active);
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Backswing);
+		}
+		namespace Option
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(AllowMovement);
+		}
+		namespace Data
+		{
+			UE_DECLARE_GAMEPLAY_TAG_EXTERN(CoolTime);
 		}
 	}
 }

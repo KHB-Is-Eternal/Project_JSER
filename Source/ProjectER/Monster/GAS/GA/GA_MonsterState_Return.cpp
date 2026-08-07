@@ -7,7 +7,7 @@
 UGA_MonsterState_Return::UGA_MonsterState_Return()
 {
 	StateInitData.MonsterAssetTags = FGameplayTagContainer(FGameplayTag::RequestGameplayTag("Ability.Action.Return"));
-	StateInitData.MontageType = EMonsterMontageType::Move;
+	StateInitData.MontageType = EMonsterActionType::Move;
 	StateInitData.NiagaraCueTag = FGameplayTag::RequestGameplayTag("GameplayCue.Particle.Action.Move");
 	StateInitData.SoundCueTag = FGameplayTag::RequestGameplayTag("GameplayCue.Sound.Action.Move");
 	StateInitData.WaitTag = FGameplayTag::RequestGameplayTag("State.Action.Move");
@@ -25,40 +25,43 @@ void UGA_MonsterState_Return::ActivateAbility(const FGameplayAbilitySpecHandle H
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
 	ABaseMonster* Monster = Cast<ABaseMonster>(GetOwningActorFromActorInfo());
-	if (IsValid(Monster) == false || IsValid(Monster->MonsterData) == false)
+	if (IsValid(Monster) == false)
 	{
-		//UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Return::ActivateAbility : Not Monster"));
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Return::ActivateAbility : Not Monster"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
-
+	if (IsValid(Monster->MonsterData) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Return::ActivateAbility : Not MonsterData"));
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
 	AAIController* AIC = Cast<AAIController>(Monster->GetController());
-	FVector TargetLocation = Monster->GetStartLocation();
-
 	if (IsValid(AIC) == false)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Return::ActivateAbility : Not AIC"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
-
-	AIC->ReceiveMoveCompleted.RemoveAll(this);
 	
+	AIC->ReceiveMoveCompleted.RemoveAll(this);
+	FVector TargetLocation = Monster->GetStartLocation();
 	EPathFollowingRequestResult::Type ReqResult = AIC->MoveToLocation(TargetLocation, 10.f, false);
-	if (ReqResult == EPathFollowingRequestResult::Failed)
-	{
-		ReqResult = AIC->MoveToLocation(TargetLocation, 100.f, false);
-	}
-
-	if (ReqResult != EPathFollowingRequestResult::Failed && ReqResult != EPathFollowingRequestResult::AlreadyAtGoal)
+	if (ReqResult == EPathFollowingRequestResult::RequestSuccessful)
 	{
 		MoveRequestID = AIC->GetCurrentMoveRequestID();
 		AIC->ReceiveMoveCompleted.AddDynamic(this, &UGA_MonsterState_Return::OnMoveFinished);
 	}
-	else
+	else if (ReqResult == EPathFollowingRequestResult::AlreadyAtGoal)
 	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-		return;
+		MoveRequestID = AIC->GetCurrentMoveRequestID();
+		OnMoveFinished(MoveRequestID, EPathFollowingResult::Success);
+	}
+	else if (ReqResult == EPathFollowingRequestResult::Failed)
+	{
+		MoveRequestID = AIC->GetCurrentMoveRequestID();
+		OnMoveFinished(MoveRequestID, EPathFollowingResult::Aborted);
 	}
 }
 
@@ -71,14 +74,18 @@ void UGA_MonsterState_Return::OnMoveFinished(FAIRequestID RequestID, EPathFollow
 	}
 	
 	ABaseMonster* Monster = Cast<ABaseMonster>(GetOwningActorFromActorInfo());
-	if (IsValid(Monster))
+	if (IsValid(Monster) == false)
 	{
-		Monster->SetIsFirstAttack(false);
-		Monster->SetAttackCount(0);
-		Monster->SetbIsCombat(false);
-		Monster->SetActorRotation(Monster->GetStartRotator());
-		Monster->SendStateTreeEvent(FGameplayTag::RequestGameplayTag("Event.Action.Return"));
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Return::OnMoveFinished : Not Monster"));
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+		return;
 	}
+
+	Monster->SetIsFirstAttack(false);
+	Monster->SetAttackCount(0);
+	Monster->SetbIsCombat(false);
+	Monster->SetActorRotation(Monster->GetStartRotator());
+	Monster->SendStateTreeEvent(FGameplayTag::RequestGameplayTag("Event.Action.Return"));
 
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 }
@@ -88,12 +95,18 @@ void UGA_MonsterState_Return::EndAbility(const FGameplayAbilitySpecHandle Handle
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 
 	ABaseMonster* Monster = Cast<ABaseMonster>(GetOwningActorFromActorInfo());
-	if (IsValid(Monster))
+	if (IsValid(Monster) == false)
 	{
-		if (AAIController* AIC = Cast<AAIController>(Monster->GetController()))
-		{
-			AIC->ReceiveMoveCompleted.RemoveAll(this);
-		}
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Return::EndAbility : Not Monster"));
+		return;
 	}
+	AAIController* AIC = Cast<AAIController>(Monster->GetController());
+	if (IsValid(AIC) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_MonsterState_Return::EndAbility : Not AIC"));
+		return;
+	}
+	
+	AIC->ReceiveMoveCompleted.RemoveAll(this);
 }
 

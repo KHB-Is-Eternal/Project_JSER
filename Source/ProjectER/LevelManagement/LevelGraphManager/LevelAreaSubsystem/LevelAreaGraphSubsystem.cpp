@@ -162,7 +162,7 @@ bool ULevelAreaGraphSubsystem::GenerateHazardOrder(
     }
 
     // Reverse BFS order to generate collapse order
-    for (int32 i = BFSOrder.Num() - 1; i > 0; i--)
+    for (int32 i = BFSOrder.Num() - 1; i >= 0; i--)
     {
         OutHazardOrder.Add(BFSOrder[i]);
     }

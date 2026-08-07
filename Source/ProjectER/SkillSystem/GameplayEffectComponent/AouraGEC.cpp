@@ -1,5 +1,6 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
+
 #include "SkillSystem/GameplayEffectComponent/AouraGEC.h"
 
 #include "Abilities/GameplayAbilityTypes.h"
@@ -8,36 +9,19 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "SkillSystem/Actor/BaseRangeOverlapEffectActor/BaseRangeOverlapEffectActor.h"
 #include "SkillSystem/Component/AreaPeriodicEffectComponent.h"
-#include "SkillSystem/GameAbility/SkillBase.h"
-#include "SkillSystem/GameplayEffect/SkillEffectDataAsset.h"
 
-UAouraGECConfig::UAouraGECConfig()
-{
-	// 오라 형태이므로 기본적으로 여러 번 타격 가능해야 함
-	bHitOncePerTarget = false;
-	LifeSpan = 5.0f; // 기본 지속시간
-}
 
 UAouraGEC::UAouraGEC()
 {
-	ConfigClass = UAouraGECConfig::StaticClass();
+	// 오라 형태이므로 기본적으로 여러 번 타격 가능해야 함
+	this->bHitOncePerTarget = false;
+	this->LifeSpan = 5.0f; // 기본 지속시간
 }
 
-TSubclassOf<UBaseGECConfig> UAouraGEC::GetRequiredConfigClass() const
+void UAouraGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters, const FGameplayEffectSpec& ParentSpec) const
 {
-	return UAouraGECConfig::StaticClass();
-}
-
-void UAouraGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, const USummonRangeBaseConfig* Config, AActor* Instigator, const FGameplayEffectContextHandle& Context, const FGameplayCueParameters& HitTargetVfxCueParameters, const FGameplayCueParameters& HitTargetSoundCueParameters) const
-{
-	Super::InitializeRangeActor(RangeActor, Config, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
-	if (!IsValid(RangeActor) || !IsValid(Config) || !IsValid(Instigator))
-	{
-		return;
-	}
-
-	const UAouraGECConfig* const AouraConfig = Cast<UAouraGECConfig>(Config);
-	if (!IsValid(AouraConfig))
+	Super::InitializeRangeActor(RangeActor, Instigator, Context, HitTargetVfxCueParameters, HitTargetSoundCueParameters, ParentSpec);
+	if (!IsValid(RangeActor) || !IsValid(Instigator))
 	{
 		return;
 	}
@@ -46,14 +30,14 @@ void UAouraGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, c
 	UAbilitySystemComponent* const CauserASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Instigator);
 	if (const USkeletalMeshComponent* const Mesh = Instigator->FindComponentByClass<USkeletalMeshComponent>())
 	{
-		if (Mesh->DoesSocketExist(AouraConfig->BoneName))
+		if (Mesh->DoesSocketExist(this->BoneName))
 		{
 			// 소켓이 존재하면 해당 본에 부착하여 함께 이동하도록 함
-			RangeActor->AttachToComponent(const_cast<USkeletalMeshComponent*>(Mesh), FAttachmentTransformRules::SnapToTargetNotIncludingScale, AouraConfig->BoneName);
+			RangeActor->AttachToComponent(const_cast<USkeletalMeshComponent*>(Mesh), FAttachmentTransformRules::SnapToTargetNotIncludingScale, this->BoneName);
 
 			// 부착 후 SnapToTarget에 의해 초기화된 상대 트랜스폼에 Config의 오프셋을 재적용
-			RangeActor->SetActorRelativeLocation(AouraConfig->LocationOffset);
-			RangeActor->SetActorRelativeRotation(AouraConfig->RotationOffset);
+			RangeActor->SetActorRelativeLocation(this->LocationOffset);
+			RangeActor->SetActorRelativeRotation(this->RotationOffset);
 		}
 	}
 
@@ -70,6 +54,22 @@ void UAouraGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* RangeActor, c
 		RangeActor->SetAreaPeriodicComponent(PeriodicComp);
 
 		// 주기 및 즉시 적용 여부 설정
-		PeriodicComp->SetupPeriodicEffect(AouraConfig->Period, AouraConfig->bApplyImmediately);
+		PeriodicComp->SetupPeriodicEffect(this->Period, this->bApplyImmediately);
 	}
+}
+
+FSkillTooltipData UAouraGEC::GetTooltipDescription(int32 Level, TSubclassOf<class USkillBase> AbilityClass) const
+{
+	FSkillTooltipData Data;
+	Data.ShortDescription = FText::FromString(TEXT("범위를 생성합니다."));
+
+	FString DetailStr = FString::Printf(TEXT("범위 : 자신 주변에 범위를 생성하여 %.1f초마다 주기적으로 효과를 적용합니다."), Period);
+	FText EffectsText = FormatAppliedEffects(Applied, Level);
+	if (!EffectsText.IsEmpty())
+	{
+		DetailStr += TEXT("\n") + EffectsText.ToString();
+	}
+
+	Data.DetailedDescription = FText::FromString(DetailStr);
+	return Data;
 }

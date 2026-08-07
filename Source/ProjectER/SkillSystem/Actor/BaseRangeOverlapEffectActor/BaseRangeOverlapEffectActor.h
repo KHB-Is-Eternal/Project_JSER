@@ -5,7 +5,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayEffectTypes.h"
-#include "SkillSystem/SkillNiagaraSpawnSettings.h"
+#include "GameplayPrediction.h"
+#include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnSettings.h"
+#include "SkillSystem/Interfaces/SkillSummonedActor.h"
+#include "SkillSystem/SkillData.h"
 #include "BaseRangeOverlapEffectActor.generated.h"
 
 class UShapeComponent;
@@ -15,12 +18,21 @@ class UCapsuleComponent;
 class UAreaPeriodicEffectComponent;
 
 UCLASS()
-class PROJECTER_API ABaseRangeOverlapEffectActor : public AActor {
-  GENERATED_BODY()
+class PROJECTER_API ABaseRangeOverlapEffectActor : public AActor, public ISkillSummonedActor {
+	GENERATED_BODY()
 
 public:
   // Sets default values for this actor's properties
   ABaseRangeOverlapEffectActor();
+
+  // ISkillSummonedActor interface implementation
+  virtual void OnVfxHandshakeCompleted_Implementation(AActor* VfxActor) override;
+
+  UFUNCTION()
+  void OnRep_InstigatorActor();
+
+  UFUNCTION()
+  void OnRep_PendingCollisionSize();
 
   void InitializeEffectData(
       const TArray<FGameplayEffectSpecHandle> &InEffectSpecHandles,
@@ -34,8 +46,12 @@ public:
 
   void InitializePeriodicCues(const FGameplayCueParameters& InPeriodicVfxCueParameters, const FGameplayCueParameters& InPeriodicSoundCueParameters);
 
+  /** 서버에서 시전 시간을 초기화합니다. */
+  void SetClientActivationTime(float InTime) { ClientActivationTime = InTime; }
+
 protected:
   virtual void BeginPlay() override;
+  virtual void PostNetInit() override;
   virtual void ApplyCollisionSize(const FVector &InCollisionSize);
   void SetCollisionComponent(UShapeComponent *InCollisionComponent);
 
@@ -64,17 +80,20 @@ protected:
   UPROPERTY()
   TArray<FGameplayEffectSpecHandle> EffectSpecHandles;
 
-  UPROPERTY()
+  UPROPERTY(ReplicatedUsing = OnRep_InstigatorActor)
   TObjectPtr<AActor> InstigatorActor;
 
   UPROPERTY()
   bool bHitOncePerTarget = true;
 
-  UPROPERTY()
+  UPROPERTY(ReplicatedUsing = OnRep_PendingCollisionSize)
   FVector PendingCollisionSize = FVector::ZeroVector;
 
   UPROPERTY()
   bool bHasPendingCollisionSize = false;
+
+  UPROPERTY()
+  TWeakObjectPtr<class AGCN_SummonedActor> CachedSummonedGCN;
 
   UPROPERTY()
   TSet<TObjectPtr<AActor>> HitActors;
@@ -97,4 +116,13 @@ protected:
 
   UPROPERTY()
   FGameplayCueParameters PeriodicSoundCueParameters;
+
+protected:
+  /** 리플리케이션된 시전 시간 */
+  UPROPERTY(Replicated)
+  float ClientActivationTime;
+
+  /** 서버-클라이언트 간 시각 효과 매칭 시 허용 오차 시간 (초) */
+  UPROPERTY(EditDefaultsOnly, Category = "Summon|Network", meta = (ClampMin = "0.0", ClampMax = "5.0"))
+  float VfxHandshakeTolerance = 0.5f;
 };

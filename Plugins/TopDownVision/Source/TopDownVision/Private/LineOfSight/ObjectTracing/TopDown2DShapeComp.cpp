@@ -67,6 +67,12 @@ float UTopDown2DShapeComp::GetTraceRadius() const
     }
 }
 
+void UTopDown2DShapeComp::SetCircleShape(float InRadius)
+{
+    ShapeType = E2DShapeType::Circle;
+    Radius    = InRadius;
+}
+
 // -------------------------------------------------------------------------- //
 // Debug Draw
 // -------------------------------------------------------------------------- //

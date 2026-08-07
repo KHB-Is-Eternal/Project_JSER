@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -60,8 +60,11 @@ public:
     UFUNCTION(BlueprintCallable, Category="Vision")
     void SetVisionRange(float NewRange);
 
-    float GetVisibleRange()    const { return VisionRange; }
-    float GetMaxVisibleRange() const { return MaxVisionRange; }
+    UFUNCTION(BlueprintCallable, Category="Vision")
+    float GetVisibleRange()    const;
+
+    UFUNCTION(BlueprintCallable, Category="Vision")
+    float GetMaxVisibleRange() const;
 
     UFUNCTION(BlueprintCallable, Category="Vision")
     UMaterialInstanceDynamic* GetStampMID() const;
@@ -81,6 +84,11 @@ public:
     UFUNCTION(BlueprintCallable, Category="Vision")
     EVisionChannel GetVisionChannel() const { return VisionChannel; }
 
+    bool IsVisionProvider() const { return bIsVisionProvider; }
+
+    UFUNCTION(BlueprintCallable, Category="Vision")
+    void SetIsVisionProvider(bool bInIsVisionProvider) { bIsVisionProvider = bInIsVisionProvider; }
+
     UFUNCTION(BlueprintCallable, Category="Vision")
     void SetVisionChannel(EVisionChannel InVC);
 
@@ -93,21 +101,10 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category="Vision")
     EVisionChannel GetLocalPlayerVisionChannel() const;
 
-    // ── Pool ─────────────────────────────────────────────────────────
+    UFUNCTION(BlueprintCallable, Category="Vision")
+    void RefreshOcclusionAndEvaluatorRadius();
 
-    UFUNCTION(BlueprintCallable, Category="Vision|Pool")
-    void OnRevealed_EnterPool();
 
-    UFUNCTION(BlueprintCallable, Category="Vision|Pool")
-    void OnHidden_ExitPool();
-
-    void OnPoolSlotAcquired(const FLOSStampPoolSlot& Slot);
-    void OnPoolSlotReleased();
-
-    bool UsesResourcePool() const { return bUseResourcePool; }
-    bool HasPoolSlot()      const { return bHasActivePoolSlot; }
-
-public:
 
     UPROPERTY(BlueprintAssignable, Category="Occlusion Tracer")
     FOcclusionTracerEvent OnTargetRevealed;
@@ -163,10 +160,8 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision", meta=(AllowPrivateAccess="true"))
     float IndicatorRange = 0.f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision|Pool", meta=(AllowPrivateAccess="true"))
-    bool bUseResourcePool = true;
-
-    bool bHasActivePoolSlot = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Vision", meta=(AllowPrivateAccess="true"))
+    bool bIsVisionProvider = true;
 
 private:
     UPROPERTY(Transient)

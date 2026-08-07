@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/UI_MainHUD.h"
@@ -9,6 +9,16 @@
 #include "Components/SceneCaptureComponent2D.h" // 미니맵용
 #include "NavigationSystem.h" // 미니맵용
 #include "NavigationPath.h" // 미니맵용
+
+// CPU 미니맵용
+#include "Components/CanvasPanel.h"
+#include "UI/UI_MinimapProjection.h"
+#include "UI/UI_AMiniMapCapture.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/Texture2D.h"
+#include "EngineUtils.h" // TActorIterator
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerState.h"
 
 #include "Blueprint/SlateBlueprintLibrary.h" // 툴팁용
 #include "Blueprint/WidgetLayoutLibrary.h" // 툴팁용
@@ -45,6 +55,9 @@
 #include "ItemSystem/Data/BaseItemData.h"
 #include "Components/UniformGridSlot.h"
 #include "ItemSystem/UI/W_InventorySlot.h"
+#include "Components/Image.h"
+#include "CharacterSystem/Player/BasePlayerController.h"
+#include "ItemSystem/Data/BaseItemData.h"
 void UUI_MainHUD::Update_LV(float CurrentLV)
 {
     if(IsValid(stat_LV))
@@ -280,14 +293,20 @@ void UUI_MainHUD::InitASCHud(UAbilitySystemComponent* _ASC)
     {
         ASC->AbilityActivatedCallbacks.AddUObject(this, &UUI_MainHUD::OnAbilityActivated);
 
+        // [Fix] 쿨타임 GE가 추가될 때마다 OnTimeChanged를 바인딩합니다. (예측본/복제본 모두 발화)
+        ASC->OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(this, &UUI_MainHUD::OnActiveGameplayEffectAddedToSelf);
+
         // Register cooldown tag events for each skill
         for (int32 i = 0; i < SkillDataAssets.Num(); ++i)
         {
             if (SkillDataAssets[i] && SkillDataAssets[i]->SkillConfig)
             {
-                for (const FGameplayTag& Tag : SkillDataAssets[i]->SkillConfig->Data.CoolTimeTags)
+                if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[i]->SkillConfig->GetCooldownTags())
                 {
-                    ASC->RegisterGameplayTagEvent(Tag, EGameplayTagEventType::NewOrRemoved).AddUObject(this, &UUI_MainHUD::OnCooldownTagChanged, i);
+                    for (const FGameplayTag& Tag : *CooldownTags)
+                    {
+                        ASC->RegisterGameplayTagEvent(Tag, EGameplayTagEventType::NewOrRemoved).AddUObject(this, &UUI_MainHUD::OnCooldownTagChanged, i);
+                    }
                 }
             }
         }
@@ -306,21 +325,21 @@ void UUI_MainHUD::NativeConstruct()
     // [김현수 추가분]Grid_item이 BindWidget으로 바인딩 안됐으면 직접 찾기
     if (!Grid_item)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not bound, trying to find manually..."));
+        //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not bound, trying to find manually..."));
         Grid_item = Cast<UUniformGridPanel>(GetWidgetFromName(TEXT("Grid_item")));
 
         if (Grid_item)
         {
-            UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item found manually!"));
+            //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item found manually!"));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not found even manually!"));
+            //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item not found even manually!"));
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item already bound via BindWidget!"));
+        //UE_LOG(LogTemp, Warning, TEXT("[UI_MainHUD] Grid_item already bound via BindWidget!"));
     }
 
     EnsureInventorySlotWidgets();
@@ -399,6 +418,12 @@ void UUI_MainHUD::NativeConstruct()
     }
     // skil
 
+    if (Btn_Craft)
+    {
+        Btn_Craft->OnHovered.AddDynamic(this, &UUI_MainHUD::OnCraftHovered);
+        Btn_Craft->OnUnhovered.AddDynamic(this, &UUI_MainHUD::HideTooltip);
+        Btn_Craft->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftClicked);
+    }
     // cool
     SkillCoolTexts[0] = skill_cool_01;
     SkillCoolTexts[1] = skill_cool_02;
@@ -436,6 +461,24 @@ void UUI_MainHUD::NativeConstruct()
     TeamLevel_01->SetVisibility(ESlateVisibility::Collapsed);
     TeamLevel_02->SetVisibility(ESlateVisibility::Collapsed);
 
+    if (WarningSkull)
+    {
+        WarningSkull->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+    if (WarningNumber_ten)
+    {
+        WarningNumber_ten->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+    if (WarningNumber_one)
+    {
+        WarningNumber_one->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+    showWarningAnim = GetWidgetAnimationByName(TEXT("AN_ShowWarning"));
+    hideWarningAnim = GetWidgetAnimationByName(TEXT("AN_HideWarning"));
+
+    // 금구 타이머 숨김
+    hideWarningSign();
+
     //// 디버그용
     //SetKillCount(0);
     //SetDeathCount(41);
@@ -448,6 +491,186 @@ void UUI_MainHUD::NativeConstruct()
     //    1.0f,
     //    true);
     
+    // [김현수 추가분]
+    CurrentCraftPreviewItems.SetNum(5);
+
+    if (BTN_CraftPreview_0)
+    {
+        BTN_CraftPreview_0->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview0Clicked);
+    }
+    if (BTN_CraftPreview_1)
+    {
+        BTN_CraftPreview_1->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview1Clicked);
+    }
+    if (BTN_CraftPreview_2)
+    {
+        BTN_CraftPreview_2->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview2Clicked);
+    }
+    if (BTN_CraftPreview_3)
+    {
+        BTN_CraftPreview_3->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview3Clicked);
+    }
+    if (BTN_CraftPreview_4)
+    {
+        BTN_CraftPreview_4->OnClicked.AddDynamic(this, &UUI_MainHUD::OnCraftPreview4Clicked);
+    }
+}
+
+void UUI_MainHUD::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+
+    // CPU 미니맵 갱신 (MinimapUpdateInterval = 0이면 매 프레임)
+    MinimapUpdateAccum += InDeltaTime;
+    if (MinimapUpdateInterval > 0.f && MinimapUpdateAccum < MinimapUpdateInterval)
+    {
+        return;
+    }
+    MinimapUpdateAccum = 0.f;
+
+    UpdateMinimapView();
+}
+
+void UUI_MainHUD::UpdateMinimapView()
+{
+    const ABaseCharacter* LocalChar = Cast<ABaseCharacter>(GetOwningPlayerPawn());
+    if (!IsValid(LocalChar))
+    {
+        return;
+    }
+
+    EnsureMinimapRefs();
+
+    UpdateMinimapBackground(LocalChar->GetActorLocation());
+    UpdateMinimapIcons(LocalChar);
+}
+
+void UUI_MainHUD::EnsureMinimapRefs()
+{
+    // 전체맵 1회 캡처 액터 캐싱 (BasePlayerController와 동일 패턴)
+    if (!IsValid(MinimapCaptureActor))
+    {
+        for (TActorIterator<AUI_AMiniMapCapture> It(GetWorld()); It; ++It)
+        {
+            MinimapCaptureActor = *It;
+            break;
+        }
+    }
+
+    // 배경 MID 캐싱 — WBP에서 TEX_Minimap 브러시에 UVCenter/UVZoom 파라미터를 가진 머티리얼이 할당되어 있어야 함
+    if (!IsValid(MinimapBackgroundMID) && IsValid(TEX_Minimap))
+    {
+        MinimapBackgroundMID = TEX_Minimap->GetDynamicMaterial();
+    }
+}
+
+void UUI_MainHUD::UpdateMinimapBackground(const FVector& ViewCenter)
+{
+    if (!IsValid(MinimapBackgroundMID) || !IsValid(MinimapCaptureActor))
+    {
+        return;
+    }
+
+    const float MapWidth = MinimapCaptureActor->GetMapOrthoWidth();
+    if (MapWidth <= 0.f)
+    {
+        return;
+    }
+
+    // 줌/회전각은 런타임에 불변 — 최초 1회만 설정 (회전각은 아이콘 계산과 같은 프로퍼티를 공유해 어긋남 방지)
+    if (!bMinimapStaticParamsSet)
+    {
+        MinimapBackgroundMID->SetScalarParameterValue(FName("UVZoom"), MinimapViewWidth / MapWidth);
+        MinimapBackgroundMID->SetScalarParameterValue(FName("UVRotationDeg"), MinimapViewRotationDeg);
+        bMinimapStaticParamsSet = true;
+    }
+
+    const FVector2D UVCenter = FUI_MinimapProjection::WorldToMapUV(ViewCenter, MinimapCaptureActor->GetMapCenter(), MapWidth);
+    MinimapBackgroundMID->SetVectorParameterValue(FName("UVCenter"), FLinearColor(UVCenter.X, UVCenter.Y, 0.f, 0.f));
+}
+
+void UUI_MainHUD::UpdateMinimapIcons(const ABaseCharacter* LocalChar)
+{
+    if (!IsValid(MinimapIconCanvas))
+    {
+        return;
+    }
+
+    const FVector2D CanvasSize = MinimapIconCanvas->GetCachedGeometry().GetLocalSize();
+    if (CanvasSize.IsNearlyZero())
+    {
+        return;
+    }
+
+    AGameStateBase* GameState = GetWorld()->GetGameState();
+    if (!IsValid(GameState))
+    {
+        return;
+    }
+
+    // 전부 숨김 후 이번 프레임에 유효한 아이콘만 다시 표시 (사망/리스폰 잔상 방지)
+    for (auto& Pair : MinimapIcons)
+    {
+        if (Pair.Value.Face) Pair.Value.Face->SetVisibility(ESlateVisibility::Collapsed);
+        if (Pair.Value.Ring) Pair.Value.Ring->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+    const FVector ViewCenter = LocalChar->GetActorLocation();
+
+    for (APlayerState* PS : GameState->PlayerArray)
+    {
+        if (!IsValid(PS))
+        {
+            continue;
+        }
+
+        ABaseCharacter* Character = Cast<ABaseCharacter>(PS->GetPawn());
+        if (!IsValid(Character))
+        {
+            continue;
+        }
+
+        FMinimapIconPair* Icons = MinimapIcons.Find(Character);
+        if (!Icons)
+        {
+            FMinimapIconPair NewPair = FUI_MinimapProjection::CreateIconPair(this, MinimapIconCanvas, Character,
+                LocalChar, MinimapRingMaterial.LoadSynchronous(), MinimapRingIconSize,
+                MinimapFaceMaterial.LoadSynchronous(), MinimapFaceIconSize);
+            if (!NewPair.Face)
+            {
+                continue;
+            }
+            Icons = &MinimapIcons.Add(Character, NewPair);
+        }
+
+        // HeroData/TeamID가 늦게 리플리케이션된 경우 지연 적용
+        FUI_MinimapProjection::RefreshFaceTexture(*Icons, Character);
+        FUI_MinimapProjection::RefreshTeamColor(*Icons, Character, LocalChar);
+
+        // 뷰 범위 판정 + 시야 판정
+        const FVector2D Offset = FUI_MinimapProjection::WorldToViewOffset(
+            Character->GetActorLocation(), ViewCenter, MinimapViewWidth, MinimapViewRotationDeg);
+        const bool bInView = FMath::Abs(Offset.X) <= 0.5f && FMath::Abs(Offset.Y) <= 0.5f;
+
+        if (!bInView || !FUI_MinimapProjection::IsCharacterVisibleOnMinimap(Character, LocalChar))
+        {
+            continue;
+        }
+
+        const FVector2D CanvasPos((Offset.X + 0.5f) * CanvasSize.X, (Offset.Y + 0.5f) * CanvasSize.Y);
+        FUI_MinimapProjection::PlaceIconPair(*Icons, CanvasPos);
+    }
+
+    // 파괴된 캐릭터의 아이콘 정리
+    for (auto It = MinimapIcons.CreateIterator(); It; ++It)
+    {
+        if (!IsValid(It.Key()))
+        {
+            if (It.Value().Face) It.Value().Face->RemoveFromParent();
+            if (It.Value().Ring) It.Value().Ring->RemoveFromParent();
+            It.RemoveCurrent();
+        }
+    }
 }
 
 void UUI_MainHUD::NativeDestruct()
@@ -460,6 +683,7 @@ void UUI_MainHUD::NativeDestruct()
             World->GetTimerManager().ClearTimer(SkillTimerHandles[i]);
         }
         World->GetTimerManager().ClearTimer(PhaseAndTimeTimer);
+		World->GetTimerManager().ClearTimer(UI_WarningTimerHandle);
     }
 
     Super::NativeDestruct();
@@ -525,7 +749,7 @@ void UUI_MainHUD::OnSkill02Hovered()
 
     if (IsValid(SkillDataAssets[1]))
     {
-        FSkillTooltipData nowSkill = SkillDataAssets[1]->GetSkillTooltipData(getSkillLevel(Q_SkillTag, false));
+        FSkillTooltipData nowSkill = SkillDataAssets[1]->GetSkillTooltipData(getSkillLevel(W_SkillTag, false));
         ShowTooltip(skill_02, nowSkill.SkillName, nowSkill.ShortDescription, nowSkill.DetailedDescription, nowSkill.CostDescription, true);
     }
 }
@@ -536,7 +760,7 @@ void UUI_MainHUD::OnSkill03Hovered()
 
     if (IsValid(SkillDataAssets[2]))
     {
-        FSkillTooltipData nowSkill = SkillDataAssets[2]->GetSkillTooltipData(getSkillLevel(Q_SkillTag, false));
+        FSkillTooltipData nowSkill = SkillDataAssets[2]->GetSkillTooltipData(getSkillLevel(E_SkillTag, false));
         ShowTooltip(skill_03, nowSkill.SkillName, nowSkill.ShortDescription, nowSkill.DetailedDescription, nowSkill.CostDescription, true);
     }
 }
@@ -549,7 +773,7 @@ void UUI_MainHUD::OnSkill04Hovered()
     {
         if (ASC)
         {
-            FSkillTooltipData nowSkill = SkillDataAssets[3]->GetSkillTooltipData(getSkillLevel(Q_SkillTag, false));
+            FSkillTooltipData nowSkill = SkillDataAssets[3]->GetSkillTooltipData(getSkillLevel(R_SkillTag, false));
             ShowTooltip(skill_04, nowSkill.SkillName, nowSkill.ShortDescription, nowSkill.DetailedDescription, nowSkill.CostDescription, true);
         }
     }
@@ -569,6 +793,27 @@ void UUI_MainHUD::OnSkillLevelUp03Hovered()
 
 void UUI_MainHUD::OnSkillLevelUp04Hovered()
 {
+}
+
+void UUI_MainHUD::OnCraftHovered()
+{
+	FText Name = FText::FromString(TEXT("제작"));
+	FText ShortDesc = FText::FromString(TEXT("아이템을 제작합니다."));
+	FText DetailDesc = FText::FromString(TEXT("재료 아이템을 소모하여 새로운 아이템을 제작합니다."));
+	FText CostDesc = FText::FromString(TEXT("재료 아이템 소모"));
+
+    ShowTooltip(Btn_Craft, Name, ShortDesc, DetailDesc, CostDesc, true);
+
+}
+
+void UUI_MainHUD::OnCraftClicked()
+{
+    ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
+
+    if (IsValid(PC))
+    {
+        PC->TryStartCrafting();
+    }
 }
 
 void UUI_MainHUD::ShowTooltip(UWidget* AnchorWidget, FText Name, FText ShortDesc, FText DetailDesc, FText CostDesc, bool showUpper)
@@ -658,7 +903,7 @@ void UUI_MainHUD::initSkillDataAssets()
     {
         if (SkillAsset.IsValid() && SkillAsset->SkillConfig)
         {
-            FName TagName = SkillAsset->SkillConfig->Data.InputKeyTag.GetTagName();
+            FName TagName = SkillAsset->SkillConfig->GetInputKeyTag().GetTagName();
 
             if (TagName == Q_SkillTag.ToString()) SkillDataAssets[0] = SkillAsset.Get();
             else if (TagName == W_SkillTag.ToString()) SkillDataAssets[1] = SkillAsset.Get();
@@ -670,11 +915,25 @@ void UUI_MainHUD::initSkillDataAssets()
 
 void UUI_MainHUD::HandleMinimapClicked(const FPointerEvent& InMouseEvent)
 {
-    if (!IsValid(TEX_Minimap) || !IsValid(MinimapCaptureComponent)) return;
+    if (!IsValid(TEX_Minimap)) return;
+
+    // CPU 미니맵: 로컬 플레이어 위치 + 뷰 폭 기준 역변환 (기존 캡처 카메라 기준 수식 대체)
+    const ABaseCharacter* LocalChar = Cast<ABaseCharacter>(GetOwningPlayerPawn());
+    if (!IsValid(LocalChar)) return;
 
     FGeometry MapGeometry = TEX_Minimap->GetCachedGeometry();
     FVector2D LocalClickPos = MapGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
     FVector2D ImageSize = MapGeometry.GetLocalSize();
+    if (ImageSize.IsNearlyZero()) return;
+
+    const FVector2D ViewOffset(LocalClickPos.X / ImageSize.X - 0.5f, LocalClickPos.Y / ImageSize.Y - 0.5f);
+
+    FVector TargetWorldPos = FUI_MinimapProjection::ViewOffsetToWorld(
+        ViewOffset, LocalChar->GetActorLocation(), MinimapViewWidth, MinimapViewRotationDeg);
+
+    // [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 기존 SceneCapture 카메라 기준 수식
+    /*
+    if (!IsValid(MinimapCaptureComponent)) return;
 
     float AlphaX = LocalClickPos.X / ImageSize.X;
     float AlphaY = LocalClickPos.Y / ImageSize.Y;
@@ -697,6 +956,7 @@ void UUI_MainHUD::HandleMinimapClicked(const FPointerEvent& InMouseEvent)
     FVector CameraLoc = MinimapCaptureComponent->GetComponentLocation();
     // 최종 목적지 계산
     FVector TargetWorldPos = FVector(CameraLoc.X + RelativeWorldX, CameraLoc.Y + RelativeWorldY, CameraLoc.Z);
+    */
 
     // UE_LOG(LogTemp, Log, TEXT("최종 목적지 월드 좌표: %s"), *TargetWorldPos.ToString());
     
@@ -789,14 +1049,14 @@ void UUI_MainHUD::SkillFirePressed(ESkillKey _Index)
     {
         if (SkillDataAssets[EnumIndex]->SkillConfig)
         {
-            FGameplayTag InputTag = SkillDataAssets[EnumIndex]->SkillConfig->Data.InputKeyTag;
+            FGameplayTag InputTag = SkillDataAssets[EnumIndex]->SkillConfig->GetInputKeyTag();
             ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
 
             if (IsValid(PC))
             {
                 PC->AbilityInputTagPressed(InputTag);
 
-                float CoolTime = SkillDataAssets[EnumIndex]->SkillConfig->Data.BaseCoolTime.GetValueAtLevel(getSkillLevel(InputTag, false));
+                float CoolTime = SkillDataAssets[EnumIndex]->SkillConfig->GetBaseCooldownDuration(getSkillLevel(InputTag, false));
             }
         }
     }
@@ -844,7 +1104,7 @@ void UUI_MainHUD::SkillFireReleased(ESkillKey _Index)
 
         if (SkillAsset && SkillAsset->SkillConfig)
         {
-            FGameplayTag InputTag = SkillAsset->SkillConfig->Data.InputKeyTag;
+            FGameplayTag InputTag = SkillAsset->SkillConfig->GetInputKeyTag();
             ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
 
             if (IsValid(PC))
@@ -921,9 +1181,12 @@ void UUI_MainHUD::OnAbilityActivated(UGameplayAbility* ActivatedAbility)
             {
                 float RemainingTime = 0.0f;
                 float Duration = 0.0f;
-                if (GetCooldownRemainingForTag(SkillDataAssets[SkillIndex]->SkillConfig->Data.CoolTimeTags, RemainingTime, Duration))
+                if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[SkillIndex]->SkillConfig->GetCooldownTags())
                 {
-                    ProcessCooldown(SkillIndex, Duration, RemainingTime);
+                    if (GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration))
+                    {
+                        ProcessCooldown(SkillIndex, Duration, RemainingTime);
+                    }
                 }
             }
         }
@@ -937,7 +1200,10 @@ void UUI_MainHUD::OnActivateSkillCoolTime(ESkillKey Skill_Index)
 
     float RemainingTime = 0.0f;
     float Duration = 0.0f;
-    GetCooldownRemainingForTag(SkillDataAssets[Index]->SkillConfig->Data.CoolTimeTags, RemainingTime, Duration);
+    if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[Index]->SkillConfig->GetCooldownTags())
+    {
+        GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration);
+    }
 
     ProcessCooldown(Index, Duration, RemainingTime);
 }
@@ -979,13 +1245,31 @@ void UUI_MainHUD::OnCooldownTagChanged(const FGameplayTag Tag, int32 NewCount, i
         {
             float RemainingTime = 0.0f;
             float Duration = 0.0f;
-            GetCooldownRemainingForTag(SkillDataAssets[SkillIndex]->SkillConfig->Data.CoolTimeTags, RemainingTime, Duration);
+            if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[SkillIndex]->SkillConfig->GetCooldownTags())
+            {
+                GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration);
+            }
             ProcessCooldown(SkillIndex, Duration, RemainingTime);
         }
     }
     else
     {
-        // Cooldown Tag Removed
+        // [Fix] 특정 태그가 제거되었을 때, 해당 스킬의 다른 쿨타임 태그가 아직 남아있는지 확인합니다.
+        // 모든 쿨타임 태그가 사라졌을 때만 UI 쿨타임을 종료합니다.
+        if (IsValid(ASC) && SkillDataAssets.IsValidIndex(SkillIndex) && SkillDataAssets[SkillIndex] && SkillDataAssets[SkillIndex]->SkillConfig)
+        {
+            float RemainingTime = 0.0f;
+            float Duration = 0.0f;
+            const FGameplayTagContainer* CooldownTags = SkillDataAssets[SkillIndex]->SkillConfig->GetCooldownTags();
+            if (CooldownTags && GetCooldownRemainingForTag(*CooldownTags, RemainingTime, Duration))
+            {
+                // 아직 다른 태그에 의한 쿨타임이 남아있음 -> UI 갱신만 수행
+                ProcessCooldown(SkillIndex, Duration, RemainingTime);
+                return;
+            }
+        }
+
+        // 모든 쿨타임 태그가 제거됨 -> UI 종료
         ProcessCooldown(SkillIndex, 0.0f, 0.0f);
     }
 }
@@ -1022,6 +1306,44 @@ void UUI_MainHUD::UpdateSkillCoolDown(int32 SkillIndex)
     else
     {
         GetWorld()->GetTimerManager().ClearTimer(SkillTimerHandles[SkillIndex]);
+    }
+}
+
+void UUI_MainHUD::OnCooldownTimeChanged(FActiveGameplayEffectHandle Handle, float StartTime, float Duration, int32 SkillIndex)
+{
+    if (GetWorld() && SkillIndex >= 0 && SkillIndex < 4)
+    {
+        float CurrentTime = GetWorld()->GetTimeSeconds();
+        float RemainingTime = Duration - (CurrentTime - StartTime);
+
+        // 변경된 남은 시간으로 로컬 타이머 및 UI 텍스트 갱신
+        ProcessCooldown(SkillIndex, Duration, RemainingTime);
+    }
+}
+
+void UUI_MainHUD::OnActiveGameplayEffectAddedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle Handle)
+{
+    // [Fix] 쿨타임 반환(Refund) 등에 따른 실시간 시간 갱신을 받기 위해 OnTimeChanged 델리게이트를 구독합니다.
+    // 태그 이벤트(0→1) 시점 바인딩은 클라이언트에서 예측 GE에만 붙고, 이후 서버에서 복제된 GE에는
+    // 붙지 않아 환급이 UI에 반영되지 않았습니다. GE 추가 시점에 바인딩하면 복제본에도 항상 바인딩됩니다.
+    FGameplayTagContainer GrantedTags;
+    Spec.GetAllGrantedTags(GrantedTags);
+
+    for (int32 i = 0; i < SkillDataAssets.Num(); ++i)
+    {
+        if (SkillDataAssets[i] && SkillDataAssets[i]->SkillConfig)
+        {
+            if (const FGameplayTagContainer* CooldownTags = SkillDataAssets[i]->SkillConfig->GetCooldownTags())
+            {
+                if (GrantedTags.HasAny(*CooldownTags))
+                {
+                    if (FOnActiveGameplayEffectTimeChange* TimeChangeDelegate = SourceASC->OnGameplayEffectTimeChangeDelegate(Handle))
+                    {
+                        TimeChangeDelegate->AddUObject(this, &UUI_MainHUD::OnCooldownTimeChanged, i);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1371,6 +1693,15 @@ void UUI_MainHUD::WarningSign(int number)
 
     int32 SecTenDigit = Seconds / 10;
     int32 SecOneDigit = Seconds % 10;
+    if(!bIsWarningActive)
+        showWarningSign();
+
+    GetWorld()->GetTimerManager().SetTimer(
+        UI_WarningTimerHandle,
+        this,
+        &UUI_MainHUD::hideWarningSign,
+        3.0f,
+        false);
 
     if (RestrictedSign_01 && !IsAnimationPlaying(RestrictedSign_01))
     {
@@ -1386,6 +1717,54 @@ void UUI_MainHUD::WarningSign(int number)
         WarningNumber_one->SetBrushFromTexture(SegmentTextures[SecOneDigit]);
     }
 
+}
+
+void UUI_MainHUD::showWarningSign()
+{
+    bool bShow = true;
+    bIsWarningActive = true;
+
+    if (showWarningAnim && !IsAnimationPlaying(showWarningAnim))
+    {
+        PlayAnimation(showWarningAnim);
+    }
+
+  //  if (IsValid(WarningSkull))
+  //  {
+		//WarningSkull->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+  //  }
+  //  if (IsValid(WarningNumber_ten))
+  //  {
+  //      WarningNumber_ten->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+  //  }
+  //  if (IsValid(WarningNumber_one))
+  //  {
+  //      WarningNumber_one->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+  //  }
+}
+
+void UUI_MainHUD::hideWarningSign()
+{
+    bool bShow = false;
+    bIsWarningActive = false;
+
+    if (hideWarningAnim && !IsAnimationPlaying(hideWarningAnim))
+    {
+        PlayAnimation(hideWarningAnim);
+    }
+
+    //if (IsValid(WarningSkull))
+    //{
+    //    WarningSkull->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    //}
+    //if (IsValid(WarningNumber_ten))
+    //{
+    //    WarningNumber_ten->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    //}
+    //if (IsValid(WarningNumber_one))
+    //{
+    //    WarningNumber_one->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    //}
 }
 
 void UUI_MainHUD::UpdateTeamHP(int32 TeamIndex, float CurrentHP, float MaxHP)
@@ -1516,6 +1895,8 @@ void UUI_MainHUD::UpdateInventoryUI()
             InventorySlotWidgets[i]->SetStackCount(InventoryComp->GetStackCountAt(i));
         }
     }
+
+    RefreshCraftPreviewIcons();
 }
 
 // [김현수 추가분]
@@ -1708,3 +2089,139 @@ bool UUI_MainHUD::GetCooldownRemainingForTag(const FGameplayTagContainer& Cooldo
 
 	return false;
 }
+
+// [김현수 추가분] 이미지 한 칸 설정 함수
+void UUI_MainHUD::SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemData)
+{
+    if (!TargetImage)
+    {
+        return;
+    }
+
+    if (!ItemData || ItemData->ItemIcon.IsNull())
+    {
+        ClearCraftPreviewImage(TargetImage);
+        return;
+    }
+
+    UTexture2D* LoadedIcon = ItemData->ItemIcon.LoadSynchronous();
+    if (!LoadedIcon)
+    {
+        ClearCraftPreviewImage(TargetImage);
+        return;
+    }
+
+    TargetImage->SetBrushFromTexture(LoadedIcon);
+    TargetImage->SetVisibility(ESlateVisibility::Visible);
+}
+
+// [김현수 추가분] 전체 갱신 함수
+void UUI_MainHUD::RefreshCraftPreviewIcons()
+{
+    if (CurrentCraftPreviewItems.Num() < 5)
+    {
+        CurrentCraftPreviewItems.SetNum(5);
+    }
+
+    TArray<UImage*> PreviewImages =
+    {
+        IMG_CraftPreview_0,
+        IMG_CraftPreview_1,
+        IMG_CraftPreview_2,
+        IMG_CraftPreview_3,
+        IMG_CraftPreview_4
+    };
+
+    TArray<UButton*> PreviewButtons =
+    {
+        BTN_CraftPreview_0,
+        BTN_CraftPreview_1,
+        BTN_CraftPreview_2,
+        BTN_CraftPreview_3,
+        BTN_CraftPreview_4
+    };
+
+    for (int32 Index = 0; Index < 5; ++Index)
+    {
+        CurrentCraftPreviewItems[Index] = nullptr;
+
+        if (PreviewImages[Index])
+        {
+            PreviewImages[Index]->SetBrushFromTexture(nullptr);
+            PreviewImages[Index]->SetVisibility(ESlateVisibility::Hidden);
+        }
+
+        if (PreviewButtons[Index])
+        {
+            PreviewButtons[Index]->SetVisibility(ESlateVisibility::Hidden);
+        }
+    }
+
+    ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
+    if (!IsValid(PC))
+    {
+        return;
+    }
+
+    const TArray<FCraftableItemPreviewData> CraftableItems = PC->GetCraftableItemsForUI();
+
+    for (int32 DataIndex = 0; DataIndex < CraftableItems.Num() && DataIndex < 5; ++DataIndex)
+    {
+        const int32 UIIndex = 4 - DataIndex;
+
+        UBaseItemData* ResultItem = CraftableItems[DataIndex].ResultItem;
+        if (!IsValid(ResultItem))
+        {
+            continue;
+        }
+
+        CurrentCraftPreviewItems[UIIndex] = ResultItem;
+        SetCraftPreviewImage(PreviewImages[UIIndex], ResultItem);
+
+        if (PreviewButtons[UIIndex])
+        {
+            PreviewButtons[UIIndex]->SetVisibility(ESlateVisibility::Visible);
+        }
+    }
+}
+
+// [김현수 추가분] 빈 칸 초기화 함수
+void UUI_MainHUD::ClearCraftPreviewImage(UImage* TargetImage)
+{
+    if (!TargetImage)
+    {
+        return;
+    }
+
+    TargetImage->SetBrushFromTexture(nullptr);
+    TargetImage->SetVisibility(ESlateVisibility::Hidden);
+}
+
+// [김현수 추가분] 공통 클릭 처리 함수
+void UUI_MainHUD::TryCraftPreviewAtIndex(int32 Index) 
+{
+    if (!CurrentCraftPreviewItems.IsValidIndex(Index))
+    {
+        return;
+    }
+
+    UBaseItemData* DesiredResultItem = CurrentCraftPreviewItems[Index];
+    if (!IsValid(DesiredResultItem))
+    {
+        return;
+    }
+
+    ABasePlayerController* PC = Cast<ABasePlayerController>(GetOwningPlayer());
+    if (!IsValid(PC))
+    {
+        return;
+    }
+
+    PC->TryStartCraftingByResult(DesiredResultItem);
+}
+
+void UUI_MainHUD::OnCraftPreview0Clicked() { TryCraftPreviewAtIndex(0); }
+void UUI_MainHUD::OnCraftPreview1Clicked() { TryCraftPreviewAtIndex(1); }
+void UUI_MainHUD::OnCraftPreview2Clicked() { TryCraftPreviewAtIndex(2); }
+void UUI_MainHUD::OnCraftPreview3Clicked() { TryCraftPreviewAtIndex(3); }
+void UUI_MainHUD::OnCraftPreview4Clicked() { TryCraftPreviewAtIndex(4); }

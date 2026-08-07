@@ -10,6 +10,41 @@
 
 DEFINE_LOG_CATEGORY(VisionPlayerStateComp);
 
+// -------------------------------------------------------------------------- //
+//  FastArray callbacks — fire on the owning client only (COND_OwnerOnly)
+// -------------------------------------------------------------------------- //
+
+void FPlayerVisibleActorArray::PostReplicatedAdd(
+    const TArrayView<int32>& AddedIndices, int32 FinalSize)
+{
+    if (!OwnerComp) return;
+    for (int32 Idx : AddedIndices)
+        if (Items.IsValidIndex(Idx))
+            OwnerComp->OnTeamEntryAdded(Items[Idx].Target);
+}
+
+void FPlayerVisibleActorArray::PreReplicatedRemove(
+    const TArrayView<int32>& RemovedIndices, int32 FinalSize)
+{
+    if (!OwnerComp) return;
+
+    // NOTE: PreReplicatedRemove 시점에는 항목이 아직 배열에 남아 있다.
+    // Team을 ExcludeObserverTeam으로 넘겨 제거 중인 항목을 재평가에서 제외한다.
+    // (기존 VisionGameStateComp FastArray와 동일한 타이밍 규칙 — 최악의 경우
+    //  한 프레임 늦게 숨겨지는 것은 허용)
+    for (int32 Idx : RemovedIndices)
+        if (Items.IsValidIndex(Idx))
+            OwnerComp->OnTeamEntryRemoved(Items[Idx].Target, Items[Idx].ObserverTeam);
+}
+
+void FPlayerVisibleActorArray::PostReplicatedChange(
+    const TArrayView<int32>& ChangedIndices, int32 FinalSize)
+{
+    // Entries are only added or removed — no change events expected.
+}
+
+// -------------------------------------------------------------------------- //
+
 UVisionPlayerStateComp::UVisionPlayerStateComp()
 {
     PrimaryComponentTick.bCanEverTick = false;
@@ -22,11 +57,23 @@ void UVisionPlayerStateComp::GetLifetimeReplicatedProps(
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(UVisionPlayerStateComp, TeamChannel);
     DOREPLIFETIME(UVisionPlayerStateComp, bAllReveal);
+
+    // 자기 팀 관련 항목만 소유 커넥션으로 전송 (005 부록 A)
+    DOREPLIFETIME_CONDITION(UVisionPlayerStateComp, TeamVisibleActors, COND_OwnerOnly);
 }
 
 void UVisionPlayerStateComp::BeginPlay()
 {
     Super::BeginPlay();
+
+    TeamVisibleActors.OwnerComp = this;
+
+    // [Fix] 폰이 나중에 스폰되거나 Possess될 때 비전 채널을 자동으로 동기화하도록 델리게이트 등록
+    if (APlayerState* PS = Cast<APlayerState>(GetOwner()))
+    {
+        PS->OnPawnSet.AddUniqueDynamic(this, &UVisionPlayerStateComp::OnPawnSet);
+    }
+
     if (UWorld* World = GetWorld())
         World->GetTimerManager().SetTimerForNextTick(
             this, &UVisionPlayerStateComp::RefreshVisibility);
@@ -43,6 +90,16 @@ void UVisionPlayerStateComp::SetTeamChannel(EVisionChannel InTeam)
     UE_LOG(VisionPlayerStateComp, Log,
         TEXT("[%s] SetTeamChannel >> %d"),
         *GetOwner()->GetName(), (uint8)TeamChannel);
+
+    // [서버] 팀 확정/변경 시 이 플레이어의 OwnerOnly 배열을 스토어 기준으로 재구성 (005 부록 A)
+    if (GetOwner()->HasAuthority())
+    {
+        if (AGameStateBase* GS = GetWorld()->GetGameState())
+        {
+            if (UVisionGameStateComp* GSComp = GS->FindComponentByClass<UVisionGameStateComp>())
+                GSComp->RebuildPlayerVisibleEntries(this);
+        }
+    }
 
     SyncPawnVisionChannel();
     InitializeSameTeamEvaluators();
@@ -100,6 +157,100 @@ bool UVisionPlayerStateComp::CanSeeTeam(EVisionChannel InTeam) const
         return true;
 
     return bAllReveal || (TeamChannel == InTeam);
+}
+
+// -------------------------------------------------------------------------- //
+//  Per-player visible entries (server writes, owner-only replication)
+// -------------------------------------------------------------------------- //
+
+void UVisionPlayerStateComp::AddTeamVisibleEntry(AActor* Target, EVisionChannel ObserverTeam)
+{
+    if (!Target || !GetOwner()->HasAuthority())
+        return;
+
+    // 중복 방지 (동일 Target+Team)
+    for (const FVisibleActorEntry& Entry : TeamVisibleActors.Items)
+    {
+        if (Entry.Target == Target && Entry.ObserverTeam == ObserverTeam)
+            return;
+    }
+
+    FVisibleActorEntry& Entry = TeamVisibleActors.Items.AddDefaulted_GetRef();
+    Entry.Target       = Target;
+    Entry.ObserverTeam = ObserverTeam;
+    TeamVisibleActors.MarkItemDirty(Entry);
+
+    // 리슨서버 호스트/스탠드얼론: 복제 콜백이 안 오므로 즉시 로컬 반영
+    if (IsOwnedByLocalController())
+        ReevaluateTargetVisibility(Target);
+}
+
+void UVisionPlayerStateComp::RemoveTeamVisibleEntry(AActor* Target, EVisionChannel ObserverTeam)
+{
+    if (!Target || !GetOwner()->HasAuthority())
+        return;
+
+    for (int32 i = TeamVisibleActors.Items.Num() - 1; i >= 0; --i)
+    {
+        const FVisibleActorEntry& Entry = TeamVisibleActors.Items[i];
+        if (Entry.Target != Target || Entry.ObserverTeam != ObserverTeam)
+            continue;
+
+        TeamVisibleActors.Items.RemoveAt(i);
+        TeamVisibleActors.MarkArrayDirty();
+
+        // 항목이 이미 제거된 뒤라 Exclude 없이 재평가해도 정확함
+        if (IsOwnedByLocalController())
+            ReevaluateTargetVisibility(Target);
+        return;
+    }
+}
+
+void UVisionPlayerStateComp::ResetTeamVisibleEntries(const TArray<FVisibleActorEntry>& NewEntries)
+{
+    if (!GetOwner()->HasAuthority())
+        return;
+
+    TeamVisibleActors.Items.Reset();
+    for (const FVisibleActorEntry& Source : NewEntries)
+    {
+        // ReplicationID가 새 배열에서 재할당되도록 필드만 복사
+        FVisibleActorEntry& Entry = TeamVisibleActors.Items.AddDefaulted_GetRef();
+        Entry.Target       = Source.Target;
+        Entry.ObserverTeam = Source.ObserverTeam;
+    }
+    TeamVisibleActors.MarkArrayDirty();
+
+    if (IsOwnedByLocalController())
+        RefreshVisibility();
+}
+
+bool UVisionPlayerStateComp::IsOwnedByLocalController() const
+{
+    const APlayerState* PS = Cast<APlayerState>(GetOwner());
+    const AController* OwnerController = PS ? PS->GetOwningController() : nullptr;
+    return OwnerController && OwnerController->IsLocalController();
+}
+
+// -------------------------------------------------------------------------- //
+//  FastArray client callbacks
+// -------------------------------------------------------------------------- //
+
+void UVisionPlayerStateComp::OnTeamEntryAdded(AActor* Target)
+{
+    if (!Target) return;
+
+    // 팀 채널이 아직 복제 전이어도 안전 — OnRep_TeamChannel의 RefreshVisibility가
+    // 전체 항목을 다시 평가해 보정한다 (기존 PendingReveals 큐 대체).
+    ReevaluateTargetVisibility(Target);
+}
+
+void UVisionPlayerStateComp::OnTeamEntryRemoved(AActor* Target, EVisionChannel Team)
+{
+    if (!Target) return;
+
+    // 제거 중인 항목은 아직 배열에 남아 있으므로 Exclude로 건너뛴다
+    ReevaluateTargetVisibility(Target, Team);
 }
 
 // -------------------------------------------------------------------------- //
@@ -172,6 +323,9 @@ void UVisionPlayerStateComp::InitializeSameTeamEvaluators()
         if (!Provider || !Provider->GetOwner())
             continue;
 
+        // 로컬 플레이어의 팀 정보가 세팅/변경되었으므로 모든 시야 제공자의 동적 반경을 갱신합니다.
+        Provider->RefreshOcclusionAndEvaluatorRadius();
+
         if (!CanSeeTeam(Provider->GetVisionChannel()))
             continue;
 
@@ -206,91 +360,80 @@ void UVisionPlayerStateComp::ReevaluateTargetVisibility(
         Target->FindComponentByClass<UVision_VisualComp>();
     if (!VisualComp) return;
 
-    APlayerController* PC = GetWorld()->GetFirstPlayerController();
-    if (!PC || !PC->IsLocalController()) return;
+    // 리슨 서버 월드에는 PC가 여러 개라 GetFirstPlayerController가 원격 클라의
+    // PC를 돌려줄 수 있음 — "이 머신에 로컬 플레이어가 있는가"를 직접 묻는다
+    // (데디케이트 서버면 null → 표시 로직 스킵).
+    APlayerController* PC = GEngine->GetFirstLocalPlayerController(GetWorld());
+    if (!PC) return;
 
-    bool bShouldBeVisible = false;
+    VisualComp->SetVisible(
+        ComputeTargetVisibility(Target, VisualComp, ExcludeObserverTeam));
+}
+
+bool UVisionPlayerStateComp::ComputeTargetVisibility(
+    const AActor* Target,
+    const UVision_VisualComp* VisualComp,
+    EVisionChannel ExcludeObserverTeam) const
+{
+    if (!Target || !VisualComp) return false;
 
     if (bAllReveal)
+        return true;
+
+    const EVisionChannel TargetTeam = VisualComp->GetVisionChannel();
+    if (CanSeeTeam(TargetTeam))
+        return true;
+
+    // --- Pass 1: local vote map ---
+    // Updated synchronously before any RPC — zero latency for the
+    // evaluating client.
+    ULOSVisionSubsystem* Subsystem =
+        GetWorld()->GetSubsystem<ULOSVisionSubsystem>();
+
+    if (Subsystem)
     {
-        bShouldBeVisible = true;
-    }
-    else
-    {
-        const EVisionChannel TargetTeam = VisualComp->GetVisionChannel();
-        if (CanSeeTeam(TargetTeam))
+        // const_cast: TMap 키 조회 전용, Target을 수정하지 않음
+        const TMap<uint8, TSet<TWeakObjectPtr<AActor>>>* VoteMap =
+            Subsystem->GetVisibilityVotesForTarget(const_cast<AActor*>(Target));
+
+        if (VoteMap)
         {
-            bShouldBeVisible = true;
-        }
-        else
-        {
-            // --- Pass 1: local vote map ---
-            // Updated synchronously before any RPC — zero latency for the
-            // evaluating client.
-            ULOSVisionSubsystem* Subsystem =
-                GetWorld()->GetSubsystem<ULOSVisionSubsystem>();
-
-            if (Subsystem)
+            for (const TPair<uint8, TSet<TWeakObjectPtr<AActor>>>& TeamPair
+                : *VoteMap)
             {
-                const TMap<uint8, TSet<TWeakObjectPtr<AActor>>>* VoteMap =
-                    Subsystem->GetVisibilityVotesForTarget(Target);
+                EVisionChannel EntryTeam = (EVisionChannel)TeamPair.Key;
 
-                if (VoteMap)
-                {
-                    for (const TPair<uint8, TSet<TWeakObjectPtr<AActor>>>& TeamPair
-                        : *VoteMap)
-                    {
-                        EVisionChannel EntryTeam = (EVisionChannel)TeamPair.Key;
+                if (ExcludeObserverTeam != EVisionChannel::None &&
+                    EntryTeam == ExcludeObserverTeam)
+                    continue;
 
-                        if (ExcludeObserverTeam != EVisionChannel::None &&
-                            EntryTeam == ExcludeObserverTeam)
-                            continue;
+                if (TeamPair.Value.Num() == 0)
+                    continue;
 
-                        if (TeamPair.Value.Num() == 0)
-                            continue;
-
-                        if (CanSeeTeam(EntryTeam))
-                        {
-                            bShouldBeVisible = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // --- Pass 2: GSComp replicated state ---
-            // Catches shared vision from teammates on other machines.
-            // Player B has no local vote for Player A's sighting — this
-            // pass finds it via FastArray replication.
-            if (!bShouldBeVisible)
-            {
-                UVisionGameStateComp* GSComp = nullptr;
-                if (AGameStateBase* GS = GetWorld()->GetGameState())
-                    GSComp = GS->FindComponentByClass<UVisionGameStateComp>();
-
-                if (GSComp)
-                {
-                    for (const FVisibleActorEntry& Entry : GSComp->GetVisibleActors())
-                    {
-                        if (Entry.Target != Target)
-                            continue;
-
-                        if (ExcludeObserverTeam != EVisionChannel::None &&
-                            Entry.ObserverTeam == ExcludeObserverTeam)
-                            continue;
-
-                        if (CanSeeTeam(Entry.ObserverTeam))
-                        {
-                            bShouldBeVisible = true;
-                            break;
-                        }
-                    }
-                }
+                if (CanSeeTeam(EntryTeam))
+                    return true;
             }
         }
     }
 
-    VisualComp->SetVisible(bShouldBeVisible);
+    // --- Pass 2: per-player replicated state ---
+    // Catches shared vision from teammates on other machines.
+    // Player B has no local vote for Player A's sighting — this pass finds it
+    // via the owner-only FastArray the server fans out to us (005 부록 A).
+    for (const FVisibleActorEntry& Entry : TeamVisibleActors.Items)
+    {
+        if (Entry.Target != Target)
+            continue;
+
+        if (ExcludeObserverTeam != EVisionChannel::None &&
+            Entry.ObserverTeam == ExcludeObserverTeam)
+            continue;
+
+        if (CanSeeTeam(Entry.ObserverTeam))
+            return true;
+    }
+
+    return false;
 }
 
 // -------------------------------------------------------------------------- //
@@ -302,17 +445,8 @@ void UVisionPlayerStateComp::RefreshVisibility()
     UWorld* World = GetWorld();
     if (!World) return;
 
-    AGameStateBase* GS = World->GetGameState();
-    if (!GS) return;
-
-    UVisionGameStateComp* GSComp =
-        GS->FindComponentByClass<UVisionGameStateComp>();
-    if (!GSComp) return;
-
-    GSComp->FlushPendingReveals(this);
-
     TSet<AActor*> Evaluated;
-    for (const FVisibleActorEntry& Entry : GSComp->GetVisibleActors())
+    for (const FVisibleActorEntry& Entry : TeamVisibleActors.Items)
     {
         if (!Entry.Target || Evaluated.Contains(Entry.Target))
             continue;
@@ -327,4 +461,9 @@ void UVisionPlayerStateComp::RefreshVisibility()
         Evaluated.Num(),
         (uint8)TeamChannel,
         (int32)bAllReveal);
+}
+
+void UVisionPlayerStateComp::OnPawnSet(APlayerState* PlayerState, APawn* NewPawn, APawn* OldPawn)
+{
+    SyncPawnVisionChannel();
 }

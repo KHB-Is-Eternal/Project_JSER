@@ -1,4 +1,4 @@
-﻿#include "Monster/MonsterRangeComponent.h"
+#include "Monster/MonsterRangeComponent.h"
 
 #include "Net/UnrealNetwork.h"
 #include "Components/SphereComponent.h"
@@ -23,12 +23,31 @@ void UMonsterRangeComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (!GetOwner()->HasAuthority())
+	AActor* OwnerActor = GetOwner();
+	if (IsValid(OwnerActor) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::BeginPlay : Not OwnerActor"));
+		return;
+	}
+	if (OwnerActor->HasAuthority() == false)
 	{
 		return;
 	}
+
+	FCollisionResponseTemplate Template;
+	if (UCollisionProfile::Get()->GetProfileTemplate("PlayerCounter", Template) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FSTT_SetCollisionProfile::EnterState : Not CollisionPlayerCounter"));
+		return;
+	}
+
 	// 서버에서만 생성하여 체크
 	RangeSphere = NewObject<USphereComponent>(this);
+	if (IsValid(RangeSphere) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::BeginPlay : Not RangeSphere"));
+		return;
+	}
     RangeSphere->InitSphereRadius(PlayerCountSphereRadius);
     RangeSphere->SetCollisionProfileName(TEXT("PlayerCounter"));
     RangeSphere->SetGenerateOverlapEvents(true);
@@ -39,11 +58,16 @@ void UMonsterRangeComponent::BeginPlay()
 		this, &UMonsterRangeComponent::OnPlayerCountingEndOverlap);
 
 	RangeSphere->RegisterComponent();
-	RangeSphere->SetWorldLocation(GetOwner()->GetActorLocation());
+	RangeSphere->SetWorldLocation(OwnerActor->GetActorLocation());
 
 
 	// 서버에서만 생성하여 체크
 	OutSphere = NewObject<USphereComponent>(this);
+	if (IsValid(OutSphere) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::BeginPlay : Not OutSphere"));
+		return;
+	}
 	OutSphere->InitSphereRadius(PlayerOutSphereRadius);
 	OutSphere->SetCollisionProfileName(TEXT("PlayerCounter"));
 	OutSphere->SetGenerateOverlapEvents(true);
@@ -52,7 +76,7 @@ void UMonsterRangeComponent::BeginPlay()
 		this, &UMonsterRangeComponent::OnPlayerOutEndOverlap);
 
 	OutSphere->RegisterComponent();
-	OutSphere->SetWorldLocation(GetOwner()->GetActorLocation());
+	OutSphere->SetWorldLocation(OwnerActor->GetActorLocation());
 }
 
 void UMonsterRangeComponent::SetPlayerCount(int32 Amount)
@@ -65,44 +89,68 @@ int32 UMonsterRangeComponent::GetPlayerCount()
 	return PlayerCount;
 }
 
-void UMonsterRangeComponent::SetOutSphereRadius(float Radius)
-{
-	if (IsValid(OutSphere))
-	{
-		OutSphere->SetSphereRadius(Radius);
-	}
-}
-
-//이거 스폰하고  실행
+//GameManager에서 스폰하고 실행
 void UMonsterRangeComponent::InitMonsterGroup()
 {
-	ABaseMonster* OwnerMonster = Cast<ABaseMonster>(GetOwner());
-	if (!OwnerMonster || !OwnerMonster->HasAuthority()) return;
+	AActor* OwnerActor = GetOwner();
+	if (IsValid(OwnerActor) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::InitMonsterGroup : Not OwnerActor"));
+		return;
+	}
+	if (OwnerActor->HasAuthority() == false)
+	{
+		return;
+	}
 
+	ABaseMonster* OwnerMonster = Cast<ABaseMonster>(GetOwner());
+	if (IsValid(OwnerMonster) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::InitMonsterGroup : Not OwnerMonster"));
+		return;
+	}
 	FPrimaryAssetId MyId = OwnerMonster->GetMonsterId();
 
-	if (!MyId.IsValid()) return;
-
-	if (!IsValid(this) || !IsValid(OwnerMonster) || !IsValid(RangeSphere)) return;
+	if (MyId.IsValid() == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::InitMonsterGroup : Not MonsterId"));
+		return;
+	}
+	if (IsValid(RangeSphere) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::InitMonsterGroup : Not RangeSphere"));
+		return;
+	}
 
 	TArray<AActor*> GroupActors;
 	RangeSphere->GetOverlappingActors(GroupActors, AActor::StaticClass());
-
-
+	
 	for (AActor* Actor : GroupActors)
 	{
 		ABaseMonster* Monster = Cast<ABaseMonster>(Actor);
-		// 죽지않고 같은 종류의 몬스터인 경우
-		if (Monster && !Monster->GetbIsDead() && Monster->GetMonsterId() == MyId)
+		if (IsValid(Monster) == false)
 		{
-			MonsterGroup.AddUnique(Monster);
-
-			// 따로 스폰된 경우 자기를 다른 그룹에 넣어주려고
-			if (UMonsterRangeComponent* OtherRangeComp = Monster->GetMonsterRangeComp())
-			{
-				OtherRangeComp->GetMonsterGroup().AddUnique(OwnerMonster);
-			}
+			continue;
 		}
+		if (Monster->GetMonsterId() != MyId)
+		{
+			continue;
+		}
+		if (Monster->GetbIsDead() == true)
+		{
+			continue;
+		}
+		
+		MonsterGroup.AddUnique(Monster);
+
+		// 따로 스폰된 경우 자기를 다른 그룹에 넣어주려고
+		UMonsterRangeComponent* OtherRangeComp = Monster->GetMonsterRangeComp();
+		if (IsValid(OtherRangeComp) == false)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::InitMonsterGroup : Not OtherRangeComp"));
+			continue;
+		}
+		OtherRangeComp->GetMonsterGroup().AddUnique(OwnerMonster);
 	}
 }
 
@@ -113,44 +161,85 @@ TArray<TObjectPtr<ABaseMonster>>& UMonsterRangeComponent::GetMonsterGroup()
 }
 void UMonsterRangeComponent::OnPlayerCountingBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (OtherActor && OtherActor->IsA<ABaseCharacter>())
+	if (IsValid(OtherActor) == false)
 	{
-		PlayerCount = FMath::Max(0, PlayerCount + 1);
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerCountingBeginOverlap : Not OtherActor"));
+		return;
+	}
+	if (OtherActor->IsA<ABaseCharacter>() == false)
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerCountingBeginOverlap : Not ABaseCharacter"));
+		return;
+	}
 
-		if (PlayerCount == 1)
-		{
-			OnPlayerCountOne.Broadcast();	
-		}
+	PlayerCount = FMath::Max(0, PlayerCount + 1);
+	if (PlayerCount == 1)
+	{
+		OnPlayerCountOne.Broadcast();	
 	}
 }
 
 void UMonsterRangeComponent::OnPlayerCountingEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (OtherActor && OtherActor->IsA<ABaseCharacter>())
+	if (IsValid(OtherActor) == false)
 	{
-		PlayerCount = FMath::Max(0, PlayerCount - 1);
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerCountingEndOverlap : Not OtherActor"));
+		return;
+	}
+	if (OtherActor->IsA<ABaseCharacter>() == false)
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerCountingEndOverlap : Not ABaseCharacter"));
+		return;
+	}
 
-		if (PlayerCount == 0)
-		{
-			OnPlayerCountZero.Broadcast();
-		}
+	PlayerCount = FMath::Max(0, PlayerCount - 1);
+	if (PlayerCount == 0)
+	{
+		OnPlayerCountZero.Broadcast();
 	}
 }
 
 void UMonsterRangeComponent::OnPlayerOutEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (OtherActor && OtherActor->IsA<ABaseCharacter>())
+	if (IsValid(OtherActor) == false)
 	{
-		AActor* Target = Cast<ABaseMonster>(GetOwner())->GetTargetPlayer();
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerOutEndOverlap : Not OtherActor"));
+		return;
+	}
+
+	AActor* OwnerActor = GetOwner();
+	if (IsValid(OwnerActor) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerOutEndOverlap : Not OwnerActor"));
+		return;
+	}
+	ABaseMonster* OwnerMonster = Cast<ABaseMonster>(OwnerActor);
+	if (IsValid(OwnerMonster) == false)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerOutEndOverlap : Not OwnerMonster"));
+		return;
+	}
+
+	if (OtherActor->IsA<ABaseCharacter>())
+	{
+		AActor* Target = OwnerMonster->GetTargetPlayer();
+		if (IsValid(Target) == false)
+		{
+			//UE_LOG(LogTemp, Warning, TEXT("UMonsterRangeComponent::OnPlayerOutEndOverlap : Not Target"));
+			return;
+		}
+
+		// 타겟이 나갔을 때
 		if (Target == OtherActor)
 		{
 			OnPlayerOut.Broadcast();
 		}
 	}
-	if (OtherActor && OtherActor->IsA<ABaseMonster>())
+	else if (OtherActor->IsA<ABaseMonster>())
 	{
-		if (OtherActor == GetOwner())
+		// 자기 자신이 나갔을 때
+		if (OwnerActor == OtherActor)
 		{
 			OnPlayerOut.Broadcast();
 		}

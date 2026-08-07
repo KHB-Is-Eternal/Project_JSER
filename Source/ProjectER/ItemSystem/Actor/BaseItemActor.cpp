@@ -1,9 +1,14 @@
-﻿#include "ItemSystem/Actor/BaseItemActor.h"
+#include "ItemSystem/Actor/BaseItemActor.h"
 #include "ItemSystem/Data/BaseItemData.h"
 #include "ItemSystem/Component/BaseInventoryComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/WidgetComponent.h"
+#include "ItemSystem/UI/ItemNameWidget.h"
 #include "Net/UnrealNetwork.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "GameplayTagContainer.h"
 
 ABaseItemActor::ABaseItemActor()
 {
@@ -18,6 +23,12 @@ ABaseItemActor::ABaseItemActor()
 	InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
 	InteractionSphere->SetupAttachment(RootComponent);
 	InteractionSphere->SetSphereRadius(150.f);
+
+	NameTagWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("NameTagWidget"));
+	NameTagWidget->SetupAttachment(RootComponent);
+	NameTagWidget->SetRelativeLocation(FVector(0.f, 0.f, 50.f)); // 메시 위쪽 50유닛 지점
+	NameTagWidget->SetWidgetSpace(EWidgetSpace::Screen); // 화면 공간 위젯으로 설정
+	NameTagWidget->SetDrawAtDesiredSize(true);
 
 	ApplyWorldItemCollisionSettings();
 }
@@ -73,6 +84,18 @@ void ABaseItemActor::RefreshVisualFromItemData()
 		{
 			ItemMesh->SetStaticMesh(Mesh);
 
+			// 블루프린트에서 위젯 텍스트를 갱신하도록 이벤트 호출 (추가 연출용)
+			UpdateNameTagUI();
+
+			// [추가] C++에서 직접 위젯 텍스트 설정 (BP 로직 최소화)
+			if (NameTagWidget)
+			{
+				if (UItemNameWidget* NameWidget = Cast<UItemNameWidget>(NameTagWidget->GetUserWidgetObject()))
+				{
+					NameWidget->SetItemName(ItemData->ItemName, ItemData->GetRarityTextColor());
+				}
+			}
+
 			// [중요]
 			// 메시 에셋 자체에 박혀 있는 Collision 설정이 다시 살아날 수 있으므로
 			// 메시를 갈아끼운 뒤에도 월드 드랍 아이템용 충돌 설정을 다시 강제 적용
@@ -92,6 +115,8 @@ void ABaseItemActor::ApplyWorldItemCollisionSettings()
 		ItemMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		ItemMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 		ItemMesh->SetGenerateOverlapEvents(false);
+		ItemMesh->SetSimulatePhysics(false);
+		ItemMesh->SetEnableGravity(false);
 		ItemMesh->CanCharacterStepUpOn = ECB_No;
 		ItemMesh->SetCanEverAffectNavigation(false);
 	}
@@ -151,6 +176,22 @@ void ABaseItemActor::PickupItem(APawn* InHandler)
 	}
 
 	if (!InHandler || !ItemData)
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(InHandler);
+	if (!IsValid(ASC))
+	{
+		return;
+	}
+
+	const bool bIsDown = ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Life.Down")));
+	const bool bIsDead = ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Life.Death")));
+
+	if (bIsDown || bIsDead)
 	{
 		return;
 	}

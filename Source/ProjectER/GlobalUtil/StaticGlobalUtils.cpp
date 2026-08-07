@@ -5,6 +5,17 @@
 #include "NavigationSystem.h"
 
 
+EVisionChannel UStaticGlobalUtils::ConvertTeamToVisionChannel(ETeamType InTeamType)
+{
+	switch (InTeamType)
+	{
+	case ETeamType::Team_A: return EVisionChannel::TeamA;
+	case ETeamType::Team_B: return EVisionChannel::TeamB;
+	case ETeamType::Team_C: return EVisionChannel::TeamC;
+	default:                return EVisionChannel::None;
+	}
+}
+
 float UStaticGlobalUtils::GetDistanceToActorBounds2D(const AActor* TargetActor, const FVector& FromLocation)
 {
 	if (!IsValid(TargetActor))

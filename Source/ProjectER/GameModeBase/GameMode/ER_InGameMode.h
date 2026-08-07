@@ -74,6 +74,8 @@ class PROJECTER_API AER_InGameMode : public AGameModeBase
 public:
 	AER_InGameMode();
 	
+	virtual void Tick(float DeltaSeconds) override;
+
 	virtual void BeginPlay() override;
 	virtual void PostSeamlessTravel() override;
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
@@ -98,7 +100,6 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void NotifyPlayerDied(ACharacter* VictimCharacter, APlayerState* KillerPS, const TArray<APlayerState*>& Assists);
 
-	// [전민성 요구사항] 언포제스 후 PlayerState 분리 문제를 우회하기 위한 나간 유저 전용 승패 판정 함수
 	UFUNCTION(BlueprintCallable)
 	void NotifyDisconnectedPlayerDied(AER_PlayerState* TargetPS);
 
@@ -160,5 +161,10 @@ private:
 	/** 재접속 대기 제한 시간 (초) */
 	UPROPERTY(EditDefaultsOnly, Category = "Reconnect")
 	float ReconnectTimeoutSeconds = 60.0f;
+
+	// ── Optimization ──
+	float SignificanceUpdateTimer = 0.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Optimization")
+	float SignificanceUpdateInterval = 0.0333f; // 기본값 약 30FPS 제한
 };
 

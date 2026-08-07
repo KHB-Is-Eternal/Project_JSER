@@ -28,9 +28,18 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void MoveTeam(APlayerController* Player, int32 TeamIdx);
 
+	UFUNCTION(BlueprintCallable)
+	void ShutdownServerForHost();
+
+	UFUNCTION(BlueprintCallable)
+	void DisConnectClient(APlayerController* PC);
+
 protected:
 	virtual FString InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal) override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
+	virtual void Logout(AController* Exiting) override;
+
+	void UpdateSessionBackend();
 
 
 	UFUNCTION(BlueprintImplementableEvent)

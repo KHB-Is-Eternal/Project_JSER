@@ -12,6 +12,7 @@
 #include "GameplayEffectExtension.h"
 #include "CharacterSystem/GameplayTags/GameplayTags.h"
 #include "Net/UnrealNetwork.h"
+#include "ItemSystem/Component/BaseInventoryComponent.h"
 
 UBaseAttributeSet::UBaseAttributeSet()
 {
@@ -123,6 +124,7 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 				}
 			}
 		}
+		HandleItemRecoveryText(Data);
 	}
 	else if (Data.EvaluatedData.Attribute == GetStaminaAttribute())
 	{
@@ -137,6 +139,7 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 				}
 			}
 		}
+		HandleItemRecoveryText(Data);
 	}
 	
 	// 데미지(Damage : Data.Amount.Damage) 처리
@@ -144,6 +147,8 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 	{
 		const float LocalDamage = GetIncomingDamage();
 		SetIncomingDamage(0.0f); // Meta Data 초기화 
+
+
 		
 		// 공격 대상 설정
 		const FGameplayEffectContextHandle& Context =
@@ -164,12 +169,50 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 			{
 				if (AvatarActor->HasAuthority())
 				{
+					// 1. 캐릭터 UI 갱신 (캐스팅 최소화)
 					if (ABaseCharacter* HitChar = Cast<ABaseCharacter>(AvatarActor))
 					{
 						HitChar->OnHealthChanged();
 					}
+
+					// 2. 체력 비례 크기(Size) 계산
+					const float MaxHealthVal = GetMaxHealth();
+					const float DamagePercent = (LocalDamage / FMath::Max(1.f, MaxHealthVal)) * 100.f;
+					const float TextSize = FMath::GetMappedRangeValueClamped(FVector2D(1.f, 33.f), FVector2D(1.f, 2.f), DamagePercent);
+
+					// 3. 데미지 종류 및 색상 판정
+					FGameplayTagContainer CombinedTags = Data.EffectSpec.CapturedSourceTags.GetSpecTags();
+					CombinedTags.AppendTags(Data.EffectSpec.DynamicGrantedTags);
+
+					const bool bIsCritical = CombinedTags.HasTagExact(ProjectER::Event::Action::Hit::BasicAttack::Critical);
+					const bool bIsBasicAttack = CombinedTags.HasTag(FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit.BasicAttack"))) || 
+												CombinedTags.HasTag(ProjectER::Ability::Action::AutoAttack);
+
+					FLinearColor TextColor = FLinearColor(0.f, 1.f, 1.f, 1.f); // 스킬 데미지 (청록색, 빨간색의 보색)
+					if (bIsBasicAttack)
+					{
+						TextColor = bIsCritical ? FLinearColor::Red : FLinearColor::Yellow;
+					}
+
+					// 4. GameplayCue를 통한 데미지 텍스트 요청
+					UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent();
+					if (ASC)
+					{
+						FGameplayCueParameters CueParams;
+						CueParams.Location = AvatarActor->GetActorLocation();
+						CueParams.RawMagnitude = LocalDamage;
+						CueParams.NormalizedMagnitude = TextSize;
+						// 색상 값을 FVector(X, Y, Z)에 각각 R, G, B로 매핑하여 인코딩 전송
+						CueParams.Normal = FVector(TextColor.R, TextColor.G, TextColor.B);
+						CueParams.EffectContext = Data.EffectSpec.GetEffectContext();
+
+						ASC->ExecuteGameplayCue(ProjectER::GameplayCue::Combat::DamageText, CueParams);
+					}
 				}
 			}
+
+			// [이벤트 발송] 적중(Hit) 이벤트 판별 및 공격자/피격자 양측 발송
+			DispatchHitEvent(Data, LocalDamage);
 
 			// [전민성] 어시스트, 사망 판정 추가
 			if (!GetWorld() || GetWorld()->GetNetMode() == NM_Client)
@@ -237,28 +280,6 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 				if (TargetASC && TargetASC->HasMatchingGameplayTag(ProjectER::State::Life::Down))
 				{
 					TargetChar->HandleDeath(); 
-        
-					// 기존 킬 로그 및 어시스트 처리 유지
-					auto InGameMode = Cast<AER_InGameMode>(GetWorld()->GetAuthGameMode());
-					if (!InGameMode) return;
-
-					TArray<APlayerState*> OutAssists;
-					if (TargetPS)
-					{
-						// 8초 안에 데미지를 줬으면 어시스트 판정
-						TargetPS->GetAssists(Now, 8.f, AttackerPS, OutAssists);
-
-						// 자신이 준 데미지가 어시스트로 처리되는 일(자기 자신 킬, 자기 자신 데미지)을 확실하게 방지
-						if (AttackerPS)
-						{
-							OutAssists.Remove(AttackerPS);
-						}
-						OutAssists.Remove(TargetPS);
-
-						// 죽으면 기여 기록 초기화
-						TargetPS->ResetDamageContrib();
-					}
-					InGameMode->NotifyPlayerDied(TargetChar, AttackerPS, OutAssists);
 					
 					if (AttackerPS)
 					{
@@ -306,6 +327,28 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 
 					// 빈사 로직 실행 (상태 변환 및 GE 적용)
 					TargetChar->HandleDown();
+
+					// 기존 킬 로그 및 어시스트 처리 유지
+					auto InGameMode = Cast<AER_InGameMode>(GetWorld()->GetAuthGameMode());
+					if (!InGameMode) return;
+
+					TArray<APlayerState*> OutAssists;
+					if (TargetPS)
+					{
+						// 8초 안에 데미지를 줬으면 어시스트 판정
+						TargetPS->GetAssists(Now, 8.f, AttackerPS, OutAssists);
+
+						// 자신이 준 데미지가 어시스트로 처리되는 일(자기 자신 킬, 자기 자신 데미지)을 확실하게 방지
+						if (AttackerPS)
+						{
+							OutAssists.Remove(AttackerPS);
+						}
+						OutAssists.Remove(TargetPS);
+
+						// 죽으면 기여 기록 초기화
+						TargetPS->ResetDamageContrib();
+					}
+					InGameMode->NotifyPlayerDied(TargetChar, AttackerPS, OutAssists);
 				}
 			}
 			else
@@ -365,7 +408,7 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 					{
 						if (ABaseCharacter* TargetChar = Cast<ABaseCharacter>(AvatarActor))
 						{
-							TargetChar->HandleLevelUp(); 
+							TargetChar->HandleLevelUp(CurrentLevel - LevelUpCount, CurrentLevel); 
 							TargetChar->OnLevelChanged();
 						}
 					}
@@ -373,6 +416,101 @@ void UBaseAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 			}
 		}
 	}
+}
+
+void UBaseAttributeSet::DispatchHitEvent(const FGameplayEffectModCallbackData& Data, const float LocalDamage) const
+{
+	const FGameplayEffectContextHandle& Context = Data.EffectSpec.GetEffectContext();
+	AActor* AttackerActor = Context.GetEffectCauser();
+	if (AttackerActor == nullptr)
+	{
+		AttackerActor = Context.GetOriginalInstigator();
+	}
+	AActor* TargetActor = Data.Target.GetAvatarActor();
+
+	FGameplayTag HitEventTag;
+
+	// 1. 소스 태그와 동적 부여 태그를 합산하여 Hit Event 태그 탐색
+	FGameplayTagContainer CombinedTags = Data.EffectSpec.CapturedSourceTags.GetSpecTags();
+	CombinedTags.AppendTags(Data.EffectSpec.DynamicGrantedTags);
+
+	static FGameplayTag HitBaseTag = FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit"));
+	for (const FGameplayTag& Tag : CombinedTags)
+	{
+		if (Tag.MatchesTag(HitBaseTag))
+		{
+			HitEventTag = Tag;
+			break;
+		}
+	}
+
+	if (!HitEventTag.IsValid())
+	{
+		return;
+	}
+
+	if (IsValid(AttackerActor))
+	{
+		FGameplayEventData AttackerActorPayload;
+		AttackerActorPayload.EventTag = HitEventTag;
+		AttackerActorPayload.Instigator = AttackerActor;
+		AttackerActorPayload.Target = TargetActor;
+		AttackerActorPayload.EventMagnitude = LocalDamage;
+		AttackerActorPayload.ContextHandle = Context;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(AttackerActor, HitEventTag, AttackerActorPayload);
+	}
+	if (IsValid(TargetActor))
+	{
+		FGameplayEventData TargetActorPayload;
+		TargetActorPayload.EventTag = FGameplayTag::RequestGameplayTag(FName("Event.Action.Hit.Damaged"));
+		TargetActorPayload.Instigator = AttackerActor;
+		TargetActorPayload.Target = TargetActor;
+		TargetActorPayload.EventMagnitude = LocalDamage;
+		TargetActorPayload.ContextHandle = Context;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, TargetActorPayload.EventTag, TargetActorPayload);
+	}
+}
+
+void UBaseAttributeSet::HandleItemRecoveryText(const FGameplayEffectModCallbackData& Data) const
+{
+	if (Data.EvaluatedData.ModifierOp != EGameplayModOp::Additive || Data.EvaluatedData.Magnitude <= 0.0f)
+	{
+		return;
+	}
+
+	const UObject* SourceObject = Data.EffectSpec.GetEffectContext().GetSourceObject();
+	if (SourceObject == nullptr || !SourceObject->IsA(UBaseInventoryComponent::StaticClass()))
+	{
+		return;
+	}
+
+	AActor* AvatarActor = GetOwningAbilitySystemComponent()->GetAvatarActor();
+	UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent();
+	if (AvatarActor == nullptr || ASC == nullptr || !AvatarActor->HasAuthority())
+	{
+		return;
+	}
+
+	FGameplayCueParameters CueParams;
+	CueParams.Location = AvatarActor->GetActorLocation();
+	CueParams.RawMagnitude = Data.EvaluatedData.Magnitude;
+	CueParams.NormalizedMagnitude = 1.0f;
+	CueParams.EffectContext = Data.EffectSpec.GetEffectContext();
+
+	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
+	{
+		CueParams.Normal = FVector(0.0f, 1.0f, 0.0f); // Green
+	}
+	else if (Data.EvaluatedData.Attribute == GetStaminaAttribute())
+	{
+		CueParams.Normal = FVector(0.0f, 0.0f, 1.0f); // Blue / Cyan
+	}
+	else
+	{
+		return;
+	}
+
+	ASC->ExecuteGameplayCue(ProjectER::GameplayCue::Combat::RecoveryText, CueParams);
 }
 
 void UBaseAttributeSet::SetMaxXPCurve(UCurveTable* InTable, FName InRowName)

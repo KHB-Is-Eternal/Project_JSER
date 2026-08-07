@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -36,7 +36,7 @@ public:
     int32 HazardSeed = 0;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hazard")
-    int32 HazardsPerPhase = 1;
+    TArray<int32> HazardsPerPhase;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hazard")
     EAreaHazardState HazardStatePerPhase = EAreaHazardState::Hazard;
@@ -96,16 +96,31 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Hazard")
     int32 GetTotalPhases() const
     {
-        int32 HazardPhases = HazardOrder.Num() / FMath::Max(1, HazardsPerPhase);
-        return HazardPhases + 1; // +1 for safe phase
+        return HazardsPerPhase.Num() + 1; // +1 for safe phase
+    }
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Hazard")
+    int32 GetCumulativeHazards(int32 TargetEffectivePhase) const
+    {
+        int32 Total = 0;
+        for (int32 i = 0; i < TargetEffectivePhase && i < HazardsPerPhase.Num(); ++i)
+        {
+            Total += HazardsPerPhase[i];
+        }
+        return Total;
     }
 
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Hazard")
     bool IsAllPhasesExhausted() const
     {
         int32 EffectivePhase = FMath::Max(0, CurrentPhase - 1);
-        return (EffectivePhase * HazardsPerPhase) >= HazardOrder.Num();
+        int32 TotalAssigned = GetCumulativeHazards(EffectivePhase);
+        return TotalAssigned >= HazardOrder.Num() || EffectivePhase >= HazardsPerPhase.Num();
     }
+
+    // 다음 페이즈에서 위험 구역이 될 노드 ID 목록을 미리 반환 (ReferencePhase = GameState의 현재 Phase)
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Hazard")
+    TArray<int32> GetNextPhaseZoneIDs(int32 ReferencePhase) const;
 
     // Wide — all bridges for a node area
     UFUNCTION(BlueprintCallable, Category = "LevelArea")

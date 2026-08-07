@@ -6,6 +6,7 @@
 #include "CharacterSystem/Player/BasePlayerController.h"
 #include "ItemSystem/Component/LootableComponent.h" // [김현수 추가분]
 #include "ItemSystem/Component/BaseInventoryComponent.h" // [김현수 추가분] 빈사/사망 전환 시 food 효과 정리용
+#include "ItemSystem/UI/W_FloatingRecoveryTextActor.h" // [김현수 추가분] 체력,마나 회복 아이템 플로팅 텍스트용
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -20,6 +21,7 @@
 #include "Engine/OverlapResult.h"
 #include "NavigationSystem.h"
 #include "NavigationPath.h"
+#include "NavMesh/NavMeshPath.h"
 #include "GameplayEffect.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -45,8 +47,67 @@
 #include "UI/UI_HP_Bar.h" // HP바 위젯용
 
 #include "GameModeBase/State/ER_PlayerState.h"
+#include "GlobalUtil/StaticGlobalUtils.h"
 #include "LineOfSight/MainVisionRTManager.h"
-#include "LineOfSight/Management/VisionPlayerStateComp.h"
+#include "LineOfSight/Management/Subsystem/LOSVisionSubsystem.h"
+#include "LineOfSight/VisionComps/Vision_VisualComp.h"
+
+// 길찾기 성능 프로파일링 — 콘솔: stat ProjectER_Pathfinding
+DECLARE_STATS_GROUP(TEXT("ProjectER_Pathfinding"), STATGROUP_ERPathfinding, STATCAT_Advanced);
+
+DECLARE_CYCLE_STAT(TEXT("MoveToLocation (Total)"),       STAT_MoveToLocation,        STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("FindPath Sync"),                 STAT_FindPathSync,           STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("Server_MoveToLocation (Total)"), STAT_ServerMoveToLocation,   STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("Server_FindPath Sync"),          STAT_ServerFindPathSync,     STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("CheckCombatTarget (Total)"),     STAT_CheckCombatTarget,      STATGROUP_ERPathfinding);
+DECLARE_CYCLE_STAT(TEXT("UpdatePathFollowing"),           STAT_UpdatePathFollowing,    STATGROUP_ERPathfinding);
+
+// 길찾기 메트릭 수집 (개발/테스트 빌드 전용)
+#if !UE_BUILD_SHIPPING
+
+struct FPathfindingMetrics
+{
+	int32 RequestCount = 0;
+	double TotalTimeSeconds = 0.0;
+	double WorstTimeSeconds = 0.0;
+	float AccumulatedDelta = 0.0f;
+
+	void RecordRequest(const double ElapsedSeconds)
+	{
+		RequestCount++;
+		TotalTimeSeconds += ElapsedSeconds;
+		WorstTimeSeconds = FMath::Max(WorstTimeSeconds, ElapsedSeconds);
+	}
+
+	void TickAndLog(const float DeltaTime)
+	{
+		AccumulatedDelta += DeltaTime;
+		if (AccumulatedDelta < 1.0f)
+		{
+			return;
+		}
+/*
+		if (RequestCount > 0)
+		{
+			const double AvgMs = (TotalTimeSeconds / RequestCount) * 1000.0;
+			const double TotalMs = TotalTimeSeconds * 1000.0;
+			const double WorstMs = WorstTimeSeconds * 1000.0;
+
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Pathfinding Metrics] Requests/s: %d | Total: %.3fms | Avg: %.3fms | Worst: %.3fms"),
+				RequestCount, TotalMs, AvgMs, WorstMs);
+		}
+*/
+		RequestCount = 0;
+		TotalTimeSeconds = 0.0;
+		WorstTimeSeconds = 0.0;
+		AccumulatedDelta = 0.0f;
+	}
+};
+
+static FPathfindingMetrics GPathfindingMetrics;
+
+#endif // !UE_BUILD_SHIPPING
 
 
 ABaseCharacter::ABaseCharacter()
@@ -58,6 +119,8 @@ ABaseCharacter::ABaseCharacter()
 
 	/* === 기본 컴포넌트 === */
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Block); // CursorTrace (마우스 타겟팅 감지)
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block); // VisionSensor (비전 센서 감지)
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -79,12 +142,16 @@ ABaseCharacter::ABaseCharacter()
 
 	/* === 경로 설정 인덱스 초기화  === */
 	CurrentPathIndex = INDEX_NONE;
+	bIsStraightLineMoving = false;
+	bAsyncPathInProgress = false;
 
 	/* === 팀 변수 초기화  === */
 	TeamID = ETeamType::None;
 
 	bIsAttackMoving = false;
 
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — CPU 미니맵(UI_MainHUD)으로 대체됨
+	/*
 	// 26.01.29. mpyi
 	// 미니맵을 위한 씬 컴포넌트 2D <- 차후 '카메라' 시스템으로 이동할 예정
 	MinimapCaptureComponent = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MinimapCaptureComponent"));
@@ -98,6 +165,8 @@ ABaseCharacter::ABaseCharacter()
 	MinimapCaptureComponent->ProjectionType = ECameraProjectionMode::Orthographic;
 	MinimapCaptureComponent->OrthoWidth = 4500; // 이거로 미니맵 확대/축소 조절
 	MinimapCaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;	// 투명도 반영
+	MinimapCaptureComponent->bCaptureEveryFrame = false;
+	MinimapCaptureComponent->bCaptureOnMovement = false;
 
 	// 미니맵용 아이콘 만들기
 	MinimapIconMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MinimapIcon"));
@@ -127,15 +196,25 @@ ABaseCharacter::ABaseCharacter()
 	MinimapLineMesh->SetRelativeScale3D(FVector(6.0f, 6.0f, 6.0f));	// 얼굴 아이콘 크기 조절
 	MinimapLineMesh->SetAbsolute(false, true, false); // 회전값 고정 (중요함....)
 	MinimapLineMesh->SetCastShadow(false);	// 그림자 없애기
+	*/
 
-	// 캐릭터 메쉬는 미니맵에 안보이게
+	// 캐릭터 메쉬는 미니맵에 안보이게 (TopDownVision 등 다른 캡처에도 영향 가능 — 유지)
 	GetMesh()->SetHiddenInSceneCapture(true);
+
+	// 시야 시스템의 VisibilityMeshComp가 페이드 대상 메시로 인식하도록 태그 추가
+	GetMesh()->ComponentTags.Add(TEXT("VisibilityMesh"));
+
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정
+	/*
 	// 미니맵 아이콘은 미니맵에 보이게
 	MinimapIconMesh->SetVisibleInSceneCaptureOnly(true);
 	MinimapLineMesh->SetVisibleInSceneCaptureOnly(true);
 
 	MinimapIconMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	MinimapLineMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	MinimapIconMesh->SetGenerateOverlapEvents(false); // [최적화] 불필요한 오버랩 연산 제거
+	MinimapLineMesh->SetGenerateOverlapEvents(false);
+	*/
 
 	// HP Bar 생성
 	HP_MP_BarWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("HPBarWidget"));
@@ -151,8 +230,10 @@ ABaseCharacter::ABaseCharacter()
 
 	HP_MP_BarWidget->SetDrawAtDesiredSize(true);
 
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정
+	/*
 	/// 최적화 필요시 아래 플래그 조절해가면서 해결해 보기
-	
+
 	MinimapCaptureComponent->ShowFlags.SetDynamicShadows(false); // 동적 그림자
 	MinimapCaptureComponent->ShowFlags.SetGlobalIllumination(false); // 루멘
 	//MinimapCaptureComponent->ShowFlags.SetMotionBlur(false); // 잔상 제거용
@@ -166,6 +247,7 @@ ABaseCharacter::ABaseCharacter()
 	MinimapCaptureComponent->ShowFlags.SetAntiAliasing(false);
 	MinimapCaptureComponent->ShowFlags.SetMotionBlur(false);
 	MinimapCaptureComponent->ShowFlags.SetVolumetricFog(false);
+	*/
 	
 }
 
@@ -206,6 +288,13 @@ void ABaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+#if !UE_BUILD_SHIPPING
+	if (HasAuthority() && IsLocallyControlled())
+	{
+		GPathfindingMetrics.TickAndLog(DeltaTime);
+	}
+#endif
+
 	/// UI TEST를 위함 지우진 말아주세요!! {차후 제거할 예정}
 	/// mpyi
 	//{
@@ -231,21 +320,55 @@ void ABaseCharacter::Tick(float DeltaTime)
 		return; // 죽었으면 아무것도 안 함
 	}
 	
-	if (IsLocallyControlled() || HasAuthority())
+	// 경로 캐싱 타이머 갱신 (Phase 1)
+	TimeSinceLastPathCalc += DeltaTime;
+
+	// ─── Phase 2: 임시 직선 이동 (비동기 경로 대기 중) ───
+	if (bIsStraightLineMoving)
 	{
-		// Tick 활성화 시 경로 탐색 (서버)
+		const FVector CurrentLocation = GetActorLocation();
+		FVector Direction = PendingMoveDestination - CurrentLocation;
+		Direction.Z = 0.f;
+
+		if (Direction.SizeSquared() < ArrivalDistanceSq)
+		{
+			// 목적지 근처 도달 — 직선 이동 종료
+			bIsStraightLineMoving = false;
+		}
+		else if (!Direction.IsNearlyZero())
+		{
+			const FVector NormalDirection = Direction.GetSafeNormal();
+			AddMovementInput(NormalDirection, 1.0f);
+
+			const FRotator TargetRot = NormalDirection.Rotation();
+			const FRotator NewRotation = FMath::RInterpTo(GetActorRotation(), TargetRot, DeltaTime, 20.0f);
+			SetActorRotation(NewRotation);
+		}
+	}
+	else if (IsLocallyControlled() || HasAuthority())
+	{
+		// 경로 추종 — 직선 이동이 아닐 때만 실행
 		UpdatePathFollowing();
-	
-		// 타겟이 유효할 때 추적/공격 수행
+	}
+
+	// 전투 로직은 서버에서만
+	if (HasAuthority())
+	{
 		if (TargetActor)
 		{
 			CheckCombatTarget(DeltaTime);
 		}
-	}	
-	
-	if (HasAuthority() && bIsAttackMoving && !TargetActor)
-	{
-		ScanForEnemiesWhileMoving();
+
+		// Phase 3: 스캔 스로틀 — 매 프레임 SphereOverlap → 0.15초 간격
+		if (bIsAttackMoving && !TargetActor)
+		{
+			ScanTimer += DeltaTime;
+			if (ScanTimer >= ScanInterval)
+			{
+				ScanTimer = 0.0f;
+				ScanForEnemiesWhileMoving();
+			}
+		}
 	}
 }
 
@@ -405,34 +528,13 @@ void ABaseCharacter::Server_SetTeamID_Implementation(ETeamType NewTeamID)
 	OnRep_TeamID();
 }
 
-EVisionChannel ABaseCharacter::ConvertTeamToVisionChannel(ETeamType InTeamType)
-{
-	switch (InTeamType)
-	{
-		case ETeamType::None:
-		return EVisionChannel::None;
-		
-		case ETeamType::Team_A:
-		return EVisionChannel::TeamA;
-		
-		case ETeamType::Team_B:
-		return EVisionChannel::TeamB;
-		
-		case ETeamType::Team_C:
-		return EVisionChannel::TeamC;
-
-		default:
-		return EVisionChannel::None;
-	}
-}
-
 EVisionChannel ABaseCharacter::GetVisionChannelFromPlayerStateComp()
 {
 	if (const AER_PlayerState* ERPS = GetPlayerState<AER_PlayerState>())
 	{
-		return ConvertTeamToVisionChannel( ERPS->GetTeamType());
+		return UStaticGlobalUtils::ConvertTeamToVisionChannel( ERPS->GetTeamType());
 	}
-	
+
 	//failed to get the vision channel -> return none
 	return EVisionChannel::None;
 }
@@ -458,7 +560,7 @@ bool ABaseCharacter::IsLocalPlayerPawn()
 	return IsLocallyControlled();
 }
 
-void ABaseCharacter::HandleLevelUp()
+void ABaseCharacter::HandleLevelUp(float OldLevel, float NewLevel)
 {
 	if (!HasAuthority()) return;
 	
@@ -473,25 +575,33 @@ void ABaseCharacter::HandleLevelUp()
 		AS = PS->GetAttributeSet();
 	}
 
-	float OldMaxHealth = 0.0f;
-	float OldMaxStamina = 0.0f;
-
-	if (AS)
-	{
-		OldMaxHealth = AS->GetMaxHealth();
-		OldMaxStamina = AS->GetMaxStamina();
-	}
-	
-	InitAttributes();
+	// 레벨업에 따른 델타 스탯 상승 적용 (Instant Additive)
+	UpgradeAttributes(OldLevel, NewLevel);
     
 	// 레벨업 시 체력/마나 회복
-	if (AS)
+	if (AS && HeroData)
 	{
-		// 스탯 상승량 계산
-		float HealthIncrease = AS->GetMaxHealth() - OldMaxHealth;
-		float StaminaIncrease = AS->GetMaxStamina() - OldMaxStamina;
+		float HealthIncrease = 0.0f;
+		float StaminaIncrease = 0.0f;
 
-		// 상승량이 0보다 크면 현재 스탯에 더해줌
+		// 곡선 테이블을 로드하여 이전 레벨과 새 레벨의 기본 스탯 차이만 계산 (임시 버프 유실 방지)
+		UCurveTable* CurveTable = HeroData->StatCurveTable.LoadSynchronous();
+		if (CurveTable)
+		{
+			FName HP_RowName = FName(*HeroData->StatusRowName.ToString().Append(TEXT("_MaxHealth")));
+			if (FRealCurve* Curve = CurveTable->FindCurve(HP_RowName, FString()))
+			{
+				HealthIncrease = Curve->Eval(NewLevel) - Curve->Eval(OldLevel);
+			}
+
+			FName Stamina_RowName = FName(*HeroData->StatusRowName.ToString().Append(TEXT("_MaxStamina")));
+			if (FRealCurve* Curve = CurveTable->FindCurve(Stamina_RowName, FString()))
+			{
+				StaminaIncrease = Curve->Eval(NewLevel) - Curve->Eval(OldLevel);
+			}
+		}
+
+		// 상승량만큼 현재 체력/마나 회복
 		if (HealthIncrease > 0.0f)
 		{
 			AS->SetHealth(AS->GetHealth() + HealthIncrease);
@@ -761,6 +871,9 @@ void ABaseCharacter::InitAbilitySystem()
 		// Attribute Set 초기화
 		InitAttributes();
 	}
+	
+	// CC 태그 콜백 등록
+	RegisterCCTagCallbacks(); 
 }
 
 void ABaseCharacter::InitAttributes()
@@ -863,6 +976,59 @@ void ABaseCharacter::InitAttributes()
 	}
 }
 
+void ABaseCharacter::UpgradeAttributes(float OldLevel, float NewLevel)
+{
+	if (!AbilitySystemComponent.IsValid() || !HeroData || !UpgradeStatusEffectClass) return;
+
+	UCurveTable* CurveTable = HeroData->StatCurveTable.LoadSynchronous();
+	if (!CurveTable) return;
+
+	FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+	Context.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(UpgradeStatusEffectClass, NewLevel, Context);
+
+	if (SpecHandle.IsValid())
+	{
+		auto SetStatDelta = [&](FGameplayTag AttributeTag, FString RowSuffix)
+		{
+			FName RowName = FName(*HeroData->StatusRowName.ToString().Append(RowSuffix));
+
+			FRealCurve* Curve = CurveTable->FindCurve(RowName, FString());
+			if (Curve)
+			{
+				float OldValue = Curve->Eval(OldLevel);
+				float NewValue = Curve->Eval(NewLevel);
+				float Delta = NewValue - OldValue;
+
+				// GE Spec 값 주입 (SetByCaller)
+				SpecHandle.Data->SetSetByCallerMagnitude(AttributeTag, Delta);
+			}
+		};
+
+		// 각 스탯별 레벨업 상승량(Delta) 주입
+		SetStatDelta(ProjectER::Status::MaxLevel, TEXT("_MaxLevel"));
+		SetStatDelta(ProjectER::Status::MaxXP, TEXT("_MaxXp"));
+		SetStatDelta(ProjectER::Status::MaxHealth, TEXT("_MaxHealth"));
+		SetStatDelta(ProjectER::Status::HealthRegen, TEXT("_HealthRegen"));
+		SetStatDelta(ProjectER::Status::MaxStamina, TEXT("_MaxStamina"));
+		SetStatDelta(ProjectER::Status::StaminaRegen, TEXT("_StaminaRegen"));
+		SetStatDelta(ProjectER::Status::AttackPower, TEXT("_AttackPower"));
+		SetStatDelta(ProjectER::Status::AttackSpeed, TEXT("_AttackSpeed"));
+		SetStatDelta(ProjectER::Status::AttackRange, TEXT("_AttackRange"));
+		SetStatDelta(ProjectER::Status::SkillAmp, TEXT("_SkillAmp"));
+		SetStatDelta(ProjectER::Status::CritChance, TEXT("_CritChance"));
+		SetStatDelta(ProjectER::Status::CritDamage, TEXT("_CritDamage"));
+		SetStatDelta(ProjectER::Status::Defense, TEXT("_Defense"));
+		SetStatDelta(ProjectER::Status::MoveSpeed, TEXT("_MoveSpeed"));
+		SetStatDelta(ProjectER::Status::CooldownReduction, TEXT("_CooldownReduction"));
+		SetStatDelta(ProjectER::Status::Tenacity, TEXT("_Tenacity"));
+
+		// 적용 (Instant Additive)
+		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	}
+}
+
 void ABaseCharacter::InitVisuals()
 {
 	if (!HeroData) return;
@@ -891,42 +1057,20 @@ void ABaseCharacter::InitVisuals()
 
 void ABaseCharacter::Server_MoveToLocation_Implementation(FVector TargetLocation)
 {
-	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
-	if (NavSys == nullptr) return;
+	SCOPE_CYCLE_COUNTER(STAT_ServerMoveToLocation);
 
-	UNavigationPath* NavPath = NavSys->FindPathToLocationSynchronously(this, GetActorLocation(), TargetLocation);
+	// ─── 경로 캐싱 체크 (Phase 1) ───
+	const float DistToPrevDest = FVector::Dist(TargetLocation, LastPathDestination);
+	if (DistToPrevDest < PathReuseThreshold
+		&& TimeSinceLastPathCalc < MaxPathCacheAge
+		&& PathPoints.Num() > 0
+		&& CurrentPathIndex != INDEX_NONE)
+	{
+		return; // 기존 경로 재사용
+	}
 
-	if (NavPath != nullptr && NavPath->PathPoints.Num() > 1)
-	{
-		PathPoints = NavPath->PathPoints;
-		CurrentPathIndex = 1;
-		SetActorTickEnabled(true);
-		
-		if (AbilitySystemComponent.IsValid() && MovingStateEffectClass)
-		{
-			FGameplayTag MoveTag = FGameplayTag::RequestGameplayTag(FName("State.Action.Move"));
-			if (!AbilitySystemComponent->HasMatchingGameplayTag(MoveTag))
-			{
-				FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
-				Context.AddSourceObject(this);
-                
-				FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(MovingStateEffectClass, 1.0f, Context);
-				if (SpecHandle.IsValid())
-				{
-					MovingEffectHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-				}
-			}
-		}
-	}
-	else
-	{
-		// 경로 탐색 실패 시 중지
-		// but, 타겟이 있을 경우 정지 X
-		if (TargetActor == nullptr) 
-		{
-			StopPathFollowing();
-		}
-	}
+	// Phase 2: 비동기 경로 탐색
+	RequestAsyncPath(TargetLocation);
 }
 
 bool ABaseCharacter::Server_MoveToLocation_Validate(FVector TargetLocation)
@@ -941,63 +1085,66 @@ void ABaseCharacter::Server_StopMove_Implementation()
 
 void ABaseCharacter::MoveToLocation(FVector TargetLocation)
 {
+	SCOPE_CYCLE_COUNTER(STAT_MoveToLocation);
+
 	if (AbilitySystemComponent.IsValid())
 	{
 		static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
 		static const FGameplayTag ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
+		static const FGameplayTag BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+		static const FGameplayTag AllowMovementTag = FGameplayTag::RequestGameplayTag(FName("Skill.Option.AllowMovement"));
 
-		if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
+		if (AbilitySystemComponent->HasMatchingGameplayTag(AllowMovementTag))
+		{
+			// 이동 허용 태그가 있다면 시전/발동 상태이더라도 차단하지 않습니다.
+		}
+		else if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
 			AbilitySystemComponent->HasMatchingGameplayTag(ActiveTag))
 		{
-			return; // 아무것도 하지 않고 함수 종료 (이동, 회전 차단)
+			return; // 시전/발동 중에는 이동 차단
+		}
+
+		if (AbilitySystemComponent->HasMatchingGameplayTag(BackswingTag))
+		{
+			// 후딜레이 중 이동 시 현재 스킬 취소
+			// SkillDataAsset에서 설정한 Input.Skill 하위 태그를 가진 어빌리티를 취소합니다.
+			FGameplayTagContainer CancelTags;
+			CancelTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Input.Skill")));
+			AbilitySystemComponent->CancelAbilities(&CancelTags);
 		}
 	}
 	
-	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
-	if (!NavSys) return;
-
-	UNavigationPath* NavPath = NavSys->FindPathToLocationSynchronously(this, GetActorLocation(), TargetLocation);
-
-	if (NavPath && NavPath->PathPoints.Num() > 1)
-	{
-		PathPoints = NavPath->PathPoints;
-		CurrentPathIndex = 1;
-		SetActorTickEnabled(true);
-		
-		// UE_LOG(LogTemp, Warning, TEXT("길찾기 성공! 포인트 갯수: %d"), NavPath->PathPoints.Num());
-		
-		if (AbilitySystemComponent.IsValid() && MovingStateEffectClass)
-		{
-			FGameplayTag MoveTag = FGameplayTag::RequestGameplayTag(FName("State.Action.Move"));
-			if (!AbilitySystemComponent->HasMatchingGameplayTag(MoveTag))
-			{
-				FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
-				Context.AddSourceObject(this);
-                
-				FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(MovingStateEffectClass, 1.0f, Context);
-				if (SpecHandle.IsValid())
-				{
-					// Handle 저장
-					MovingEffectHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-				}
-			}	
-		}
-	}
-	else
-	{
-		// UE_LOG(LogTemp, Error, TEXT("길찾기 실패! 시작점과 도착점이 끊어져있거나 NavMesh 범위 밖입니다."));
-		// 경로 탐색 실패 시 중지
-		// but, 타겟이 있을 경우 정지 X
-		if (TargetActor == nullptr) 
-		{
-			StopPathFollowing();
-		}
+	// CC 체크
+	if (IsMovementBlocked())
+	{	
+		return;
 	}
 
+	// Phase 2: 클라이언트는 FindPath를 하지 않음
+	// 서버에 목적지만 전달하고, 임시 직선 이동 시작
 	if (!HasAuthority())
 	{
+		// 임시 직선 이동 시작 (서버 경로 도착 전까지)
+		PendingMoveDestination = TargetLocation;
+		bIsStraightLineMoving = true;
+		SetActorTickEnabled(true);
+
 		Server_MoveToLocation(TargetLocation);
+		return;
 	}
+
+	// 서버(리슨 서버 호스트)인 경우 직접 비동기 경로 요청
+	// 캐싱 체크 (Phase 1)
+	const float DistToPrevDest = FVector::Dist(TargetLocation, LastPathDestination);
+	if (DistToPrevDest < PathReuseThreshold
+		&& TimeSinceLastPathCalc < MaxPathCacheAge
+		&& PathPoints.Num() > 0
+		&& CurrentPathIndex != INDEX_NONE)
+	{
+		return; // 기존 경로 재사용
+	}
+
+	RequestAsyncPath(TargetLocation);
 }
 
 void ABaseCharacter::StopMove()
@@ -1029,10 +1176,13 @@ void ABaseCharacter::StopMove()
 	}
 	
 	bIsAttackMoving = false;
+	bIsStraightLineMoving = false;
+	bAsyncPathInProgress = false;
 }
 
 void ABaseCharacter::UpdatePathFollowing()
 {
+	SCOPE_CYCLE_COUNTER(STAT_UpdatePathFollowing);
 	if (CurrentPathIndex == INDEX_NONE || CurrentPathIndex >= PathPoints.Num())
 	{
 		StopPathFollowing();
@@ -1080,6 +1230,8 @@ void ABaseCharacter::StopPathFollowing()
 {
 	PathPoints.Empty();
 	CurrentPathIndex = INDEX_NONE;
+	bIsStraightLineMoving = false;
+	++CurrentPathRequestID; // 오래된 비동기 콜백 무효화
 	
 	// 타겟이 있을 시 이동 및 공격을 위해 Tick 유지
 	// CheckCombatTarget() 유지 용도
@@ -1096,6 +1248,119 @@ void ABaseCharacter::StopPathFollowing()
 			AbilitySystemComponent->RemoveActiveGameplayEffect(MovingEffectHandle);
 			MovingEffectHandle.Invalidate();
 		}
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Phase 2: 비동기 길찾기
+// ═══════════════════════════════════════════════════════════════
+
+void ABaseCharacter::RequestAsyncPath(const FVector& Destination)
+{
+	check(HasAuthority()); // 서버에서만 호출
+
+	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+	if (NavSys == nullptr) return;
+
+	const ANavigationData* NavData = NavSys->GetDefaultNavDataInstance();
+	if (NavData == nullptr) return;
+
+	// 이미 비동기 요청이 진행 중이면 중복 요청 방지
+	if (bAsyncPathInProgress) return;
+
+	// 임시 직선 이동 활성화 (서버도 비동기 결과 도착 전까지)
+	PendingMoveDestination = Destination;
+	bIsStraightLineMoving = true;
+	bAsyncPathInProgress = true;
+	SetActorTickEnabled(true);
+
+	FPathFindingQuery Query(this, *NavData, GetActorLocation(), Destination);
+
+	{
+		SCOPE_CYCLE_COUNTER(STAT_ServerFindPathSync); // 요청 시점만 측정 (실제 계산은 비동기)
+
+#if !UE_BUILD_SHIPPING
+		const double StartTime = FPlatformTime::Seconds();
+#endif
+
+	// 현재 요청 ID를 캐프처하여 오래된 콜백 무효화
+	++CurrentPathRequestID;
+	const uint32 CapturedRequestID = CurrentPathRequestID;
+
+	NavSys->FindPathAsync(
+			FNavAgentProperties::DefaultProperties,
+			Query,
+			FNavPathQueryDelegate::CreateWeakLambda(this, [this, CapturedRequestID](uint32 InQueryID, ENavigationQueryResult::Type InResult, FNavPathSharedPtr InNavPath)
+			{
+				// StopMove 후 도착한 오래된 콜백은 무시
+				if (CapturedRequestID != CurrentPathRequestID) return;
+				OnAsyncPathFound(InQueryID, InResult, InNavPath);
+			}),
+			EPathFindingMode::Regular
+		);
+
+#if !UE_BUILD_SHIPPING
+		GPathfindingMetrics.RecordRequest(FPlatformTime::Seconds() - StartTime);
+#endif
+	}
+
+	// 캐시 갱신 (요청 시점에 미리 기록)
+	LastPathDestination = Destination;
+	TimeSinceLastPathCalc = 0.0f;
+}
+
+void ABaseCharacter::OnAsyncPathFound(uint32 QueryID, ENavigationQueryResult::Type Result, FNavPathSharedPtr NavPath)
+{
+	bAsyncPathInProgress = false;
+
+	if (Result != ENavigationQueryResult::Success || !NavPath.IsValid() || NavPath->GetPathPoints().Num() <= 1)
+	{
+		// 경로 탐색 실패 — 타겟이 없으면 정지
+		if (TargetActor == nullptr)
+		{
+			StopPathFollowing();
+		}
+		return;
+	}
+
+	// 경로 성공 — PathPoints 추출
+	TArray<FVector> NewPathPoints;
+	const TArray<FNavPathPoint>& NavPoints = NavPath->GetPathPoints();
+	NewPathPoints.Reserve(NavPoints.Num());
+
+	for (const FNavPathPoint& Point : NavPoints)
+	{
+		NewPathPoints.Add(Point.Location);
+	}
+
+	ApplyPathResult(NewPathPoints, LastPathDestination);
+}
+
+void ABaseCharacter::ApplyPathResult(const TArray<FVector>& InPathPoints, const FVector& Destination)
+{
+	PathPoints = InPathPoints;
+	CurrentPathIndex = 1;
+	bIsStraightLineMoving = false; // 직선 이동 종료 → 경로 추종 전환
+	SetActorTickEnabled(true);
+
+	ApplyMovingStateEffect();
+}
+
+void ABaseCharacter::ApplyMovingStateEffect()
+{
+	if (!HasAuthority()) return;
+	if (!AbilitySystemComponent.IsValid() || !MovingStateEffectClass) return;
+
+	static const FGameplayTag MoveTag = FGameplayTag::RequestGameplayTag(FName("State.Action.Move"));
+	if (AbilitySystemComponent->HasMatchingGameplayTag(MoveTag)) return;
+
+	FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+	Context.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(MovingStateEffectClass, 1.0f, Context);
+	if (SpecHandle.IsValid())
+	{
+		MovingEffectHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 	}
 }
 
@@ -1160,6 +1425,7 @@ void ABaseCharacter::SetTarget(AActor* NewTarget)
 
 void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 {
+	SCOPE_CYCLE_COUNTER(STAT_CheckCombatTarget);
 	if (!IsValid(TargetActor))
 	{
 		SetTarget(nullptr); // 타겟이 소멸 시 지정 해제
@@ -1181,14 +1447,14 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 		}
 	}
 
-	float Distance = GetDistanceTo(TargetActor);
-	float AttackRange = GetAttackRange();
+	// Phase 3: DistSquared — sqrt 제거
+	const float DistSq = FVector::DistSquared(GetActorLocation(), TargetActor->GetActorLocation());
+	const float AttackRange = GetAttackRange();
+	const float AttackRangeSq = AttackRange * AttackRange;
 	
-	float Tolerance = 20.0f; // 사거리 보정 값 유사 시 사용
-	float CheckRange = HasAuthority() ? (AttackRange + Tolerance) : (AttackRange - Tolerance); // 보정된 사거리
-	
-	if (Distance <= AttackRange) // 사거리 내 진입 시
+	if (DistSq <= AttackRangeSq) // 사거리 내 진입 시
 	{
+		// Phase 3: 중복 태그 검사 제거 — 1회만 체크
 		if (AbilitySystemComponent.IsValid())
 		{
 			static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting"));
@@ -1197,7 +1463,7 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 			if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
 				AbilitySystemComponent->HasMatchingGameplayTag(ActiveTag))
 			{
-				return; 
+				return; // 스킬 캐스팅/시전 중일 시 공격 시도 종료
 			}
 		}
 		
@@ -1213,16 +1479,7 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 		// 공격 어빌리티 실행 (GAS) : 서버 판정 우선
 		if (HasAuthority() && AbilitySystemComponent.IsValid())
 		{
-			// 공격 제한 태그 검사
-			static const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Casting")); 
-			static const FGameplayTag ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
-            
-			if (AbilitySystemComponent->HasMatchingGameplayTag(CastingTag) || 
-				AbilitySystemComponent->HasMatchingGameplayTag(ActiveTag))
-			{
-				return; // 스킬 캐스팅 혹은 시전 중일 시 일반 공격 시도 종료
-			}
-			
+			// Phase 3: 중복 태그 검사 제거됨 — 위에서 이미 체크 완료
 			FGameplayTag AttackTag = FGameplayTag::RequestGameplayTag(FName("Ability.Action.AutoAttack"));
 			
 			TArray<FGameplayAbilitySpec*> Specs;
@@ -1239,6 +1496,12 @@ void ABaseCharacter::CheckCombatTarget(float DeltaTime)
 			
 			if (bWasActivated)
 			{
+				FGameplayEventData Payload;
+				Payload.EventTag = ProjectER::Event::Action::Attack;
+				Payload.Instigator = this;
+				Payload.Target = this;
+				UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(this, ProjectER::Event::Action::Attack, Payload);
+
 #if WITH_EDITOR
 				/*if (bShowDebug)
 				{
@@ -1427,6 +1690,66 @@ void ABaseCharacter::Server_Revive_Implementation(FVector RespawnLocation)
 	Revive(RespawnLocation);
 }
 
+void ABaseCharacter::OnCCTagChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	UCharacterMovementComponent* const MoveComp = GetCharacterMovement();
+	if (MoveComp == nullptr)
+	{
+		return;
+	}
+	
+	if (NewCount > 0)
+	{
+		// CC 적용됨 → 이동 중지 + 이동 모드 비활성화
+		StopMove();
+		MoveComp->DisableMovement();
+	}
+	else
+	{
+		// CC 해제됨 → 다른 이동 차단 CC가 남아있는지 확인
+		if (!IsMovementBlocked())
+		{
+			MoveComp->SetMovementMode(MOVE_Walking);
+		}
+	}
+}
+
+bool ABaseCharacter::IsMovementBlocked() const
+{
+	const UAbilitySystemComponent* const ASC = GetAbilitySystemComponent();
+	if (!IsValid(ASC))
+	{
+		return false;
+	}
+	
+	return ASC->HasMatchingGameplayTag(ProjectER::State::Debuff::Hard::Stun)
+		|| ASC->HasMatchingGameplayTag(ProjectER::State::Debuff::Hard::Airborne)
+		|| ASC->HasMatchingGameplayTag(ProjectER::State::Debuff::Soft::Root);
+}
+
+void ABaseCharacter::RegisterCCTagCallbacks()
+{
+	UAbilitySystemComponent* const ASC = GetAbilitySystemComponent();
+	if (!IsValid(ASC))
+	{
+		return;
+	}
+	
+	// 이동 차단 CC 태그 감시
+	ASC->RegisterGameplayTagEvent(
+		ProjectER::State::Debuff::Hard::Stun,
+		EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ABaseCharacter::OnCCTagChanged);
+	ASC->RegisterGameplayTagEvent(
+		ProjectER::State::Debuff::Hard::Airborne,
+		EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ABaseCharacter::OnCCTagChanged);
+	ASC->RegisterGameplayTagEvent(
+		ProjectER::State::Debuff::Soft::Root,
+		EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ABaseCharacter::OnCCTagChanged);
+}
+
 void ABaseCharacter::HandleDeath()
 {
 	if (HasAuthority())
@@ -1435,6 +1758,7 @@ void ABaseCharacter::HandleDeath()
 		if (UBaseInventoryComponent* InvComp = FindComponentByClass<UBaseInventoryComponent>())
 		{
 			InvComp->ClearFoodHealEffects();
+			InvComp->ClearDrinkManaEffects();
 		}
 
 		if (AbilitySystemComponent.IsValid()) // 중복 사망 방지
@@ -1591,6 +1915,7 @@ void ABaseCharacter::HandleDown()
 		if (UBaseInventoryComponent* InvComp = FindComponentByClass<UBaseInventoryComponent>())
 		{
 			InvComp->ClearFoodHealEffects();
+			InvComp->ClearDrinkManaEffects();
 		}
 
 		if (AbilitySystemComponent.IsValid())
@@ -1742,7 +2067,8 @@ void ABaseCharacter::InitUI()
 			{
 				HUD->InitOverlay(PC, GetPlayerState(), GetAbilitySystemComponent(), GetPlayerState<ABasePlayerState>()->GetAttributeSet());
 			}
-			HUD->InitMinimapComponent(MinimapCaptureComponent);
+			// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — CPU 미니맵은 UI_MainHUD가 자체적으로 캡처 액터를 찾음
+			// HUD->InitMinimapComponent(MinimapCaptureComponent);
 			HUD->InitHeroDataFactory(HeroData);
 			HUD->InitASCFactory(GetAbilitySystemComponent());
 			PC->setMainHud(HUD->getMainHUD());
@@ -1815,6 +2141,8 @@ void ABaseCharacter::InitUI()
 
 	}
 
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 0.1초 GPU 캡처 타이머 (CPU 미니맵으로 대체됨)
+	/*
 	/// 미니맵 설정
 	if (!IsLocallyControlled())
 	{
@@ -1834,10 +2162,13 @@ void ABaseCharacter::InitUI()
 			&ABaseCharacter::UpdateMinimapCapture,
 			MinimapUpdateRate, true);
 	}
+	*/
 
 	// 방장(Listen Server)과 클라이언트 모두 HP Bar 및 미니맵 아이콘 초기화 필요
 	UpdateOverheadUI();
 
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 팀색/얼굴은 UI_MinimapProjection::CreateIconPair에서 처리
+	/*
 	// mpyi _ 미니맵용 얼굴 아이콘 마테리얼 인스턴스 초기화
 
 	if (MinimapIconMesh && HeroData && HeroData->CharacterIcon)
@@ -1887,7 +2218,8 @@ void ABaseCharacter::InitUI()
 			UpdateMinimapVisuals(teamColor);
 		}
 	}
-	
+	*/
+
 }
 
 void ABaseCharacter::UpdateOverheadUI()
@@ -1956,7 +2288,8 @@ void ABaseCharacter::OnHealthChanged()
 		}
 		else
 		{
-			APlayerController* LocalPC = GetWorld()->GetFirstPlayerController();
+			// 리슨 호스트 월드에는 PC가 여러 개 — 로컬 PC를 명시적으로 조회 (006 리슨 버그)
+			APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(GetWorld());
 			if (LocalPC)
 			{
 				AER_PlayerState* MyPS = LocalPC->GetPlayerState<AER_PlayerState>();
@@ -2022,30 +2355,22 @@ void ABaseCharacter::OnLevelChanged()
 
 void ABaseCharacter::UpdateMinimapCapture()
 {
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — CPU 미니맵으로 대체됨
+	/*
 	if (MinimapCaptureComponent && MinimapCaptureComponent->IsActive())
 		MinimapCaptureComponent->CaptureScene();
+	*/
 }
 
 void ABaseCharacter::UpdateMinimapVisuals(FLinearColor n_teamColor)
 {
+	// [LEGACY-MINIMAP] 테스트 완료 후 제거 예정 — 팀색은 UI_MinimapProjection::GetTeamColor에서 처리
+	/*
 	if (MinimapLineMaterial)
 	{
 		MinimapLineMaterial->SetVectorParameterValue(FName("TeamColor"), n_teamColor);
 	}
-}
-
-EVisionChannel ABaseCharacter::GetVisionChannelFromVisionPlayerStateComp()
-{
-	if (APlayerState* PC=GetPlayerState())
-	{
-		if (UVisionPlayerStateComp* PVC=PC->FindComponentByClass<UVisionPlayerStateComp>())
-		{
-			return PVC->GetTeamChannel();
-		}
-	}
-
-	//failed to get the vision channel
-	return EVisionChannel::None;
+	*/
 }
 
 void ABaseCharacter::InitPlayer()
@@ -2111,14 +2436,12 @@ void ABaseCharacter::Multicast_ToggleCraftingUI_Implementation(bool bShow)
 			CraftingWidgetComp->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform);
 			CraftingWidgetComp->SetRelativeLocation(FVector(0.f, 0.f, 400.f)); // HP바(300.f)보다 더 높은 위치로 지정
 
-			// 시야 판정 타이머 시작 (0.1초마다 검사)
-			GetWorld()->GetTimerManager().SetTimer(
-				CraftingUIVisibilityTimer,
-				this,
-				&ABaseCharacter::UpdateCraftingUIVisibility,
-				0.3f,
-				true
-			);
+			// 시야 상태 변화 델리게이트 구독 (폴링 타이머 대체 — 006 합-2)
+			if (UVision_VisualComp* VisionComp = FindComponentByClass<UVision_VisualComp>())
+			{
+				VisionComp->OnTargetRevealed.AddUniqueDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+				VisionComp->OnTargetHidden.AddUniqueDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+			}
 
 			// 즉시 1회 실행하여 최초 상태 반영
 			UpdateCraftingUIVisibility();
@@ -2132,8 +2455,12 @@ void ABaseCharacter::Multicast_ToggleCraftingUI_Implementation(bool bShow)
 			CraftingWidgetComp = nullptr;
 		}
 
-		// 시작했던 타이머 초기화 (파괴)
-		GetWorld()->GetTimerManager().ClearTimer(CraftingUIVisibilityTimer);
+		// 델리게이트 구독 해제 (파괴)
+		if (UVision_VisualComp* VisionComp = FindComponentByClass<UVision_VisualComp>())
+		{
+			VisionComp->OnTargetRevealed.RemoveDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+			VisionComp->OnTargetHidden.RemoveDynamic(this, &ABaseCharacter::UpdateCraftingUIVisibility);
+		}
 	}
 }
 
@@ -2141,7 +2468,8 @@ void ABaseCharacter::UpdateCraftingUIVisibility()
 {
 	if (!CraftingWidgetComp) return;
 
-	APlayerController* LocalPC = GetWorld()->GetFirstPlayerController();
+	// 리슨 호스트 월드에는 PC가 여러 개 — 로컬 PC를 명시적으로 조회 (006 리슨 버그)
+	APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(GetWorld());
 	if (!LocalPC) return;
 
 	ABaseCharacter* LocalChar = Cast<ABaseCharacter>(LocalPC->GetPawn());
@@ -2154,63 +2482,47 @@ void ABaseCharacter::UpdateCraftingUIVisibility()
 		return;
 	}
 
-	// 2. 적이거나 중립일 때 1000거리 이상이면 가림
-	float Dist = FVector::Dist(this->GetActorLocation(), LocalChar->GetActorLocation());
-	if (Dist > 1000.f)
+	// 2. 시야(Vision) 플러그인 연동: 단일 질의 API로 판정 (거리 폴백 제거 — 006 합-1)
+	if (const ULOSVisionSubsystem* VisionSubsystem = GetWorld()->GetSubsystem<ULOSVisionSubsystem>())
 	{
-		CraftingWidgetComp->SetVisibility(false);
-		return;
-	}
-
-	// 3. 거리 1000 안쪽이면 시야(장애물) 라인트레이스 확인 (월드 스태틱만 감지)
-	TArray<FHitResult> HitResults;
-	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(this);
-	QueryParams.AddIgnoredActor(LocalChar);
-
-	FCollisionObjectQueryParams ObjectParams;
-	ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
-
-	// 중간에 겹치는 투명 볼륨(PCGVolume 등)을 통과하기 위해 MultiTrace 사용
-	bool bHit = GetWorld()->LineTraceMultiByObjectType(
-		HitResults,
-		LocalChar->GetActorLocation(),
-		this->GetActorLocation(),
-		ObjectParams,
-		QueryParams
-	);
-
-	bool bBlockedByWall = false;
-
-	if (bHit)
-	{
-		for (const FHitResult& Hit : HitResults)
-		{
-			AActor* HitActor = Hit.GetActor();
-			
-			// 충돌한 액터가 '볼륨(Volume)' 클래스 계열이면 무시하고 통과시킴
-			if (HitActor && !HitActor->IsA<AVolume>())
-			{
-				bBlockedByWall = true;
-				
-				// 디버깅용 로그: 진짜 벽을 가린 녀석 출력
-				FString HitName = HitActor->GetName();
-				FString CompName = Hit.GetComponent() ? Hit.GetComponent()->GetName() : TEXT("UnknownComp");
-				UE_LOG(LogTemp, Warning, TEXT("[Crafting UI Visibility] Blocked by Actor: %s / Component: %s"), *HitName, *CompName);
-				
-				break; // 하나라도 진짜 벽에 막혔으면 더 검사할 필요 없음
-			}
-		}
-	}
-
-	if (bBlockedByWall)
-	{
-		// 중간에 진짜 장애물(벽 등)이 있으면 가림
-		CraftingWidgetComp->SetVisibility(false);
+		CraftingWidgetComp->SetVisibility(VisionSubsystem->IsActorVisibleToLocalPlayer(this));
 	}
 	else
 	{
-		// 안 가려져 있으면 보임
 		CraftingWidgetComp->SetVisibility(true);
+	}
+}
+
+void ABaseCharacter::Multicast_ShowRecoveryText_Implementation(int32 Amount, bool bIsMana)
+{
+	if (!FloatingRecoveryTextActorClass || Amount <= 0)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const FVector SpawnLocation = GetActorLocation() + FVector(
+		FMath::FRandRange(-20.f, 20.f),
+		FMath::FRandRange(-20.f, 20.f),
+		110.f);
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	AW_FloatingRecoveryTextActor* TextActor =
+		World->SpawnActor<AW_FloatingRecoveryTextActor>(
+			FloatingRecoveryTextActorClass,
+			SpawnLocation,
+			FRotator::ZeroRotator,
+			SpawnParams);
+
+	if (TextActor)
+	{
+		TextActor->InitRecoveryText(Amount, bIsMana);
 	}
 }

@@ -7,6 +7,7 @@
 #include "Abilities/GameplayAbilityTypes.h"
 #include "Containers/Array.h"
 #include "UI/UI_ToolTipManager.h" // 툴팁용
+#include "UI/UI_MinimapProjection.h" // CPU 미니맵 아이콘 구조체
 #include "UI_MainHUD.generated.h"
 
 #define MAX_TEAMMATE	2
@@ -19,11 +20,25 @@ class UUI_ToolTip;
 class UCharacterData;
 class UAbilitySystemComponent;
 class USkillDataAsset;
+struct FGameplayEffectSpec;
 
 // [김현수 추가분]
 class UUniformGridPanel;
 class UBaseInventoryComponent;
 class UW_InventorySlot;
+class UImage;
+class UBaseItemData;
+class UButton;
+class UImage;
+class UBaseItemData;
+
+// CPU 미니맵용
+class UCanvasPanel;
+class AUI_AMiniMapCapture;
+class UMaterialInstanceDynamic;
+class UMaterialInterface;
+class ABaseCharacter;
+class UTexture2D;
 
 
 UENUM(BlueprintType)
@@ -48,7 +63,7 @@ enum class ESkillKey : uint8
 	R			UMETA(DisplayName = "R Skill")
 };
 /**
- * 
+ *
  */
 UCLASS()
 class PROJECTER_API UUI_MainHUD : public UUserWidget
@@ -105,8 +120,63 @@ protected:
 	// 마우스 우클릭 확인용
 	virtual void NativeConstruct() override; // 생성자
 	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override; // CPU 미니맵 갱신용
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
+	// === CPU 미니맵 (신규) — SceneCapture 매틱 캡처 대체 ===
+
+	// 아이콘을 올릴 캔버스 (WBP에서 TEX_Minimap 위에 겹쳐 배치)
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UCanvasPanel> MinimapIconCanvas;
+
+	// 뷰 폭 (기존 SceneCapture OrthoWidth 4500 대체 — 줌 수준)
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
+	float MinimapViewWidth = 4500.f;
+
+	// 뷰 회전각 (기존 캡처 45° 회전 유지)
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
+	float MinimapViewRotationDeg = 45.f;
+
+	// 갱신 간격 (초). 0이면 매 프레임 갱신
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
+	float MinimapUpdateInterval = 0.f;
+
+	// 팀색 링 머티리얼 (TeamColor 파라미터 필요 — M_MinimapLine)
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
+	TSoftObjectPtr<UMaterialInterface> MinimapRingMaterial;
+
+	// 얼굴 원형 마스킹 머티리얼 (CharacterTexture 파라미터 필요 — M_MinimapIcon)
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
+	TSoftObjectPtr<UMaterialInterface> MinimapFaceMaterial;
+
+	// 얼굴 아이콘 픽셀 크기
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
+	float MinimapFaceIconSize = 24.f;
+
+	// 팀색 링 픽셀 크기
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Minimap")
+	float MinimapRingIconSize = 30.f;
+
+private:
+	UPROPERTY()
+	TObjectPtr<AUI_AMiniMapCapture> MinimapCaptureActor; // 전체맵 1회 캡처 액터 (맵 기준 정보 제공)
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInstanceDynamic> MinimapBackgroundMID; // 배경 UV 패닝용 MID
+
+	UPROPERTY()
+	TMap<TObjectPtr<ABaseCharacter>, FMinimapIconPair> MinimapIcons; // 캐릭터별 아이콘 풀
+
+	float MinimapUpdateAccum = 0.f;
+
+	bool bMinimapStaticParamsSet = false; // 줌/회전각 머티리얼 파라미터 1회 설정 여부
+
+	void UpdateMinimapView();
+	void UpdateMinimapBackground(const FVector& ViewCenter);
+	void UpdateMinimapIcons(const ABaseCharacter* LocalChar);
+	void EnsureMinimapRefs(); // 캡처 액터 & 배경 MID 캐싱
+
+protected:
 	// 툴팁 클래스 (에디터에서 할당)
 	UPROPERTY(EditAnywhere, Category = "UI")
 	TSubclassOf<UUserWidget> TooltipClass;
@@ -129,6 +199,10 @@ protected:
 	UFUNCTION() void OnSkillLevelUp02Hovered();
 	UFUNCTION() void OnSkillLevelUp03Hovered();
 	UFUNCTION() void OnSkillLevelUp04Hovered();
+
+	UFUNCTION() void OnCraftHovered();
+	UFUNCTION() void OnCraftClicked();
+
 
 	// .............
 
@@ -216,6 +290,10 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* skill_cool_04;
 
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* Btn_Craft;
+
 	UPROPERTY(meta = (BindWidget))
 	UButton* skill_up_01;
 
@@ -290,9 +368,6 @@ protected:
 
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* TeamLevel_02;
-
-	UPROPERTY(meta = (BindWidget))
-	UTextBlock* TextPhase;
 
 	UPROPERTY(meta = (BindWidget))
 	UImage* PhaseTimerMinTen;
@@ -372,6 +447,10 @@ protected:
 
 	void OnCooldownTagChanged(const FGameplayTag Tag, int32 NewCount, int32 SkillIndex);
 
+	void OnCooldownTimeChanged(FActiveGameplayEffectHandle Handle, float StartTime, float Duration, int32 SkillIndex);
+
+	void OnActiveGameplayEffectAddedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle Handle);
+
 	// cool down 관리
 protected:
 	FTimerHandle SkillTimerHandles[4];
@@ -435,6 +514,20 @@ private:
 public:
 	UFUNCTION()
 	void WarningSign(int number);
+private:
+	UPROPERTY()
+	bool bIsWarningActive = false;
+	UPROPERTY()
+	FTimerHandle UI_WarningTimerHandle;
+	UFUNCTION()
+	void showWarningSign();
+	void hideWarningSign();
+protected:
+	UPROPERTY(Transient, BlueprintReadOnly)
+	UWidgetAnimation* showWarningAnim;
+
+	UPROPERTY(Transient, BlueprintReadOnly)
+	UWidgetAnimation* hideWarningAnim;
 
 	// TEAM HUD Management
 public:
@@ -465,10 +558,66 @@ protected:
 
 private:
 	void RefreshInventoryGridLayout(); // [김현수 추가분]
-
+	void ClearCraftPreviewImage(UImage* TargetImage);
 
 	bool test = true;
-	int32 getSkillLevel(FGameplayTag SkillTag, bool levelUp);
 	bool GetCooldownRemainingForTag(const FGameplayTagContainer& CooldownTags, float& TimeRemaining, float& CooldownDuration);
+
+public:
+	int32 getSkillLevel(FGameplayTag SkillTag, bool levelUp);
+
+protected: // [김현수 추가분] 제작가능 아이템 표시용 프리뷰 이미지
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_0;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_1;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_2;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_3;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> IMG_CraftPreview_4;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_0;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_1;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_2;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_3;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> BTN_CraftPreview_4;
+
+	void RefreshCraftPreviewIcons();
+	void SetCraftPreviewImage(UImage* TargetImage, UBaseItemData* ItemData);
+
+	UPROPERTY()
+	TArray<TObjectPtr<UBaseItemData>> CurrentCraftPreviewItems;
+
+	UFUNCTION()
+	void OnCraftPreview0Clicked();
+
+	UFUNCTION()
+	void OnCraftPreview1Clicked();
+
+	UFUNCTION()
+	void OnCraftPreview2Clicked();
+
+	UFUNCTION()
+	void OnCraftPreview3Clicked();
+
+	UFUNCTION()
+	void OnCraftPreview4Clicked();
+
+	void TryCraftPreviewAtIndex(int32 Index);
 };
 

@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "LineOfSight/Management/Subsystem/LOSRequirementPoolSubsystem.h"
 
@@ -228,8 +228,6 @@ void ULOSRequirementPoolSubsystem::BindSlotToProvider(FLOSStampPoolSlot& Slot, U
             }
         }
     }
-
-    Provider->OnPoolSlotAcquired(Slot);
 }
 
 void ULOSRequirementPoolSubsystem::UnbindSlotFromProvider(FLOSStampPoolSlot& Slot)
@@ -245,9 +243,62 @@ void ULOSRequirementPoolSubsystem::UnbindSlotFromProvider(FLOSStampPoolSlot& Slo
             if (UVisibilityMeshComp* MeshComp = Provider->GetVisibilityMeshComp())
                 MeshComp->ClearPoolMIDs();
         }
-
-        Provider->OnPoolSlotReleased();
     }
+}
+
+// ------------------------------------------------------------------ //
+//  Public API — visibility MID pool (RT 슬롯과 독립적으로 사용)
+// ------------------------------------------------------------------ //
+
+bool ULOSRequirementPoolSubsystem::AcquireVisibilityMIDsFor(UVision_VisualComp* Provider)
+{
+    if (!Provider)
+        return false;
+
+    // 이미 보유 중이면 중복 획득 방지
+    if (ProviderMIDSlotMap.Contains(Provider))
+        return true;
+
+    UVisibilityMeshComp* MeshComp = Provider->GetVisibilityMeshComp();
+    if (!MeshComp)
+        return false;
+
+    const FName MeshKey = MeshComp->GetMeshKey();
+    if (MeshKey == NAME_None)
+        return false;
+
+    int32 PoolIdx = INDEX_NONE;
+    int32 SetIdx  = INDEX_NONE;
+    FLOSVisibilityMIDSet MIDSet = AcquireVisibilityMIDSet(MeshKey, PoolIdx, SetIdx);
+
+    if (MIDSet.IsEmpty())
+    {
+        UE_LOG(LOSVision, Verbose,
+            TEXT("ULOSRequirementPoolSubsystem::AcquireVisibilityMIDsFor >> [%s] key [%s] unavailable — caller falls back to owned mode"),
+            Provider->GetOwner() ? *Provider->GetOwner()->GetName() : TEXT("Unknown"),
+            *MeshKey.ToString());
+        return false;
+    }
+
+    ProviderMIDSlotMap.Add(Provider, MakeTuple(PoolIdx, SetIdx));
+    MeshComp->SetMIDsFromPool(MIDSet);
+    return true;
+}
+
+void ULOSRequirementPoolSubsystem::ReleaseVisibilityMIDsFor(UVision_VisualComp* Provider)
+{
+    if (!Provider)
+        return;
+
+    const TTuple<int32, int32>* Entry = ProviderMIDSlotMap.Find(Provider);
+    if (!Entry)
+        return;
+
+    ReleaseVisibilityMIDSet(Entry->Key, Entry->Value);
+    ProviderMIDSlotMap.Remove(Provider);
+
+    if (UVisibilityMeshComp* MeshComp = Provider->GetVisibilityMeshComp())
+        MeshComp->ClearPoolMIDs();
 }
 
 // ------------------------------------------------------------------ //

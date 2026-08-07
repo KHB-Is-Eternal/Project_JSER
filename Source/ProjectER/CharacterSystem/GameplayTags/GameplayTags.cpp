@@ -84,16 +84,48 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Health, "Data.Amount.Heal", "Heal Amount");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damage, "Data.Amount.Damage", "Damage Amount");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(IncomingXP, "Data.Amount.IncomingXP", "Incoming XP Amount");
-		} 
+		}
+		
+		namespace CC
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Duration, "Data.CC.Duration", "CC Duration (SetByCaller)");
+		}
+
+		namespace Source
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Skill, "Data.Source.Skill", "From Skill");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Attack, "Data.Source.Attack", "From Attack");
+		}
 	}
 
 
 	
 	namespace Event
 	{
+		namespace Data
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damage, "Event.Data.Damage", "Event data for local damage amount");
+		}
+
 		namespace Action
 		{
-			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Hit, "Event.Action.Hit", "Event for Hit");
+			namespace Hit
+			{
+				namespace BasicAttack
+				{
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(Critical, "Event.Action.Hit.BasicAttack.Critical", "Event for Hit BasicAttack Critical");
+				}
+				UE_DEFINE_GAMEPLAY_TAG_COMMENT(Damaged, "Event.Action.Hit.Damaged", "Event for Hit Damaged");
+				
+				namespace Skill
+				{
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(Q, "Event.Action.Hit.Skill.Q", "Event for Hit Skill");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(W, "Event.Action.Hit.Skill.W", "Event for Hit Skill");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(E, "Event.Action.Hit.Skill.E", "Event for Hit Skill");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(R, "Event.Action.Hit.Skill.R", "Event for Hit Skill");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(Passive, "Event.Action.Hit.Skill.Passive", "Event for Hit Skill");
+				}
+			}
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Attack, "Event.Action.Attack", "Event for Attack");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(BeginSearch, "Event.Action.BeginSearch", "Monster BeginSearch");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(EndSearch, "Event.Action.EndSearch", "Monster EndSearch");
@@ -104,6 +136,27 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Return, "Event.Action.Return", "Event for Return");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Phase1, "Event.Action.Phase1", "Event for Phase1");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Phase2, "Event.Action.Phase2", "Event for Phase2");
+
+			namespace Skill
+			{
+				namespace Execute
+				{
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(Q, "Event.Action.Skill.Execute.Q", "When Skill Execute Q");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(W, "Event.Action.Skill.Execute.W", "When Skill Execute W");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(E, "Event.Action.Skill.Execute.E", "When Skill Execute E");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(R, "Event.Action.Skill.Execute.R", "When Skill Execute R");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(Passive, "Event.Action.Skill.Execute.Passive", "When Skill Execute Passive");
+				}
+
+				namespace End
+				{
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(Q, "Event.Action.Skill.End.Q", "When Skill End Q");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(W, "Event.Action.Skill.End.W", "When Skill End W");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(E, "Event.Action.Skill.End.E", "When Skill End E");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(R, "Event.Action.Skill.End.R", "When Skill End R");
+					UE_DEFINE_GAMEPLAY_TAG_COMMENT(Passive, "Event.Action.Skill.End.Passive", "When Skill End Passive");
+				}
+			}
 		}
 
 		namespace State
@@ -151,6 +204,8 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(OpenBox, "Event.Interact.OpenBox", "");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Teleport, "Event.Interact.Teleport", "Teleport Interaction");
 		}
+
+
 	}
 
 	namespace GameplayCue
@@ -198,6 +253,8 @@ namespace ProjectER
 				UE_DEFINE_GAMEPLAY_TAG_COMMENT(E, "GameplayCue.Sound.Skill.E", "E Particle");
 				UE_DEFINE_GAMEPLAY_TAG_COMMENT(R, "GameplayCue.Sound.Skill.R", "R Particle");
 			}
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Summoner, "GameplayCue.Sound.Summoner", "");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(HitTarget, "GameplayCue.Sound.HitTarget", "");
 		}
 		namespace Decal
 		{
@@ -222,14 +279,26 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(TryRevive, "GameplayCue.Combat.TryRevive", "Cue for Try Revive Ally");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(LevelUp, "GameplayCue.Combat.LevelUp", "Cue for Level Up");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Death, "GameplayCue.Combat.Death", "Cue for Death");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(DamageText, "GameplayCue.Combat.DamageText", "Cue for Spawn Damage Floating Text");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(RecoveryText, "GameplayCue.Combat.RecoveryText", "Cue for Spawn Recovery Floating Text");
 		}
 
 		namespace Skill
 		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Actor, "GameplayCue.Skill.Actor", "");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Summoner, "GameplayCue.Skill.Summoner", "Cue for Skill SummonVFX");
-			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Range, "GameplayCue.Skill.Range", "Cue for RangeVFX");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(HitTarget, "GameplayCue.Skill.HitTarget", "Cue for HitTargetVFX");
 		}
+		
+		namespace CC
+        {
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Slow, "GameplayCue.CC.Slow", "Slow VFX/SFX");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Root, "GameplayCue.CC.Root", "Root VFX/SFX");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Silence, "GameplayCue.CC.Silence", "Silence VFX/SFX");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Stun, "GameplayCue.CC.Stun", "Stun VFX/SFX");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Airborne, "GameplayCue.CC.Airborne", "Airborne VFX/SFX");
+        }
+            
 	}
 	
 	namespace State
@@ -247,6 +316,7 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(FlyStart, "State.Action.FlyStart", "FlyStart State");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(FlyAttack, "State.Action.FlyAttack", "FlyAttack State");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(FlyEnd, "State.Action.FlyEnd", "FlyEnd State");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Skill, "State.Action.Skill", "Skill State");
 		}
 
 		namespace Buff
@@ -287,6 +357,11 @@ namespace ProjectER
 		{
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Unselectable, "State.Status.Unselectable", "Unselectable State"); // 적 타겟팅은 되지만 일부 스킬 불가(Down 시 부여)
 		}*/
+
+		namespace Zone
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Safe, "State.Zone.Safe", "Place SafeZone"); // 임시 안전 지대에 위치
+		}
 	}
 
 	namespace Status
@@ -362,6 +437,27 @@ namespace ProjectER
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(CriticalHit, "Montage.Common.CriticalHit", "CriticalHit Action Montage");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(TryRevive, "Montage.Common.TryRevive", "TryRevive Action Montage");
 			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Revive, "Montage.Common.Revive", "Revive Action Montage");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Stun, "Montage.Common.Stun", "Stun Reaction Montage");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Airborne, "Montage.Common.Airborne", "Airborne Reaction Montage");
+		}
+	}
+
+	namespace Skill
+	{
+		namespace Animation
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Aiming, "Skill.Animation.Aiming", "Skill Manual Aiming State Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Casting, "Skill.Animation.Casting", "Skill Casting State Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Active, "Skill.Animation.Active", "Skill Active (Hit) State Tag");
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(Backswing, "Skill.Animation.Backswing", "Skill Backswing State Tag");
+		}
+		namespace Option
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(AllowMovement, "Skill.Option.AllowMovement", "Allows movement during casting/active phase");
+		}
+		namespace Data
+		{
+			UE_DEFINE_GAMEPLAY_TAG_COMMENT(CoolTime, "Skill.Data.CoolTime", "Cooldown Tag for SetByCaller");
 		}
 	}
 }

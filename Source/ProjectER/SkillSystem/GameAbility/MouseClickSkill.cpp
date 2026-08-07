@@ -8,8 +8,13 @@
 #include "Monster/BaseMonster.h"
 #include "SkillSystem/GameplayAbilityTargetActor/MouseLocationTargetActor.h"
 #include "SkillSystem/SkillConfig/BaseSkillConfig.h"
+#include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
+#include "SkillSystem/GameplayEffectComponent/BaseGEC.h"
+#include "SkillSystem/GAS/ProjectERGameplayEffectContext.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "AbilitySystemComponent.h"
+#include "GameFramework/GameStateBase.h"
+#include "SkillSystem/SkillDataAsset.h"
 
 UMouseClickSkill::UMouseClickSkill()
 {
@@ -19,8 +24,67 @@ UMouseClickSkill::UMouseClickSkill()
 void UMouseClickSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+
+	if (TriggerEventData && TriggerEventData->TargetData.IsValid(0))
+	{
+		const FVector Location = TriggerEventData->TargetData.Get(0)->GetEndPoint();
+		if (IsInRange(Location))
+		{
+			ExecuteSmartCast(*TriggerEventData);
+			return;
+		}
+	}
+
+	const bool bIsManual = (TriggerEventData != nullptr && !TriggerEventData->TargetData.IsValid(0));
+	StartIndicatorMode(bIsManual);
+}
+
+void UMouseClickSkill::ExecuteSmartCast(const FGameplayEventData& EventData)
+{
+	const FVector Location = EventData.TargetData.Get(0)->GetEndPoint();
+	
+	// 타겟팅 이펙트 컨텍스트 생성 및 위치 저장
+	FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
+	ContextHandle.AddOrigin(Location);
+	ContextHandle.AddSourceObject(this);
+	TargetLocationEffectContext = ContextHandle;
+
+	// 즉시 실행으로 분기
+	RotateToLocation(Location);
+	PrepareToActiveSkill();
+}
+
+void UMouseClickSkill::StartIndicatorMode(bool bIsManual)
+{
+	Super::StartIndicatorMode(bIsManual);
 	SetWaitExternalTargetEventTask();
 	SetWaitTargetTask();
+}
+
+bool UMouseClickSkill::ShouldAbilityRespondToEvent(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayEventData* Payload) const
+{
+	if (!Super::ShouldAbilityRespondToEvent(ActorInfo, Payload)) return false;
+
+	// 페이로드가 없거나 위치 정보가 없으면 기본 허용
+	if (!Payload || !Payload->TargetData.IsValid(0)) return true;
+
+	const FVector Location = Payload->TargetData.Get(0)->GetEndPoint();
+	if (!Location.IsZero())
+	{
+		if (!IsInRange(Location))
+		{
+			if (ActorInfo->PlayerController.IsValid())
+			{
+				return true;
+			}
+
+			// 몬스터(AI)는 사거리 밖이면 즉시 시전 거부합니다.
+			UE_LOG(LogTemp, Warning, TEXT("[MouseClickSkill] Rejected: Location out of range."));
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool UMouseClickSkill::TryGetMouseLocationInRange(FVector& OutLocation) const
@@ -36,23 +100,27 @@ bool UMouseClickSkill::TryGetMouseLocationInRange(FVector& OutLocation) const
 
 bool UMouseClickSkill::IsInRange(const FVector& Location) const
 {
-	AActor* Avatar = GetAvatarActorFromActorInfo();
-	if (IsValid(Avatar) == false) {
-		//UE_LOG(LogTemp, Warning, TEXT("IsInRange ::IsValid(Avatar) == false"));
+	UMouseClickSkillConfig* Config = Cast<UMouseClickSkillConfig>(CachedConfig);
+	if (IsValid(Config) == false) {
 		return false;
 	}
 
-	UMouseClickSkillConfig* Config = Cast<UMouseClickSkillConfig>(CachedConfig);
-	if (IsValid(Config) == false) {
-		//UE_LOG(LogTemp, Warning, TEXT("IsInRange ::IsValid(Config) == false"));
+	// 사거리 제한을 무시하도록 설정되어 있다면 무조건 참 반환
+	if (Config->IgnoreRangeLimit())
+	{
+		return true;
+	}
+
+	AActor* Avatar = GetAvatarActorFromActorInfo();
+	if (IsValid(Avatar) == false) {
 		return false;
 	}
 
 	const FVector InstigatorLocation = Avatar->GetActorLocation();
 	const float DistanceSquared = FVector::DistSquaredXY(Location, InstigatorLocation);
-	const float RangeWithBuffer = Config->GetRange();
+	const float RangeWithBuffer = GetMaxRange();
 
-	return DistanceSquared <= FMath::Square(RangeWithBuffer);
+	return DistanceSquared <= FMath::Square(RangeWithBuffer + 50.0f); // 50.0f 버퍼 적용
 }
 
 void UMouseClickSkill::RotateToLocation(const FVector& Location)
@@ -75,59 +143,33 @@ void UMouseClickSkill::RotateToLocation(const FVector& Location)
 	Avatar->SetActorRotation(NewRotation);
 }
 
-void UMouseClickSkill::ExecuteSkill()
+void UMouseClickSkill::ApplyExecutionEffects()
 {
-	if (IsValid(CachedConfig) == false || CachedConfig->GetExecutionEffects().Num() <= 0) return;
-
-	AActor* Avatar = GetAvatarActorFromActorInfo();
-	if (IsValid(Avatar) == false) return;
-
-	if (HasAuthority(&CurrentActivationInfo))
+	const TArray<FSkillExecutionPhase>& Phases = CachedConfig->GetExecutionPhases();
+	if (Phases.IsValidIndex(CurrentPhaseIndex))
 	{
-		FGameplayEffectContext* EffectContext = TargetLocationEffectContext.Get();
-		if (EffectContext == nullptr || !EffectContext->HasOrigin())
+		const FGameplayEffectContext* EffectContext = TargetLocationEffectContext.Get();
+		FGameplayEffectContextHandle ContextToUse;
+
+		if (EffectContext && EffectContext->HasOrigin())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("ExecuteSkill::TargetLocationEffectContext has no valid origin"));
-			//FinishSkill();
-			return;
+			ContextToUse = TargetLocationEffectContext;
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ApplyExecutionEffects::TargetLocationEffectContext has no valid origin. Falling back to default context."));
+			UAbilitySystemComponent* const ASC = GetAbilitySystemComponentFromActorInfo();
+			ContextToUse = IsValid(ASC) ? ASC->MakeEffectContext() : FGameplayEffectContextHandle();
 		}
 
-		EffectContext->SetAbility(this);
-
-		UAbilitySystemComponent* InstigatorASC = GetAbilitySystemComponentFromActorInfo();
-		if (!IsValid(InstigatorASC))
-		{
-			//FinishSkill();
-			return;
-		}
-
-		const TArray<TObjectPtr<USkillEffectDataAsset>>& ExecutionEffects = CachedConfig->GetExecutionEffects();
-		for (USkillEffectDataAsset* EffectData : ExecutionEffects)
-		{
-			if (!EffectData) continue;
-
-			TArray<FGameplayEffectSpecHandle> SpecHandles = EffectData->MakeSpecs(InstigatorASC, this, Avatar, TargetLocationEffectContext);
-			for (FGameplayEffectSpecHandle& SpecHandle : SpecHandles)
-			{
-				if (!SpecHandle.IsValid()) continue;
-				InstigatorASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get(), InstigatorASC->GetPredictionKeyForNewAction());
-			}
-		}
-
-		ABaseCharacter* Character = Cast<ABaseCharacter>(Avatar);
-		if (Character) Character->StopMove();
-	}
-
-	if (IsLocallyControlled())
-	{
-		OnExecuteSkill_InClient();
+		ApplyExcutionEffectToSelf(Phases[CurrentPhaseIndex].Effects, ContextToUse);
 	}
 }
+
 
 void UMouseClickSkill::OnCancelAbility()
 {
 	TargetLocationEffectContext = FGameplayEffectContextHandle();
-	CurrentMouseLocationTargetActor = nullptr;
 	Super::OnCancelAbility();
 }
 
@@ -142,51 +184,16 @@ void UMouseClickSkill::SetWaitExternalTargetEventTask()
 	WaitEventTask->ReadyForActivation();
 }
 
-void UMouseClickSkill::SetWaitTargetTask()
+TSubclassOf<class AGameplayAbilityTargetActor> UMouseClickSkill::GetTargetActorClass() const
 {
-	UAbilityTask_WaitTargetData* WaitTargetTask = UAbilityTask_WaitTargetData::WaitTargetData(
-		this,
-		TEXT("WaitMouseLocationTargetTask"),
-		EGameplayTargetingConfirmation::UserConfirmed,
-		AMouseLocationTargetActor::StaticClass()
-	);
-
-	WaitTargetTask->ValidData.AddDynamic(this, &UMouseClickSkill::OnTargetDataReady);
-	WaitTargetTask->Cancelled.AddDynamic(this, &UMouseClickSkill::OnTargetCancelled);
-
-	AGameplayAbilityTargetActor* SpawnedActor = nullptr;
-	AMouseLocationTargetActor* MouseLocationTargetActor = nullptr;
-	if (WaitTargetTask->BeginSpawningActor(this, AMouseLocationTargetActor::StaticClass(), SpawnedActor))
-	{
-		MouseLocationTargetActor = Cast<AMouseLocationTargetActor>(SpawnedActor);
-		if (MouseLocationTargetActor)
-		{
-			CurrentMouseLocationTargetActor = MouseLocationTargetActor;
-			MouseLocationTargetActor->PrimaryPC = Cast<APlayerController>(GetActorInfo().PlayerController);
-			WaitTargetTask->FinishSpawningActor(this, SpawnedActor);
-		}
-	}
-
-	WaitTargetTask->ReadyForActivation();
-
-	FVector PendingLocation = FVector::ZeroVector;
-	if (ConsumePendingExternalTargetLocation(PendingLocation))
-	{
-		MouseLocationTargetActor->SubmitExternalLocation(PendingLocation);
-		return;
-	}
-
-	APlayerController* PlayerController = Cast<APlayerController>(GetActorInfo().PlayerController.Get());
-	const bool bCanUseMouseConfirm = IsLocallyControlled() && IsValid(PlayerController) && PlayerController->IsLocalPlayerController();
-	if (bCanUseMouseConfirm)
-	{
-		MouseLocationTargetActor->TryConfirmMouseLocation();
-	}
+	return AMouseLocationTargetActor::StaticClass();
 }
 
 void UMouseClickSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& DataHandle) 
 {
-	if (!DataHandle.IsValid(0) /*|| !CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo) */ ) return;
+	Super::OnTargetDataReady(DataHandle);
+
+	if (!DataHandle.IsValid(0)) return;
 
 	FVector Location = FVector::ZeroVector;
 	const FGameplayAbilityTargetData* TargetData = DataHandle.Get(0);
@@ -206,10 +213,13 @@ void UMouseClickSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle&
 		return;
 	}
 
+	AActor* Avatar = GetAvatarActorFromActorInfo();
 	FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
 	ContextHandle.AddOrigin(Location);
 	ContextHandle.AddSourceObject(this);
-	TargetLocationEffectContext = ContextHandle;
+	ContextHandle.SetAbility(this);
+	ContextHandle.AddInstigator(Avatar, Avatar);
+	TargetLocationEffectContext = ContextHandle.Duplicate();
 
 	RotateToLocation(Location);
 	PrepareToActiveSkill();
@@ -217,8 +227,7 @@ void UMouseClickSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle&
 
 void UMouseClickSkill::OnTargetCancelled(const FGameplayAbilityTargetDataHandle& DataHandle)
 {
-	CurrentMouseLocationTargetActor = nullptr;
-	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+	Super::OnTargetCancelled(DataHandle);
 }
 
 void UMouseClickSkill::OnExternalTargetLocationReceived(FGameplayEventData Payload)
@@ -240,9 +249,9 @@ void UMouseClickSkill::SubmitExternalTargetLocation(const FVector& InLocation)
 		return;
 	}
 
-	if (CurrentMouseLocationTargetActor.IsValid())
+	if (AMouseLocationTargetActor* MouseLocationTargetActor = Cast<AMouseLocationTargetActor>(CurrentTargetActor.Get()))
 	{
-		CurrentMouseLocationTargetActor->SubmitExternalLocation(InLocation);
+		MouseLocationTargetActor->SubmitExternalLocation(InLocation);
 		return;
 	}
 
@@ -288,3 +297,25 @@ FVector UMouseClickSkill::GetMouseLocation() const
 	}
 	return Avatar->GetActorLocation();
 }
+
+void UMouseClickSkill::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
+{
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+void UMouseClickSkill::ExecuteSkill()
+{
+	Super::ExecuteSkill();
+}
+
+void UMouseClickSkill::CompleteFinishSkill()
+{
+	Super::CompleteFinishSkill();
+}
+
+void UMouseClickSkill::CleanUpSkill()
+{
+	PendingExternalTargetLocation.Reset();
+	AffectedActor = nullptr;
+}
+

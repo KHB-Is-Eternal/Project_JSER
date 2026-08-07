@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
@@ -58,26 +58,13 @@ private:
 public:
 
 	UPROPERTY()
-	FOnAttributeChanged OnMaxHealthChanged;
-
-	UPROPERTY()
 	FOnAttributeChanged OnHealthChanged;
-
-	UPROPERTY()
-	FOnAttributeChanged OnAttackSpeedChanged;
-
-	UPROPERTY()
-	FOnAttributeChanged OnMoveSpeedChanged;
 
 	UPROPERTY()
 	FOnTakeDamage OnMonsterHit;
 
 	UPROPERTY()
 	FOnTakeDamage OnMonsterDeath;
-protected:
-
-
-private:
 
 
 };

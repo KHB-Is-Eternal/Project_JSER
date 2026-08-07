@@ -58,6 +58,15 @@ public:
         AActor* Target,
         bool bVisible);
 
+    // --- Unified visibility query --- //
+    /** 단일 질의 API: Target이 지금 로컬 플레이어에게 보이는가?
+     *  판정 순서는 VisionPlayerStateComp::ComputeTargetVisibility와 동일 (부작용 없음).
+     *  정책(006 감사, 2026-07): 시야 게이팅 대상 액터는 Vision_VisualComp를 부착한다.
+     *  컴포넌트가 없으면 게이팅 대상이 아닌 것으로 보고 true를 반환하되,
+     *  부착 누락을 조기에 드러내기 위해 액터당 1회 경고를 남긴다. */
+    UFUNCTION(BlueprintPure, Category="LineOfSight")
+    bool IsActorVisibleToLocalPlayer(const AActor* Target) const;
+
     // --- Local player lookup (shared with GameStateComp) --- //
     static UVisionPlayerStateComp* GetLocalVisionPS(UWorld* World);
 
@@ -79,6 +88,9 @@ public:
 
 
 private:
-    
+
     TMap<AActor*, FTargetVisibilityVotes> VisibilityVotes;
+
+    // IsActorVisibleToLocalPlayer의 컴포넌트 미부착 경고를 액터당 1회로 제한하기 위한 캐시
+    mutable TSet<TWeakObjectPtr<const AActor>> MissingVisualCompWarned;
 };

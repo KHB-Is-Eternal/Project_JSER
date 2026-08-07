@@ -1,4 +1,4 @@
-﻿
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -9,7 +9,7 @@
 #include "ER_PlayerState.generated.h"
 
 
-class UAbilitySystemComponent;
+class UProjectERASC;
 class UBaseAttributeSet;
 
 
@@ -43,6 +43,10 @@ public:
 	void AddDamageContributor(APlayerState* AttackerPS, float Damage, float Now);
 	void GetAssists(float Now, float WindowSec, APlayerState* KillerPS, TArray<APlayerState*>& OutAssists) const;
 	void ResetDamageContrib();
+
+	// 전투 가능 상태 판정 (사망 혹은 빈사 상태인지 체크)
+	UFUNCTION(BlueprintPure, Category = "State")
+	bool IsCombatEffective() const;
 
 	// Getter
 	UBaseAttributeSet* GetAttributeSet() const { return AttributeSet; }
@@ -115,7 +119,7 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	ETeamType TeamType = ETeamType::None;
 
-	UPROPERTY(Replicated, BlueprintReadOnly)
+	UPROPERTY(Replicated, BlueprintReadWrite)
 	bool bIsDead = false;
 
 	UPROPERTY(Replicated, BlueprintReadOnly)
@@ -158,7 +162,7 @@ public:
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "GAS")
-	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
+	TObjectPtr<UProjectERASC> AbilitySystemComponent;
 
 	UPROPERTY(VisibleAnywhere, Category = "GAS")
 	TObjectPtr<UBaseAttributeSet> AttributeSet;

@@ -1,4 +1,5 @@
 #include "ER_GameState.h"
+#include "GameFramework/PlayerState.h"
 #include "GameModeBase/State/ER_PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "CharacterSystem/Data/CharacterData.h"
@@ -16,7 +17,8 @@ void AER_GameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AER_GameState, CurrentPhase);
 	DOREPLIFETIME(AER_GameState, PhaseServerTime);
 	DOREPLIFETIME(AER_GameState, PhaseDuration);
-	
+	DOREPLIFETIME(AER_GameState, bGameStarted);
+
 }
 
 void AER_GameState::BuildTeamCache()
@@ -112,7 +114,7 @@ bool AER_GameState::GetTeamEliminate(int32 idx)
 		for (auto& UniqueIdStr : TeamCache[idx])
 		{
 			AER_PlayerState* PS = GetPlayerStateByUniqueId(UniqueIdStr);
-			if (PS && !PS->bIsDead)
+			if (PS && PS->IsCombatEffective())
 			{
 				++AliveCount;
 			}
@@ -159,6 +161,11 @@ void AER_GameState::OnRep_Phase()
 	OnPhaseChanged.Broadcast(GetCurrentPhase());
 }
 
+void AER_GameState::OnRep_GameStarted()
+{
+	OnGameStarted.Broadcast();
+}
+
 float AER_GameState::GetPhaseRemainingTime() const
 {
 	const float NowServer = GetServerWorldTimeSeconds();
@@ -170,11 +177,21 @@ const TArray<TSoftObjectPtr<UCharacterData>>& AER_GameState::GetAvailableCharact
 	return AvailableCharacterData;
 }
 
+void AER_GameState::NotifyHazardVisualsFinished()
+{
+	OnHazardVisualsFinished.Broadcast();
+}
+
 void AER_GameState::Multicast_OnHazardPhaseChanged_Implementation(const TArray<int32>& NewDangerZoneIDs)
 {
 	OnHazardZonesChanged.Broadcast(NewDangerZoneIDs);
 
 	OnDangerZonesReceived(NewDangerZoneIDs);
+}
+
+void AER_GameState::Multicast_SetHazardIntensity_Implementation(const TArray<int32>& ZoneIDs, float Intensity)
+{
+	OnHazardIntensityReceived(ZoneIDs, Intensity);
 }
 
 void AER_GameState::Multicast_BroadcastChatMessage_Implementation(const FString& Message)
@@ -211,3 +228,30 @@ AER_PlayerState* AER_GameState::GetPlayerStateByUniqueId(const FString& InUnique
 	return nullptr;
 }
 
+void AER_GameState::AddPlayerState(APlayerState* PlayerState)
+{
+	Super::AddPlayerState(PlayerState);
+
+	check(PlayerState);
+
+	if (PlayerState == nullptr)
+	{
+		return;
+	}
+
+	OnPlayerStateAddedDelegate.Broadcast(PlayerState);
+}
+
+void AER_GameState::RemovePlayerState(APlayerState* PlayerState)
+{
+	Super::RemovePlayerState(PlayerState);
+
+	check(PlayerState);
+
+	if (PlayerState == nullptr)
+	{
+		return;
+	}
+
+	OnPlayerStateRemovedDelegate.Broadcast(PlayerState);
+}

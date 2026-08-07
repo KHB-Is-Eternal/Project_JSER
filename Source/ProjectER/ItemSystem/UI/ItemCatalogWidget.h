@@ -1,0 +1,115 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
+#include "ItemCatalogWidget.generated.h"
+
+class UUniformGridPanel;
+class UItemCatalogSlotWidget;
+class UBaseItemData;
+class UButton;
+class UTextBlock;
+
+UENUM(BlueprintType)
+enum class ECatalogFilter : uint8
+{
+	All            UMETA(DisplayName = "전체 아이템"),
+	Consumable     UMETA(DisplayName = "소비 아이템"),
+	Recovery       UMETA(DisplayName = "회복 아이템"),
+	Material       UMETA(DisplayName = "재료 아이템")
+};
+
+UCLASS()
+class PROJECTER_API UItemCatalogWidget : public UUserWidget
+{
+	GENERATED_BODY()
+	
+protected:
+	virtual void NativeConstruct() override;
+
+	// 아이템 아이콘들이 배치될 그리드 패널 (4x6 배치용)
+	UPROPERTY(meta = (BindWidget))
+	UUniformGridPanel* ItemGridContainer;
+
+	// 동적으로 생성할 개별 슬롯 위젯 클래스
+	UPROPERTY(EditAnywhere, Category = "Catalog")
+	TSubclassOf<UItemCatalogSlotWidget> SlotWidgetClass;
+
+	// [김현수 추가분] 필터 탭 강조색 (선택 탭 = Active, 나머지 = Inactive). BP에서 조정.
+	UPROPERTY(EditAnywhere, Category = "Catalog|Style")
+	FLinearColor ActiveFilterColor = FLinearColor(0.20f, 0.55f, 0.90f, 1.f);
+
+	UPROPERTY(EditAnywhere, Category = "Catalog|Style")
+	FLinearColor InactiveFilterColor = FLinearColor::White;
+
+	// === Filter Buttons ===
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_FilterAll;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_FilterConsumable;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_FilterRecovery;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_FilterMaterial;
+
+	// [김현수 추가분] 레어도 정렬 토글 버튼 + 현재 방향 라벨
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_SortRarity;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UTextBlock* Text_SortRarity;
+
+	// === Pagination UI ===
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_PrevPage;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* Btn_NextPage;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UTextBlock* Text_PageInfo;
+
+public:
+	// 필터링 적용 함수
+	UFUNCTION(BlueprintCallable, Category = "Catalog")
+	void FilterItems(ECatalogFilter FilterType);
+
+private:
+	// 버튼 클릭 이벤트 바인딩
+	UFUNCTION() void OnClickFilterAll();
+	UFUNCTION() void OnClickFilterConsumable();
+	UFUNCTION() void OnClickFilterRecovery();
+	UFUNCTION() void OnClickFilterMaterial();
+
+	// 페이지 이동 버튼 이벤트 바인딩
+	UFUNCTION() void OnClickPrevPage();
+	UFUNCTION() void OnClickNextPage();
+
+	// [김현수 추가분] 레어도 정렬 토글 (누를 때마다 낮은순 ↔ 높은순)
+	UFUNCTION() void OnClickSortRarity();
+
+	// [김현수 추가분] 정렬 버튼 라벨 갱신
+	void UpdateSortLabel();
+
+	// 모든 아이템 데이터를 불러와 컨테이너에 추가하는 함수
+	void LoadAllItems(ECatalogFilter FilterType = ECatalogFilter::All);
+
+	// 페이지 버튼 상태 및 텍스트 갱신
+	void UpdatePaginationUI();
+
+	// [김현수 추가분] 현재 필터에 해당하는 탭만 강조색으로 표시
+	void UpdateFilterButtonStyles();
+
+	// 페이징 상태 변수
+	int32 CurrentPage = 0;
+	int32 MaxPage = 0;
+	ECatalogFilter CurrentFilter = ECatalogFilter::All;
+
+	// [김현수 추가분] 레어도 정렬 방향. true=낮은순(Normal→Unique), false=높은순.
+	bool bRaritySortAscending = true;
+};

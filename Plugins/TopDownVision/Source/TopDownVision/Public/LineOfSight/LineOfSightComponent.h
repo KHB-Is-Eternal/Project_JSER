@@ -15,11 +15,9 @@ class UMaterialInstanceDynamic;
 
 // Vision helpers
 class USphereComponent;
-class UBoundaryAwareVisibilityTracer;
 class UPrimitiveComponent;
 
 class ULOSVisionSubsystem;
-class UVolumeVisibilityEvaluatorComp3D;
 class UVisionGameStateComp;
 
 
@@ -171,9 +169,6 @@ protected:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="LineOfSight|Detection")
     USphereComponent* VisionSphere = nullptr;
-
-    UPROPERTY(Transient)
-    UBoundaryAwareVisibilityTracer* VisibilityTracer = nullptr;// this will be used for doing shape aware tracing
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="LineOfSight|Detection")
     TEnumAsByte<ECollisionChannel> ObstacleTraceChannel = ECC_Visibility;

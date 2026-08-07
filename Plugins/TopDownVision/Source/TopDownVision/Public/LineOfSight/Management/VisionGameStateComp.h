@@ -12,7 +12,7 @@ class UVisionPlayerStateComp;
 TOPDOWNVISION_API DECLARE_LOG_CATEGORY_EXTERN(VisionGameStateComp, Log, All);
 
 // -------------------------------------------------------------------------- //
-//  Fast Array
+//  Visible actor entry
 // -------------------------------------------------------------------------- //
 
 USTRUCT()
@@ -27,46 +27,13 @@ struct FVisibleActorEntry : public FFastArraySerializerItem
     EVisionChannel ObserverTeam = EVisionChannel::None;
 };
 
-USTRUCT()
-struct FVisibleActorArray : public FFastArraySerializer
-{
-    GENERATED_BODY()
-
-    UPROPERTY()
-    TArray<FVisibleActorEntry> Items;
-
-    UPROPERTY()
-    UVisionGameStateComp* OwnerComp = nullptr;
-
-    void PostReplicatedAdd   (const TArrayView<int32>& AddedIndices,   int32 FinalSize);
-    void PreReplicatedRemove (const TArrayView<int32>& RemovedIndices, int32 FinalSize);
-    void PostReplicatedChange(const TArrayView<int32>& ChangedIndices, int32 FinalSize);
-
-    bool NetDeltaSerialize(FNetDeltaSerializeInfo& DeltaParms)
-    {
-        return FFastArraySerializer::FastArrayDeltaSerialize<FVisibleActorEntry, FVisibleActorArray>(
-            Items, DeltaParms, *this);
-    }
-};
-
-template<>
-struct TStructOpsTypeTraits<FVisibleActorArray> : public TStructOpsTypeTraitsBase2<FVisibleActorArray>
-{
-    enum { WithNetDeltaSerializer = true };
-};
-
-// -------------------------------------------------------------------------- //
-//  Pending entry — used when VisionPS isn't ready during a push callback
-// -------------------------------------------------------------------------- //
-
-struct FPendingVisibilityEntry
-{
-    TWeakObjectPtr<AActor> Target;
-    EVisionChannel         Team    = EVisionChannel::None;
-};
-
 // -------------------------------------------------------------------------- //
 //  Component
+//
+//  [005 부록 A] 서버 권위 스토어. VisibleActors는 더 이상 전 클라이언트에
+//  리플리케이트하지 않는다 — 대신 항목이 추가/제거될 때 CanSeeTeam을 만족하는
+//  각 플레이어의 VisionPlayerStateComp(COND_OwnerOnly FastArray)로 팬아웃한다.
+//  각 클라이언트는 자기 팀과 관련된 항목만 수신한다.
 // -------------------------------------------------------------------------- //
 
 UCLASS(ClassGroup=(Vision), meta=(BlueprintSpawnableComponent))
@@ -76,10 +43,6 @@ class TOPDOWNVISION_API UVisionGameStateComp : public UActorComponent
 
 public:
     UVisionGameStateComp();
-
-protected:
-    virtual void BeginPlay() override;
-    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 public:
     // --- Server API --- //
@@ -97,20 +60,17 @@ public:
     UFUNCTION(BlueprintCallable, Category="Vision")
     EVisionChannel GetLocalPlayerTeamChannel() const;
 
-    // --- FastArray callbacks (client) --- //
-    void OnTargetBecameVisible(AActor* Target, EVisionChannel Team);
-    void OnTargetBecameHidden (AActor* Target, EVisionChannel Team);
+    /** [서버 전용] 플레이어 팀 확정/변경 시, 스토어에서 해당 플레이어가 볼 수 있는
+     *  항목만 걸러 그 플레이어의 OwnerOnly 배열을 재구성한다. */
+    void RebuildPlayerVisibleEntries(UVisionPlayerStateComp* VisionPS) const;
 
-    // --- Called by VisionPlayerStateComp::RefreshVisibility --- //
-    void FlushPendingReveals(UVisionPlayerStateComp* VisionPS);
-
-    const TArray<FVisibleActorEntry>& GetVisibleActors() const { return VisibleActors.Items; }
+    const TArray<FVisibleActorEntry>& GetVisibleActors() const { return VisibleActors; }
 
 private:
-    UPROPERTY(Replicated)
-    FVisibleActorArray VisibleActors;
+    /** 항목 추가/제거를 CanSeeTeam을 만족하는 모든 플레이어의 OwnerOnly 배열로 전파 */
+    void PushEntryToEligiblePlayers(AActor* Target, EVisionChannel Team, bool bAdd) const;
 
-    // bVisible removed — pending entries no longer need it.
-    // The drain just calls ReevaluateTargetVisibility which reads live state.
-    TArray<FPendingVisibilityEntry> PendingReveals;
+    // 서버 권위 스토어 — 리플리케이트하지 않음 (005 부록 A: 팀 시야 전체 유출 차단)
+    UPROPERTY()
+    TArray<FVisibleActorEntry> VisibleActors;
 };

@@ -2,8 +2,8 @@
 
 #include "SkillSystem/GameplayEffect/BaseGameplayEffect.h"
 #include "GameplayEffect.h"
-#include "SkillSystem/GameplayEffectExecutionCalculation/BaseExecutionCalculation.h"
-#include "SkillSystem/GameplayModMagnitudeCalculation/BaseModMagnitudeCalculation.h"
+//#include "SkillSystem/GameplayEffectExecutionCalculation/BaseExecutionCalculation.h"
+//#include "SkillSystem/GameplayModMagnitudeCalculation/BaseModMagnitudeCalculation.h"
 
 UBaseGameplayEffect::UBaseGameplayEffect() {
 }
@@ -11,7 +11,16 @@ UBaseGameplayEffect::UBaseGameplayEffect() {
 #if WITH_EDITOR
 void UBaseGameplayEffect::PostEditChangeProperty(FPropertyChangedEvent &PropertyChangedEvent) {
     Super::PostEditChangeProperty(PropertyChangedEvent);
-
+    
+    // Duration/Infinite GE는 Modifier/Execution 강제를 스킵
+    // CC GE 등 단순 비율 Modifier를 사용하는 경우를 위해
+    if (DurationPolicy != EGameplayEffectDurationType::Instant)
+    {
+        this->MarkPackageDirty();
+        return;
+    }
+    
+    /*
     // 1. Executions 고정: 하나라도 존재할 때만 클래스를 강제함 (자동 추가 X)
     for (FGameplayEffectExecutionDefinition &ExecDef : Executions) {
         if (ExecDef.CalculationClass == nullptr ||
@@ -37,6 +46,7 @@ void UBaseGameplayEffect::PostEditChangeProperty(FPropertyChangedEvent &Property
             ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(NewCustomCalc);
         }
     }
+    */
 
     // 변경사항이 즉시 에디터에 반영되도록 합니다.
     this->MarkPackageDirty();

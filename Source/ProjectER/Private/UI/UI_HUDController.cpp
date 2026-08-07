@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/UI_HUDController.h"
@@ -17,129 +17,109 @@ void UUI_HUDController::BindCallbacksToDependencies()
 {
     UBaseAttributeSet* BaseAS = CastChecked<UBaseAttributeSet>(AttributeSet);
 
-    // LV 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetLevelAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                BroadcastLVChanges(Data.NewValue);
-            }
-        );
+    // AddLambda([this]...) 대신 AddUObject를 사용합니다.
+    // AddUObject는 내부적으로 TWeakObjectPtr를 사용하여 this가 GC로 파괴되면
+    // 자동으로 바인딩을 해제하므로 댕글링 포인터 크래시를 원천 방지합니다.
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetLevelAttribute()).AddUObject(this, &UUI_HUDController::OnLevelAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetXPAttribute()).AddUObject(this, &UUI_HUDController::OnXPAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetHealthAttribute()).AddUObject(this, &UUI_HUDController::OnHealthAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetMaxHealthAttribute()).AddUObject(this, &UUI_HUDController::OnMaxHealthAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetStaminaAttribute()).AddUObject(this, &UUI_HUDController::OnStaminaAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetMaxStaminaAttribute()).AddUObject(this, &UUI_HUDController::OnMaxStaminaAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetAttackPowerAttribute()).AddUObject(this, &UUI_HUDController::OnAttackPowerAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetAttackSpeedAttribute()).AddUObject(this, &UUI_HUDController::OnAttackSpeedAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetDefenseAttribute()).AddUObject(this, &UUI_HUDController::OnDefenseAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetSkillAmpAttribute()).AddUObject(this, &UUI_HUDController::OnSkillAmpAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetCriticalChanceAttribute()).AddUObject(this, &UUI_HUDController::OnCriticalChanceAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetMoveSpeedAttribute()).AddUObject(this, &UUI_HUDController::OnMoveSpeedAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetCooldownReductionAttribute()).AddUObject(this, &UUI_HUDController::OnCooldownReductionAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetAttackRangeAttribute()).AddUObject(this, &UUI_HUDController::OnAttackRangeAttributeChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(BaseAS->GetSkillPointAttribute()).AddUObject(this, &UUI_HUDController::OnSkillPointAttributeChanged);
+    // 차후 위 함수를 모든 스탯에 대해 반복 해야함~
+}
 
-    // XP 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetXPAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                float CurrentMaxXP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetMaxXP();
-                BroadcastXPChanges(Data.NewValue, CurrentMaxXP);
-            }
-        );
+// --- 어트리뷰트 변경 콜백 멤버 함수 구현 ---
+// 기존 AddLambda 내부 로직을 각 함수로 분리하여 가독성과 안전성을 동시에 확보합니다.
 
-    // HP 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-        {
-            // UE_LOG(LogTemp, Log, TEXT("[Delegate] HP 변경 감지됨: %f"), Data.NewValue);
+void UUI_HUDController::OnLevelAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastLVChanges(Data.NewValue);
+}
 
-            float CurrentMaxHP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetMaxHealth();
-            BroadcastHPChanges(Data.NewValue, CurrentMaxHP);
-        }
-    );
+void UUI_HUDController::OnXPAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    const float CurrentMaxXP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetMaxXP();
+    BroadcastXPChanges(Data.NewValue, CurrentMaxXP);
+}
 
-    // MaxHP 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetMaxHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-        {
-            float CurrentHP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetHealth();
-            BroadcastHPChanges(CurrentHP, Data.NewValue);
-        }
-    );
-    // MP 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetStaminaAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                float CurrentMaxMP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetMaxStamina();
-                BroadcastStaminaChanges(Data.NewValue, CurrentMaxMP);
-            }
-        );
+void UUI_HUDController::OnHealthAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    // UE_LOG(LogTemp, Log, TEXT("[Delegate] HP 변경 감지됨: %f"), Data.NewValue);
+    const float CurrentMaxHP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetMaxHealth();
+    BroadcastHPChanges(Data.NewValue, CurrentMaxHP);
+}
 
-    // MaxMP 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetMaxStaminaAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                float CurrentMP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetStamina();
-                BroadcastStaminaChanges(CurrentMP, Data.NewValue);
-            }
-        );
+void UUI_HUDController::OnMaxHealthAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    const float CurrentHP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetHealth();
+    BroadcastHPChanges(CurrentHP, Data.NewValue);
+}
 
-    // ATK 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetAttackPowerAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                BroadcastATKChanges(Data.NewValue);
-            }
-        );
-    
-    // AS 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetAttackSpeedAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                BroadcastASChanges(Data.NewValue);
-            }
-        );
+void UUI_HUDController::OnStaminaAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    const float CurrentMaxMP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetMaxStamina();
+    BroadcastStaminaChanges(Data.NewValue, CurrentMaxMP);
+}
 
-    // DEF 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetDefenseAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                BroadcastDEFChanges(Data.NewValue);
-            }
-        );
+void UUI_HUDController::OnMaxStaminaAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    const float CurrentMP = CastChecked<UBaseAttributeSet>(AttributeSet)->GetStamina();
+    BroadcastStaminaChanges(CurrentMP, Data.NewValue);
+}
 
-    // SkillAmp 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetSkillAmpAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                BroadcastSPChanges(Data.NewValue);
-            }
-        );
+void UUI_HUDController::OnAttackPowerAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastATKChanges(Data.NewValue);
+}
 
-    // CC 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetCriticalChanceAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                BroadcastCCChanges(Data.NewValue);
-            }
-        );
+void UUI_HUDController::OnAttackSpeedAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastASChanges(Data.NewValue);
+}
 
-    // Speed 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetMoveSpeedAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                BroadcastSpeedChanges(Data.NewValue);
-            }
-        );
-    // Cool 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetCooldownReductionAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                BroadcastCooldownReduction(Data.NewValue);
-            }
-        );
-    // AttackRange 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetAttackRangeAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-				BroadcastARChanges(Data.NewValue);
-            }
-        );
-    // 스킬 포인트 변경 감지 람다
-    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
-        BaseAS->GetSkillPointAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-            {
-                BroadcastSkillPointChanges(Data.NewValue);
-            }
-        );
-    // 차후 위 람다식을 모든 스탯에 대해 반복 해야함~
+void UUI_HUDController::OnDefenseAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastDEFChanges(Data.NewValue);
+}
+
+void UUI_HUDController::OnSkillAmpAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastSPChanges(Data.NewValue);
+}
+
+void UUI_HUDController::OnCriticalChanceAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastCCChanges(Data.NewValue);
+}
+
+void UUI_HUDController::OnMoveSpeedAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastSpeedChanges(Data.NewValue);
+}
+
+void UUI_HUDController::OnCooldownReductionAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastCooldownReduction(Data.NewValue);
+}
+
+void UUI_HUDController::OnAttackRangeAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastARChanges(Data.NewValue);
+}
+
+void UUI_HUDController::OnSkillPointAttributeChanged(const FOnAttributeChangeData& Data)
+{
+    BroadcastSkillPointChanges(Data.NewValue);
 }
 
 void UUI_HUDController::BroadcastLVChanges(float CurrentLV)

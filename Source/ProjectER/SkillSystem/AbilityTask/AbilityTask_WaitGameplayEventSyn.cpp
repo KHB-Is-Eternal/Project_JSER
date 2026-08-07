@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "SkillSystem/AbilityTask/AbilityTask_WaitGameplayEventSyn.h"
@@ -6,6 +6,7 @@
 #include "GameplayTagContainer.h"
 #include "Engine/EngineTypes.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
+#include "GameFramework/GameStateBase.h"
 
 UAbilityTask_WaitGameplayEventSyn* UAbilityTask_WaitGameplayEventSyn::WaitEventClientToServer(UGameplayAbility* OwningAbility, FGameplayTag EventTag)
 {
@@ -60,7 +61,21 @@ void UAbilityTask_WaitGameplayEventSyn::OnEventTriggeredOnServer(const FGameplay
     }
 
     bHandledByServer = true;
-    OnEventReceived.Broadcast(*EventData);
+
+    // AI나 Authority Player의 경우 서버 로컬에서 즉시 발동하므로, 여기서 시간을 갱신합니다.
+    FGameplayEventData LocalPayload = *EventData;
+    if (UAbilitySystemComponent* ASC = AbilitySystemComponent.Get())
+    {
+        if (UWorld* World = ASC->GetWorld())
+        {
+            if (AGameStateBase* GameState = World->GetGameState())
+            {
+                LocalPayload.EventMagnitude = GameState->GetServerWorldTimeSeconds();
+            }
+        }
+    }
+
+    OnEventReceived.Broadcast(LocalPayload);
 }
 
 void UAbilityTask_WaitGameplayEventSyn::OnEventTriggeredOnClient(const FGameplayEventData* EventData)
@@ -70,17 +85,38 @@ void UAbilityTask_WaitGameplayEventSyn::OnEventTriggeredOnClient(const FGameplay
 
     //UE_LOG(LogTemp, Warning, TEXT("WaitEventTask [%s]: Client Local Event Detected. Sending Nudge to Server."), *TagToWait.ToString());
 
+    float CurrentClientServerTime = 0.0f;
+    if (UWorld* World = ASC->GetWorld())
+    {
+        if (AGameStateBase* GameState = World->GetGameState())
+        {
+            CurrentClientServerTime = GameState->GetServerWorldTimeSeconds();
+        }
+    }
+
     // 실제 데이터를 TargetData에 담아 전송
     FGameplayAbilityTargetDataHandle DataHandle;
+    
+    // 0: 액터 배열 (원본)
     FGameplayAbilityTargetData_ActorArray* NewData = new FGameplayAbilityTargetData_ActorArray();
     if (EventData->Instigator) NewData->TargetActorArray.Add(const_cast<AActor*>(EventData->Instigator.Get()));
     if (EventData->Target) NewData->TargetActorArray.Add(const_cast<AActor*>(EventData->Target.Get()));
     DataHandle.Add(NewData);
 
-    FScopedPredictionWindow ScopedPrediction(ASC);
-    ASC->CallServerSetReplicatedTargetData(GetAbilitySpecHandle(), GetActivationPredictionKey(), DataHandle, TagToWait, GetActivationPredictionKey());
+    // 1: EventMagnitude (클라이언트 시간) 전송용 편법 (TargetData Hack)
+    FGameplayAbilityTargetData_LocationInfo* TimeData = new FGameplayAbilityTargetData_LocationInfo();
+    TimeData->TargetLocation.LocationType = EGameplayAbilityTargetingLocationType::LiteralTransform;
+    TimeData->TargetLocation.LiteralTransform.SetLocation(FVector(CurrentClientServerTime, 0.f, 0.f));
+    DataHandle.Add(TimeData);
 
-    OnEventReceived.Broadcast(*EventData);
+    FScopedPredictionWindow ScopedPrediction(ASC);
+    // [Fix] 생성된 ScopedPredictionKey를 서버로 명시적으로 전송하여 PredictionKey Leak 경고(Warning) 발생을 방지합니다.
+    ASC->CallServerSetReplicatedTargetData(GetAbilitySpecHandle(), GetActivationPredictionKey(), DataHandle, TagToWait, ASC->ScopedPredictionKey);
+
+    // 로컬 실행용 페이로드 갱신
+    FGameplayEventData LocalPayload = *EventData;
+    LocalPayload.EventMagnitude = CurrentClientServerTime;
+    OnEventReceived.Broadcast(LocalPayload);
 }
 
 void UAbilityTask_WaitGameplayEventSyn::OnTargetDataReplicated(const FGameplayAbilityTargetDataHandle& DataHandle, FGameplayTag ActivationTag)
@@ -109,6 +145,7 @@ void UAbilityTask_WaitGameplayEventSyn::OnTargetDataReplicated(const FGameplayAb
     // 수신한 TargetData에서 데이터 복구
     FGameplayEventData ReconstructedData;
     ReconstructedData.EventTag = TagToWait;
+    
     if (DataHandle.Num() > 0)
     {
         const FGameplayAbilityTargetData_ActorArray* ActorData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(DataHandle.Get(0));
@@ -116,6 +153,15 @@ void UAbilityTask_WaitGameplayEventSyn::OnTargetDataReplicated(const FGameplayAb
         {
             ReconstructedData.Instigator = ActorData->TargetActorArray[0].Get();
             ReconstructedData.Target = ActorData->TargetActorArray[1].Get();
+        }
+    }
+
+    if (DataHandle.Num() > 1)
+    {
+        const FGameplayAbilityTargetData_LocationInfo* LocationData = static_cast<const FGameplayAbilityTargetData_LocationInfo*>(DataHandle.Get(1));
+        if (LocationData)
+        {
+            ReconstructedData.EventMagnitude = LocationData->TargetLocation.LiteralTransform.GetLocation().X;
         }
     }
 
