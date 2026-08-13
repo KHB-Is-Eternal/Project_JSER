@@ -51,6 +51,8 @@ void UAbilityTask_WaitGameplayEventSyn::Activate()
 
 void UAbilityTask_WaitGameplayEventSyn::OnEventTriggeredOnServer(const FGameplayEventData* EventData)
 {
+    if (!EventData) return;
+
     //UE_LOG(LogTemp, Warning, TEXT("WaitEventTask [%p] on [%s] - Tag [%s]: Server Local Event Detected. bClientDataPending: %d"), this, *GetOwnerActor()->GetName(), *TagToWait.ToString(), bClientDataPending);
 
     if (bClientDataPending)
@@ -80,6 +82,8 @@ void UAbilityTask_WaitGameplayEventSyn::OnEventTriggeredOnServer(const FGameplay
 
 void UAbilityTask_WaitGameplayEventSyn::OnEventTriggeredOnClient(const FGameplayEventData* EventData)
 {
+    if (!EventData) return;
+
     UAbilitySystemComponent* ASC = AbilitySystemComponent.Get();
     if (IsValid(ASC) == false) return;
 
@@ -131,7 +135,7 @@ void UAbilityTask_WaitGameplayEventSyn::OnTargetDataReplicated(const FGameplayAb
 
     FGameplayAbilitySpecHandle SpecHandle = GetAbilitySpecHandle();
     FPredictionKey ActivationKey = GetActivationPredictionKey();
-    TargetDataDelegateHandle = ASC->AbilityTargetDataSetDelegate(SpecHandle, ActivationKey).AddUObject(this, &UAbilityTask_WaitGameplayEventSyn::OnTargetDataReplicated);
+    //TargetDataDelegateHandle = ASC->AbilityTargetDataSetDelegate(SpecHandle, ActivationKey).AddUObject(this, &UAbilityTask_WaitGameplayEventSyn::OnTargetDataReplicated);
 
     if (bHandledByServer)
     {

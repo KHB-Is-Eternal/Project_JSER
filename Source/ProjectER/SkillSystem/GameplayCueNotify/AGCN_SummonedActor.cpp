@@ -90,7 +90,8 @@ bool AGCN_SummonedActor::OnRemove_Implementation(AActor* MyTarget, const FGamepl
 		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
 			AActor* ActualInstigator = GetActualInstigator(Parameters);
-			const FProjectERGameplayEffectContext* Context = static_cast<const FProjectERGameplayEffectContext*>(Parameters.EffectContext.Get());
+			const FGameplayEffectContext* RawContext = Parameters.EffectContext.Get();
+			const FProjectERGameplayEffectContext* Context = (RawContext && RawContext->GetScriptStruct() == FProjectERGameplayEffectContext::StaticStruct()) ? static_cast<const FProjectERGameplayEffectContext*>(RawContext) : nullptr;
 
 			float ActivationTime = Context ? Context->ClientActivationTime : 0.0f;
 			if (ActualInstigator)
@@ -126,7 +127,8 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 	}
 
 	AActor* ActualInstigator = GetActualInstigator(Parameters);
-	const FProjectERGameplayEffectContext* Context = static_cast<const FProjectERGameplayEffectContext*>(Parameters.EffectContext.Get());
+	const FGameplayEffectContext* RawContext = Parameters.EffectContext.Get();
+	const FProjectERGameplayEffectContext* Context = (RawContext && RawContext->GetScriptStruct() == FProjectERGameplayEffectContext::StaticStruct()) ? static_cast<const FProjectERGameplayEffectContext*>(RawContext) : nullptr;
 
 	float ActivationTime = Context ? Context->ClientActivationTime : 0.0f;
 

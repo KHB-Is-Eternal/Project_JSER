@@ -7,16 +7,27 @@
 
 float USkillMagnitudeCalculator::CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC) const
 {
-	return CalculateValue(SourceASC, TargetASC, nullptr);
+	return CalculateValue(SourceASC, TargetASC, nullptr, 0);
 }
 
 float USkillMagnitudeCalculator::CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec* Spec) const
 {
+	return CalculateValue(SourceASC, TargetASC, Spec, 0);
+}
+
+float USkillMagnitudeCalculator::CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec* Spec, int32 RecursionDepth) const
+{
+	if (RecursionDepth > 16)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("USkillMagnitudeCalculator: Maximum recursion depth exceeded (> 16). Circular reference detected. Returning 0."));
+		return 0.0f;
+	}
+
 	float Result = InitialValue;
 
 	for (const FCalcStep& Step : FormulaSteps)
 	{
-		float OperandValue = GetOperandValue(Step, SourceASC, TargetASC, Spec);
+		float OperandValue = GetOperandValue(Step, SourceASC, TargetASC, Spec, RecursionDepth);
 
 		switch (Step.Operator)
 		{
@@ -45,7 +56,7 @@ float USkillMagnitudeCalculator::CalculateValue(UAbilitySystemComponent* SourceA
 	return Result;
 }
 
-float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec* Spec) const
+float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec* Spec, int32 RecursionDepth) const
 {
 	switch (Step.OperandType)
 	{
@@ -93,7 +104,7 @@ float USkillMagnitudeCalculator::GetOperandValue(const FCalcStep& Step, UAbility
 	case ECalcOperandType::SubFormula:
 		if (Step.SubFormula)
 		{
-			return Step.SubFormula->CalculateValue(SourceASC, TargetASC, Spec);
+			return Step.SubFormula->CalculateValue(SourceASC, TargetASC, Spec, RecursionDepth + 1);
 		}
 		else
 		{

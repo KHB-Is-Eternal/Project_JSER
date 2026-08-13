@@ -41,10 +41,14 @@ void UMouseClickSkill::ActivateAbility(const FGameplayAbilitySpecHandle Handle, 
 
 void UMouseClickSkill::ExecuteSmartCast(const FGameplayEventData& EventData)
 {
+	if (EventData.TargetData.Num() <= 0 || !EventData.TargetData.Get(0)) return;
 	const FVector Location = EventData.TargetData.Get(0)->GetEndPoint();
 	
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+	if (!ASC) return;
+
 	// 타겟팅 이펙트 컨텍스트 생성 및 위치 저장
-	FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
+	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
 	ContextHandle.AddOrigin(Location);
 	ContextHandle.AddSourceObject(this);
 	TargetLocationEffectContext = ContextHandle;
@@ -214,7 +218,10 @@ void UMouseClickSkill::OnTargetDataReady(const FGameplayAbilityTargetDataHandle&
 	}
 
 	AActor* Avatar = GetAvatarActorFromActorInfo();
-	FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+	if (!ASC) return;
+
+	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
 	ContextHandle.AddOrigin(Location);
 	ContextHandle.AddSourceObject(this);
 	ContextHandle.SetAbility(this);

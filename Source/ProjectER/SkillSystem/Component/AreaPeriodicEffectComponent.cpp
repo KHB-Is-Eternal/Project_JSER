@@ -20,22 +20,28 @@ void UAreaPeriodicEffectComponent::StartPeriodicTrigger()
 {
 	if (Period > 0.f)
 	{
-		GetWorld()->GetTimerManager().SetTimer(
-			PeriodicTimerHandle, 
-			this, 
-			&UAreaPeriodicEffectComponent::OnTimerTrigger, 
-			Period, 
-			true, 
-			bApplyImmediately ? 0.f : Period
-		);
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimer(
+				PeriodicTimerHandle, 
+				this, 
+				&UAreaPeriodicEffectComponent::OnTimerTrigger, 
+				Period, 
+				true, 
+				bApplyImmediately ? 0.f : Period
+			);
+		}
 	}
 }
 
 void UAreaPeriodicEffectComponent::StopPeriodicTrigger()
 {
-	if (GetWorld()->GetTimerManager().IsTimerActive(PeriodicTimerHandle))
+	if (UWorld* World = GetWorld())
 	{
-		GetWorld()->GetTimerManager().ClearTimer(PeriodicTimerHandle);
+		if (World->GetTimerManager().IsTimerActive(PeriodicTimerHandle))
+		{
+			World->GetTimerManager().ClearTimer(PeriodicTimerHandle);
+		}
 	}
 }
 
