@@ -73,7 +73,7 @@ void USkillBase::SetSkillTagCount(FGameplayTag Tag, int32 Count)
 void USkillBase::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	CurrentPhaseIndex = 0;
-	bHasFallbackTriggeredActive = false;
+	FallbackTriggeredPhaseIndices.Reset();
 	MaxExpectedActiveCount = 0;
 	// [김현수 추가분]
 	if (AActor* const AvatarActor = GetAvatarActorFromActorInfo())
@@ -234,7 +234,7 @@ UGameplayEffect* USkillBase::GetCostGameplayEffect() const
 void USkillBase::ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const
 {
 	// 1. 동적으로 만든 GE가 있는지 확인
-	if (DynamicCostGE && ActorInfo->AbilitySystemComponent.IsValid())
+	if (DynamicCostGE && ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 	{
 		// 2. 엔진 함수를 거치지 않고 직접 Spec 인스턴스 생성 (중요!)
 		// 생성자 파라미터: (UGameplayEffect 인스턴스, Context, 레벨)
@@ -316,7 +316,7 @@ void USkillBase::OnSkillAnimationEventReceived(FGameplayEventData Payload)
 	{
 		// [수정] 폴백 타이머가 이미 개입하여 타격을 진행했다면, 
 		// 실제 몽타주 노티파이가 뒤늦게 도착하더라도 무시하여 다단히트 중복 타격을 방지합니다.
-		if (bHasFallbackTriggeredActive)
+		if (FallbackTriggeredPhaseIndices.Contains(CurrentPhaseIndex))
 		{
 			return; 
 		}
@@ -480,7 +480,7 @@ void USkillBase::Fallback_TriggerActiveTag(int32 TargetPhaseIndex)
 	if (!TryExecuteSkill()) return;
 
 	// 폴백이 실제로 스킬 발동(Active)을 실행했을 때만 마킹. 검증에 실패한 폴백이 뒤늦게 도착하는 실제 Active 노티파이까지 차단하지 않도록 함.
-	bHasFallbackTriggeredActive = true;
+	FallbackTriggeredPhaseIndices.Add(CurrentPhaseIndex);
 
 	ChangeSkillState(ESkillAbilityState::Active);
 

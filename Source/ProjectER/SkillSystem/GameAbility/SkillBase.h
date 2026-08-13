@@ -175,7 +175,7 @@ protected:
 	int32 MaxExpectedActiveCount = 0;
 
 	UPROPERTY()
-	bool bHasFallbackTriggeredActive = false;
+	TSet<int32> FallbackTriggeredPhaseIndices;
 
 	/** CommitAbility로 선차감된 쿨타임 GE 핸들. 스킬 발동(Active)이 한 번도 실행되지 않은 채 종료되면 환불에 사용합니다. (const ApplyCooldown에서 기록하므로 mutable) */
 	mutable FActiveGameplayEffectHandle AppliedCooldownHandle;

@@ -242,17 +242,41 @@ bool UGCN_SpawnNiagaraBySpawnConfig::OnRemove_Implementation(AActor* MyTarget, c
 		return false;
 	}
 
-	// 캐릭터에서 동일한 NiagaraSystem과 SpawnConfig 고유 경로 태그를 가진 컴포넌트를 찾아 Deactivate
+	// 캐릭터, Instigator, EffectCauser, TargetAttachComponent에서 동일한 NiagaraSystem과 SpawnConfig 고유 경로 태그를 가진 컴포넌트를 찾아 Deactivate
 	const FName UniqueConfigTagName = FName(*SpawnConfig->GetPathName());
-	TArray<UNiagaraComponent*> NCs;
-	MyTarget->GetComponents<UNiagaraComponent>(NCs);
-	for (UNiagaraComponent* NC : NCs)
+	TArray<AActor*> SearchActors;
+	if (IsValid(MyTarget)) SearchActors.AddUnique(MyTarget);
+	if (AActor* InstigatorActor = Parameters.Instigator.Get()) SearchActors.AddUnique(InstigatorActor);
+	if (AActor* CauserActor = Parameters.EffectCauser.Get()) SearchActors.AddUnique(CauserActor);
+
+	for (AActor* SearchActor : SearchActors)
 	{
-		if (IsValid(NC) && NC->GetAsset() == LoadedSystem)
+		TArray<UNiagaraComponent*> NCs;
+		SearchActor->GetComponents<UNiagaraComponent>(NCs);
+		for (UNiagaraComponent* NC : NCs)
 		{
-			if (NC->ComponentTags.Contains(UniqueConfigTagName))
+			if (IsValid(NC) && NC->GetAsset() == LoadedSystem)
 			{
-				NC->Deactivate();
+				if (NC->ComponentTags.Contains(UniqueConfigTagName))
+				{
+					NC->Deactivate();
+				}
+			}
+		}
+	}
+
+	if (USceneComponent* AttachComp = Parameters.TargetAttachComponent.Get())
+	{
+		TArray<USceneComponent*> Children;
+		AttachComp->GetChildrenComponents(true, Children);
+		for (USceneComponent* Child : Children)
+		{
+			if (UNiagaraComponent* NC = Cast<UNiagaraComponent>(Child))
+			{
+				if (IsValid(NC) && NC->GetAsset() == LoadedSystem && NC->ComponentTags.Contains(UniqueConfigTagName))
+				{
+					NC->Deactivate();
+				}
 			}
 		}
 	}
