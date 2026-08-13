@@ -50,7 +50,7 @@ void ULaunchProjectile::InitializeRangeActor(ABaseRangeOverlapEffectActor* Range
 			// (기본 15,000 유닛 유지, 그 이상 비행하는 장거리 투사체는 사거리 끝까지 보이도록 거리 확장)
 			float MaxTravelDistance = Speed * this->LifeSpan;
 			float CullDistance = FMath::Max(15000.0f, MaxTravelDistance + 2000.0f); // 2000 유닛 여유분
-			RangeActor->NetCullDistanceSquared = FMath::Square(CullDistance);
+			RangeActor->SetNetCullDistanceSquared(FMath::Square(CullDistance));
 
 			
 			// 컴포넌트를 액터 인스턴스에 등록

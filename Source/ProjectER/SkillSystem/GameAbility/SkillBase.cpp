@@ -332,8 +332,14 @@ void USkillBase::OnSkillAnimationEventReceived(FGameplayEventData Payload)
 		// 상태 변경 (태그 토글용)
 		ChangeSkillState(ESkillAbilityState::Active);
 		
-		// 클라이언트가 전달한 정확한 시전 시작 시간을 저장
-		this->SyncedActivationTime = Payload.EventMagnitude;
+		// 페이즈별 노티파이 발동 시점마다 언리얼 동기화 시각(GetServerWorldTimeSeconds)으로 SyncedActivationTime을 갱신
+		if (UWorld* World = GetWorld())
+		{
+			if (AGameStateBase* GameState = World->GetGameState())
+			{
+				this->SyncedActivationTime = GameState->GetServerWorldTimeSeconds();
+			}
+		}
 
 		ExecuteSkill();
 		

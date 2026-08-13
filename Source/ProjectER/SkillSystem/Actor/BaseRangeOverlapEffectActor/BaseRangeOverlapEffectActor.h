@@ -101,7 +101,7 @@ protected:
   UPROPERTY()
   TSet<TObjectPtr<AActor>> HitActors;
 
-  UPROPERTY()
+  UPROPERTY(Replicated)
   TObjectPtr<const UObject> HitTargetCueSourceObject;
 
   UPROPERTY()

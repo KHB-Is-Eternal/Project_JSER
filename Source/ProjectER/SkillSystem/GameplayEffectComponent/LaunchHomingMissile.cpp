@@ -146,6 +146,11 @@ void ULaunchHomingMissile::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const F
 		Params.EffectCauser = ASC->GetAvatarActor();
 		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
 
+		if (const FProjectERGameplayEffectContext* ErContext = ProjectERContextUtils::GetProjectERContext(ContextHandle))
+		{
+			Params.RawMagnitude = ErContext->ClientActivationTime;
+		}
+
 		{
 			if (UGameplayCueManager* CueManager = UAbilitySystemGlobals::Get().GetGameplayCueManager())
 			{
@@ -272,7 +277,7 @@ void ULaunchHomingMissile::InitializeActorData(ABaseMissileActor* Actor, const F
 	float SpeedToUse = MaxSpeed > 0.f ? MaxSpeed : InitialSpeed;
 	float MaxTravelDistance = SpeedToUse * LifeSpan;
 	float CullDistance = FMath::Max(15000.0f, MaxTravelDistance + 2000.0f); // 2000 유닛 여유분
-	Actor->NetCullDistanceSquared = FMath::Square(CullDistance);
+	Actor->SetNetCullDistanceSquared(FMath::Square(CullDistance));
 }
 
 FTransform ULaunchHomingMissile::CalculateSpawnTransform(

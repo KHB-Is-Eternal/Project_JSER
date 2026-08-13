@@ -46,6 +46,7 @@ void ABaseMissileActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
 	DOREPLIFETIME(ABaseMissileActor, ClientActivationTime);
 	DOREPLIFETIME(ABaseMissileActor, InitialTargetRotation);
+	DOREPLIFETIME(ABaseMissileActor, MissileGECSourceObject);
 	DOREPLIFETIME(ABaseMissileActor, InstigatorActor);
 }
 
@@ -53,11 +54,13 @@ bool ABaseMissileActor::TryPerformVfxHandshake()
 {
 	if (!InstigatorActor || ClientActivationTime <= 0.0f) return false;
 
+	const UObject* SourceObj = (EffectSpecHandles.Num() > 0 && EffectSpecHandles[0].IsValid() && EffectSpecHandles[0].Data.IsValid()) ? EffectSpecHandles[0].Data->Def.Get() : nullptr;
+
 	if (UWorld* World = GetWorld())
 	{
 		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
-			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
+			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance, SourceObj))
 			{
 				OnVfxHandshakeCompleted_Implementation(VfxActor);
 				return true;
@@ -163,8 +166,9 @@ void ABaseMissileActor::InitializeMissile(
 			{
 				if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 				{
+					const UObject* SourceObj = (EffectSpecHandles.Num() > 0 && EffectSpecHandles[0].IsValid() && EffectSpecHandles[0].Data.IsValid()) ? EffectSpecHandles[0].Data->Def.Get() : nullptr;
 					UE_LOG(LogTemp, Warning, TEXT("ABaseMissileActor: Handshake Failed in InitializeMissile. (Registering as Pending on Host)"));
-					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);
+					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this, SourceObj);
 				}
 			}
 		}

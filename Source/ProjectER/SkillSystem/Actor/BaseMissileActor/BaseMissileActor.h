@@ -60,6 +60,9 @@ protected:
 	/** Visual Handshake 시도 헬퍼 함수 */
 	bool TryPerformVfxHandshake();
 
+	void SetMissileGECSourceObject(const UObject* InSourceObject) { MissileGECSourceObject = InSourceObject; }
+	const UObject* GetMissileGECSourceObject() const { return MissileGECSourceObject.Get(); }
+
 	/** 대상에 도달했을 때 호출. 효과 적용 및 파괴를 수행합니다. */
 	virtual void OnReachedTarget();
 
@@ -107,6 +110,9 @@ protected:
 	/** 리플리케이션된 시전 시간 (VFX 핸드셰이크용) */
 	UPROPERTY(Replicated)
 	float ClientActivationTime;
+
+	UPROPERTY(Replicated)
+	TObjectPtr<const UObject> MissileGECSourceObject;
 
 	/** 서버-클라이언트 간 시각 효과 매칭 시 허용 오차 시간 (초) */
 	UPROPERTY(EditDefaultsOnly, Category = "Summon|Network", meta = (ClampMin = "0.0", ClampMax = "5.0"))

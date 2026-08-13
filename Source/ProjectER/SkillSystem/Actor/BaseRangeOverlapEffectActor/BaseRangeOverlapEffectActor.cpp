@@ -40,17 +40,24 @@ void ABaseRangeOverlapEffectActor::GetLifetimeReplicatedProps(TArray<FLifetimePr
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, ClientActivationTime);
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, InstigatorActor);
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, PendingCollisionSize);
+	DOREPLIFETIME(ABaseRangeOverlapEffectActor, HitTargetCueSourceObject);
 }
 
 bool ABaseRangeOverlapEffectActor::TryPerformVfxHandshake()
 {
 	if (!InstigatorActor || ClientActivationTime <= 0.0f) return false;
 
+	const UObject* SourceObj = HitTargetCueSourceObject.Get();
+	if (!SourceObj && EffectSpecHandles.Num() > 0 && EffectSpecHandles[0].IsValid() && EffectSpecHandles[0].Data.IsValid())
+	{
+		SourceObj = EffectSpecHandles[0].Data->Def.Get();
+	}
+
 	if (UWorld* World = GetWorld())
 	{
 		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
-			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
+			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance, SourceObj))
 			{
 				OnVfxHandshakeCompleted_Implementation(VfxActor);
 				return true;
@@ -142,8 +149,13 @@ void ABaseRangeOverlapEffectActor::InitializeEffectData(const TArray<FGameplayEf
 			{
 				if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 				{
+					const UObject* SourceObj = HitTargetCueSourceObject.Get();
+					if (!SourceObj && EffectSpecHandles.Num() > 0 && EffectSpecHandles[0].IsValid() && EffectSpecHandles[0].Data.IsValid())
+					{
+						SourceObj = EffectSpecHandles[0].Data->Def.Get();
+					}
 					UE_LOG(LogTemp, Warning, TEXT("ABaseRangeOverlapEffectActor: Handshake Failed in InitializeEffectData. (Registering as Pending on Host)"));
-					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);
+					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this, SourceObj);
 				}
 			}
 		}
