@@ -24,7 +24,7 @@ namespace
 
 AMouseLocationTargetActor::AMouseLocationTargetActor()
 {
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = false;
 }
 
@@ -36,7 +36,7 @@ void AMouseLocationTargetActor::Setup(float InMaxRange)
 void AMouseLocationTargetActor::StartTargeting(UGameplayAbility* Ability)
 {
 	Super::StartTargeting(Ability);
-	SetActorTickEnabled(true);
+	SetActorTickEnabled(false);
 }
 
 void AMouseLocationTargetActor::ConfirmTargetingAndContinue()
@@ -52,6 +52,7 @@ void AMouseLocationTargetActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	/* 미사용 데드 코드 주석 처리 (조준선 및 마우스 위치 전달은 UGroundIndicatorComponent 및 TryConfirmMouseLocation에서 전담)
 	UMouseClickSkill* MouseClickSkill = Cast<UMouseClickSkill>(OwningAbility);
 	AActor* Avatar = IsValid(MouseClickSkill) ? MouseClickSkill->GetAvatarActorFromActorInfo() : nullptr;
 
@@ -77,6 +78,7 @@ void AMouseLocationTargetActor::Tick(float DeltaSeconds)
 		FRotator Rotation = UKismetMathLibrary::FindLookAtRotation(CharacterLoc, TargetLocation);
 		float TargetDistance = (CurrentMaxRange > 0.f) ? FMath::Min(Distance, CurrentMaxRange) : Distance;
 	}
+	*/
 }
 
 void AMouseLocationTargetActor::EndPlay(const EEndPlayReason::Type EndPlayReason)

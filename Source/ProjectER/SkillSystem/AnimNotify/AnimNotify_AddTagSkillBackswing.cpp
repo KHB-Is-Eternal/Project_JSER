@@ -4,10 +4,13 @@
 #include "SkillSystem/AnimNotify/AnimNotify_AddTagSkillBackswing.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "NativeGameplayTags.h"
+
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Skill_Animation_Backswing, "Skill.Animation.Backswing");
 
 UAnimNotify_AddTagSkillBackswing::UAnimNotify_AddTagSkillBackswing()
 {
-	BackswingTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Backswing"));
+	BackswingTag = TAG_Skill_Animation_Backswing;
 }
 
 void UAnimNotify_AddTagSkillBackswing::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, const FAnimNotifyEventReference& EventReference)

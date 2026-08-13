@@ -49,22 +49,28 @@ void ABaseMissileActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ABaseMissileActor, InstigatorActor);
 }
 
-void ABaseMissileActor::OnRep_InstigatorActor()
+bool ABaseMissileActor::TryPerformVfxHandshake()
 {
-	// 데이터가 늦게 도착했을 경우 핸드셰이크 재시도
-	if (InstigatorActor && ClientActivationTime > 0.f)
+	if (!InstigatorActor || ClientActivationTime <= 0.0f) return false;
+
+	if (UWorld* World = GetWorld())
 	{
-		if (UWorld* World = GetWorld())
+		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
-			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
 			{
-				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
-				{
-					OnVfxHandshakeCompleted_Implementation(VfxActor);
-				}
+				OnVfxHandshakeCompleted_Implementation(VfxActor);
+				return true;
 			}
 		}
 	}
+	return false;
+}
+
+void ABaseMissileActor::OnRep_InstigatorActor()
+{
+	// 데이터가 늦게 도착했을 경우 핸드셰이크 재시도
+	TryPerformVfxHandshake();
 }
 
 void ABaseMissileActor::PostNetInit()
@@ -74,18 +80,11 @@ void ABaseMissileActor::PostNetInit()
 	// 클라이언트에서만 작동
 	if (GetNetMode() == NM_DedicatedServer) return;
 
-	if (UWorld* World = GetWorld())
+	if (!TryPerformVfxHandshake())
 	{
-		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+		if (UWorld* World = GetWorld())
 		{
-
-
-			// (시전자 + 시전 시간) 조합으로 퍼지 비주얼 검색 (서버-클라이언트 간의 작은 시간 오차 보정)
-			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
-			{
-				OnVfxHandshakeCompleted_Implementation(VfxActor);
-			}
-			else
+			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 			{
 				UE_LOG(LogTemp, Warning, TEXT("ABaseMissileActor: Handshake Failed in PostNetInit. (Registering as Pending)"));
 				Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);
@@ -156,17 +155,13 @@ void ABaseMissileActor::InitializeMissile(
 	}
 
 	// [Standalone/ListenServer Fix] 서버에서 데이터 초기화 즉시 핸드셰이크 시도 (PostNetInit이 안 도는 환경 대응)
-	if (InstigatorActor && ClientActivationTime > 0.0f)
+	if (!TryPerformVfxHandshake())
 	{
-		if (UWorld* World = GetWorld())
+		if (InstigatorActor && ClientActivationTime > 0.0f)
 		{
-			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+			if (UWorld* World = GetWorld())
 			{
-				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
-				{
-					OnVfxHandshakeCompleted_Implementation(VfxActor);
-				}
-				else
+				if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 				{
 					UE_LOG(LogTemp, Warning, TEXT("ABaseMissileActor: Handshake Failed in InitializeMissile. (Registering as Pending on Host)"));
 					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);

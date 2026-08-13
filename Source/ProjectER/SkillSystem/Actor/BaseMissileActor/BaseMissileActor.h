@@ -57,6 +57,9 @@ protected:
 	virtual void PostNetInit() override;
 	virtual void Tick(float DeltaTime) override;
 
+	/** Visual Handshake 시도 헬퍼 함수 */
+	bool TryPerformVfxHandshake();
+
 	/** 대상에 도달했을 때 호출. 효과 적용 및 파괴를 수행합니다. */
 	virtual void OnReachedTarget();
 
