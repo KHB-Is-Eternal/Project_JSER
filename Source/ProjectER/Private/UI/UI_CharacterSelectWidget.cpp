@@ -33,18 +33,6 @@ void UUI_CharacterSelectWidget::NativeConstruct()
 		ERPS->OnCharacterDataChanged.AddDynamic(this, &UUI_CharacterSelectWidget::OnPlayerStateCharacterChanged);
 	}
 
-	if (Image_CenterCard)
-	{
-		BaseCenterScale = Image_CenterCard->GetRenderTransform().Scale;
-		BaseCenterOpacity = Image_CenterCard->GetRenderOpacity();
-	}
-	if (Image_LeftCard)
-	{
-		// 좌우 카드의 기준 스케일은 동일할 것이라 가정
-		BaseSideScale = Image_LeftCard->GetRenderTransform().Scale;
-		BaseSideOpacity = Image_LeftCard->GetRenderOpacity();
-	}
-
 	SelectCharacter(0);
 }
 
@@ -76,22 +64,8 @@ void UUI_CharacterSelectWidget::NativeTick(const FGeometry& MyGeometry, float In
 	{
 		TransitionAlpha = FMath::Clamp(TransitionAlpha + InDeltaTime * TransitionSpeed, 0.0f, 1.0f);
 		
-		// 블루프린트에서 세팅한 원본 스케일에 배율(Multiplier)을 곱함
-		if (Image_LeftCard && Image_CenterCard && Image_RightCard)
-		{
-			float CenterAnimScale = FMath::Lerp(0.8f, 1.0f, TransitionAlpha);
-			float CenterAnimOpacity = FMath::Lerp(0.6f, 1.0f, TransitionAlpha);
-			Image_CenterCard->SetRenderScale(BaseCenterScale * CenterAnimScale);
-			Image_CenterCard->SetRenderOpacity(BaseCenterOpacity * CenterAnimOpacity);
-
-			// 좌우 카드 (100% 였던 카드가 옆으로 가면서 80% 스케일, 0.6 Opacity로 퇴장)
-			float SideAnimScale = FMath::Lerp(1.0f, 0.8f, TransitionAlpha);
-			float SideAnimOpacity = FMath::Lerp(1.0f, 0.6f, TransitionAlpha);
-			Image_LeftCard->SetRenderScale(BaseSideScale * SideAnimScale);
-			Image_LeftCard->SetRenderOpacity(BaseSideOpacity * SideAnimOpacity);
-			Image_RightCard->SetRenderScale(BaseSideScale * SideAnimScale);
-			Image_RightCard->SetRenderOpacity(BaseSideOpacity * SideAnimOpacity);
-		}
+		// 블루프린트로 보간 값(0.0 ~ 1.0)을 전달하여 자유롭게 UI 애니메이션을 구현할 수 있도록 위임
+		OnCarouselTransitionUpdated(TransitionAlpha);
 	}
 }
 

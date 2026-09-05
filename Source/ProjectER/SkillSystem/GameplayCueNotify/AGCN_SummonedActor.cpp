@@ -90,7 +90,8 @@ bool AGCN_SummonedActor::OnRemove_Implementation(AActor* MyTarget, const FGamepl
 		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 		{
 			AActor* ActualInstigator = GetActualInstigator(Parameters);
-			const FProjectERGameplayEffectContext* Context = static_cast<const FProjectERGameplayEffectContext*>(Parameters.EffectContext.Get());
+			const FGameplayEffectContext* RawContext = Parameters.EffectContext.Get();
+			const FProjectERGameplayEffectContext* Context = (RawContext && RawContext->GetScriptStruct() == FProjectERGameplayEffectContext::StaticStruct()) ? static_cast<const FProjectERGameplayEffectContext*>(RawContext) : nullptr;
 
 			float ActivationTime = Context ? Context->ClientActivationTime : 0.0f;
 			if (ActualInstigator)
@@ -126,9 +127,10 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 	}
 
 	AActor* ActualInstigator = GetActualInstigator(Parameters);
-	const FProjectERGameplayEffectContext* Context = static_cast<const FProjectERGameplayEffectContext*>(Parameters.EffectContext.Get());
+	const FGameplayEffectContext* RawContext = Parameters.EffectContext.Get();
+	const FProjectERGameplayEffectContext* Context = (RawContext && RawContext->GetScriptStruct() == FProjectERGameplayEffectContext::StaticStruct()) ? static_cast<const FProjectERGameplayEffectContext*>(RawContext) : nullptr;
 
-	float ActivationTime = Context ? Context->ClientActivationTime : 0.0f;
+	float ActivationTime = Parameters.RawMagnitude > 0.0f ? Parameters.RawMagnitude : (Context ? Context->ClientActivationTime : 0.0f);
 
 	if (ActualInstigator)
 	{
@@ -136,15 +138,16 @@ void AGCN_SummonedActor::HandleSummonedVfx(const FGameplayCueParameters& Paramet
 		{
 			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 			{
+				const UObject* SourceObj = Parameters.SourceObject.Get();
 				// [중요] Standalone/ListenServer 호스트 등에서의 중복 실행 방지
-				if (ActivationTime > 0.0f && Registry->IsVfxActorRegistered(ActualInstigator, ActivationTime))
+				if (ActivationTime > 0.0f && Registry->IsVfxActorRegistered(ActualInstigator, ActivationTime, SourceObj))
 				{
 					Destroy();
 					return;
 				}
 
 				// 비주얼 액터 등록 (Simulated Proxy의 경우 ActivationTime이 0.0f이므로 와일드카드로 작동)
-				Registry->RegisterVfxActor(ActualInstigator, ActivationTime, this);
+				Registry->RegisterVfxActor(ActualInstigator, ActivationTime, this, SourceObj);
 			}
 		}
 	}

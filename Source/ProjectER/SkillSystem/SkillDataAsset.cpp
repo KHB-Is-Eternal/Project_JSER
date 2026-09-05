@@ -15,6 +15,13 @@
 
 FGameplayAbilitySpec USkillDataAsset::MakeSpec()
 {
+	if (!IsValid(SkillConfig))
+	{
+		return FGameplayAbilitySpec();
+	}
+
+	check(SkillConfig);
+
 	TSubclassOf<USkillBase> AbilityClass = SkillConfig->AbilityClass;
 	TSubclassOf<UGameplayAbility> ClassToUse = AbilityClass ? AbilityClass : TSubclassOf<UGameplayAbility>(USkillBase::StaticClass());
 

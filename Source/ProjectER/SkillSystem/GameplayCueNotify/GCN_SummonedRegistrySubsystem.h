@@ -19,20 +19,24 @@ struct FGCN_SummonedKey
 	UPROPERTY()
 	float ActivationTime;
 
-	FGCN_SummonedKey() : Instigator(nullptr), ActivationTime(0.0f) {}
-	FGCN_SummonedKey(AActor* InInstigator, float InTime) : Instigator(InInstigator), ActivationTime(InTime) {}
+	UPROPERTY()
+	TWeakObjectPtr<const UObject> SourceObject;
+
+	FGCN_SummonedKey() : Instigator(nullptr), ActivationTime(0.0f), SourceObject(nullptr) {}
+	FGCN_SummonedKey(AActor* InInstigator, float InTime, const UObject* InSourceObject = nullptr) 
+		: Instigator(InInstigator), ActivationTime(InTime), SourceObject(InSourceObject) {}
 
 	bool operator==(const FGCN_SummonedKey& Other) const
 	{
-		// float 비교는 네트워크 리플리케이션 특성상 비트 단위로 동일하므로 == 연산이 안전합니다.
-		return Instigator == Other.Instigator && FMath::IsNearlyEqual(ActivationTime, Other.ActivationTime, 1.e-4f);
+		bool bSourceMatch = (!SourceObject.IsValid() || !Other.SourceObject.IsValid() || SourceObject == Other.SourceObject || SourceObject->GetClass() == Other.SourceObject->GetClass());
+		return Instigator == Other.Instigator && FMath::IsNearlyEqual(ActivationTime, Other.ActivationTime, 1.e-4f) && bSourceMatch;
 	}
 
 	friend uint32 GetTypeHash(const FGCN_SummonedKey& K)
 	{
-		// float 값을 uint32 비트로 변환하여 해시 계산
 		uint32 TimeHash = FCrc::MemCrc32(&K.ActivationTime, sizeof(float));
-		return HashCombine(GetTypeHash(K.Instigator), TimeHash);
+		uint32 KeyHash = HashCombine(GetTypeHash(K.Instigator), TimeHash);
+		return HashCombine(KeyHash, GetTypeHash(K.SourceObject));
 	}
 };
 
@@ -46,19 +50,19 @@ class PROJECTER_API UGCN_SummonedRegistrySubsystem : public UWorldSubsystem
 
 public:
 	/** 비주얼 액터를 레지스트리에 등록합니다. (시각 정보 기반) */
-	void RegisterVfxActor(AActor* Instigator, float ActivationTime, AActor* VfxActor);
+	void RegisterVfxActor(AActor* Instigator, float ActivationTime, AActor* VfxActor, const UObject* SourceObject = nullptr);
 
 	/** 시전자와 시각 정보에 매칭되는 비주얼 액터를 찾아 반환하고 레지스트리에서 제거합니다. */
-	AActor* GetAndUnregisterVfxActor(AActor* Instigator, float ActivationTime);
+	AActor* GetAndUnregisterVfxActor(AActor* Instigator, float ActivationTime, const UObject* SourceObject = nullptr);
 
 	/** 특정 시전자와 시각 정보에 매칭되는 비주얼 액터가 등록되어 있는지 확인합니다. */
-	bool IsVfxActorRegistered(AActor* Instigator, float ActivationTime) const;
+	bool IsVfxActorRegistered(AActor* Instigator, float ActivationTime, const UObject* SourceObject = nullptr) const;
 
 	/** 시전자 기준으로 허용 오차 내에서 비주얼 액터를 검색합니다. (클라이언트-서버 시간 불일치 보상용) */
-	AActor* FindAndUnregisterVfxActorFuzzy(AActor* Instigator, float TargetTime, float Tolerance = -1.0f);
+	AActor* FindAndUnregisterVfxActorFuzzy(AActor* Instigator, float TargetTime, float Tolerance = -1.0f, const UObject* SourceObject = nullptr);
 
 	/** 비주얼 액터가 아직 오지 않았을 때, 판정 액터를 대기열에 등록합니다. */
-	void RegisterPendingActorFuzzy(AActor* Instigator, float ActivationTime, AActor* PendingActor);
+	void RegisterPendingActorFuzzy(AActor* Instigator, float ActivationTime, AActor* PendingActor, const UObject* SourceObject = nullptr);
 
 	float GetDefaultHandshakeTolerance() const { return DefaultHandshakeTolerance; }
 

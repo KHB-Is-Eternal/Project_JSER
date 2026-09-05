@@ -40,24 +40,37 @@ void ABaseRangeOverlapEffectActor::GetLifetimeReplicatedProps(TArray<FLifetimePr
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, ClientActivationTime);
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, InstigatorActor);
 	DOREPLIFETIME(ABaseRangeOverlapEffectActor, PendingCollisionSize);
+	DOREPLIFETIME(ABaseRangeOverlapEffectActor, HitTargetCueSourceObject);
+}
+
+bool ABaseRangeOverlapEffectActor::TryPerformVfxHandshake()
+{
+	if (!InstigatorActor || ClientActivationTime <= 0.0f) return false;
+
+	const UObject* SourceObj = HitTargetCueSourceObject.Get();
+	if (!SourceObj && EffectSpecHandles.Num() > 0 && EffectSpecHandles[0].IsValid() && EffectSpecHandles[0].Data.IsValid())
+	{
+		SourceObj = EffectSpecHandles[0].Data->Def.Get();
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+		{
+			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance, SourceObj))
+			{
+				OnVfxHandshakeCompleted_Implementation(VfxActor);
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 void ABaseRangeOverlapEffectActor::OnRep_InstigatorActor()
 {
 	// 데이터가 도착하면 핸드셰이크 재시도
-	if (InstigatorActor && ClientActivationTime > 0.0f)
-	{
-		if (UWorld* World = GetWorld())
-		{
-			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
-			{
-				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
-				{
-					OnVfxHandshakeCompleted_Implementation(VfxActor);
-				}
-			}
-		}
-	}
+	TryPerformVfxHandshake();
 }
 
 void ABaseRangeOverlapEffectActor::OnRep_PendingCollisionSize()
@@ -77,19 +90,11 @@ void ABaseRangeOverlapEffectActor::PostNetInit()
 	// 클라이언트에서만 작동 (로컬 서버 포함)
 	if (GetNetMode() == NM_DedicatedServer) return;
 
-	// 서브시스템에서 일치하는 비주얼 액터 검색
-	if (UWorld* World = GetWorld())
+	if (!TryPerformVfxHandshake())
 	{
-		if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+		if (UWorld* World = GetWorld())
 		{
-
-
-			// (시전자 + 시전 시간) 조합으로 퍼지 비주얼 검색 (서버-클라이언트 간의 작은 시간 오차 보정)
-			if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
-			{
-				OnVfxHandshakeCompleted_Implementation(VfxActor);
-			}
-			else
+			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 			{
 				UE_LOG(LogTemp, Warning, TEXT("ABaseRangeOverlapEffectActor: Handshake Failed in PostNetInit. (Registering as Pending)"));
 				Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);
@@ -136,20 +141,21 @@ void ABaseRangeOverlapEffectActor::InitializeEffectData(const TArray<FGameplayEf
 	ApplyCollisionSize(PendingCollisionSize);
 
 	// [Standalone/ListenServer Fix] 서버에서 데이터 초기화 즉시 핸드셰이크 시도 (PostNetInit이 안 도는 환경 대응)
-	if (InstigatorActor && ClientActivationTime > 0.0f)
+	if (!TryPerformVfxHandshake())
 	{
-		if (UWorld* World = GetWorld())
+		if (InstigatorActor && ClientActivationTime > 0.0f)
 		{
-			if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
+			if (UWorld* World = GetWorld())
 			{
-				if (AActor* VfxActor = Registry->FindAndUnregisterVfxActorFuzzy(InstigatorActor, ClientActivationTime, VfxHandshakeTolerance))
+				if (UGCN_SummonedRegistrySubsystem* Registry = World->GetSubsystem<UGCN_SummonedRegistrySubsystem>())
 				{
-					OnVfxHandshakeCompleted_Implementation(VfxActor);
-				}
-				else
-				{
+					const UObject* SourceObj = HitTargetCueSourceObject.Get();
+					if (!SourceObj && EffectSpecHandles.Num() > 0 && EffectSpecHandles[0].IsValid() && EffectSpecHandles[0].Data.IsValid())
+					{
+						SourceObj = EffectSpecHandles[0].Data->Def.Get();
+					}
 					UE_LOG(LogTemp, Warning, TEXT("ABaseRangeOverlapEffectActor: Handshake Failed in InitializeEffectData. (Registering as Pending on Host)"));
-					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this);
+					Registry->RegisterPendingActorFuzzy(InstigatorActor, ClientActivationTime, this, SourceObj);
 				}
 			}
 		}
@@ -225,11 +231,16 @@ void ABaseRangeOverlapEffectActor::OnShapeBeginOverlap(UPrimitiveComponent* Over
 		return;
 	}
 
-	ApplyEffectsToTarget(OtherActor);	
+	bool bApplied = ApplyEffectsToTarget(OtherActor);	
 
 	if (bHitOncePerTarget)
 	{
 		HitActors.Add(OtherActor);
+	}
+
+	if (bApplied && bDestroyOnOverlap)
+	{
+		Destroy();
 	}
 }
 
@@ -291,20 +302,29 @@ void ABaseRangeOverlapEffectActor::OnAreaPeriodicTrigger(const TArray<AActor*>& 
 
 void ABaseRangeOverlapEffectActor::ApplyEffectsToTargets(const TArray<AActor*>& Targets)
 {
+	bool bAnyEffectApplied = false;
 	for (AActor* Target : Targets)
 	{
-		ApplyEffectsToTarget(Target);
+		if (ApplyEffectsToTarget(Target))
+		{
+			bAnyEffectApplied = true;
+		}
+	}
+
+	if (bAnyEffectApplied && bDestroyOnOverlap)
+	{
+		Destroy();
 	}
 }
 
-void ABaseRangeOverlapEffectActor::ApplyEffectsToTarget(AActor* TargetActor)
+bool ABaseRangeOverlapEffectActor::ApplyEffectsToTarget(AActor* TargetActor)
 {
 	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
 	UAbilitySystemComponent* InstigatorASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(InstigatorActor);
 
-	if (!IsValid(InstigatorASC)) return;
-	if (!IsValid(TargetASC)) return;
-	if (EffectSpecHandles.Num() <= 0) return;
+	if (!IsValid(InstigatorASC)) return false;
+	if (!IsValid(TargetASC)) return false;
+	if (EffectSpecHandles.Num() <= 0) return false;
 
 	bool bSuccessApplyGE = false;
 
@@ -358,9 +378,6 @@ void ABaseRangeOverlapEffectActor::ApplyEffectsToTarget(AActor* TargetActor)
 		}
 	}
 
-	if (bSuccessApplyGE && bDestroyOnOverlap)
-	{
-		Destroy();
-	}
+	return bSuccessApplyGE;
 }
 

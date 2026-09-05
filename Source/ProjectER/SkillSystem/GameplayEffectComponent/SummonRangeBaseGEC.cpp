@@ -101,6 +101,11 @@ void USummonRangeBaseGEC::OnExecuteVFXCue(UAbilitySystemComponent* ASC, const FG
 		Params.EffectCauser = ASC->GetAvatarActor();
 		if (!Params.Instigator.IsValid()) Params.Instigator = Params.EffectCauser;
 
+		if (const FProjectERGameplayEffectContext* ErContext = ProjectERContextUtils::GetProjectERContext(ContextHandle))
+		{
+			Params.RawMagnitude = ErContext->ClientActivationTime;
+		}
+
 		{
 			if (UGameplayCueManager* CueManager = UAbilitySystemGlobals::Get().GetGameplayCueManager())
 			{
@@ -260,6 +265,11 @@ FGameplayCueParameters USummonRangeBaseGEC::BuildNiagaraCueParameters(const FGam
 	CueParams.Normal = CueNormal;
 	CueParams.GameplayEffectLevel = GESpec.GetLevel();
 
+	if (const FProjectERGameplayEffectContext* ErContext = ProjectERContextUtils::GetProjectERContext(EffectContext))
+	{
+		CueParams.RawMagnitude = ErContext->ClientActivationTime;
+	}
+
 	if (SourceObject != nullptr)
 	{
 		CueParams.SourceObject = SourceObject;
@@ -298,7 +308,7 @@ void USummonRangeBaseGEC::InitializeRangeActor(ABaseRangeOverlapEffectActor* Ran
 	// 강화 효과(SkillProc) 확인 및 전이
 	UBaseGEC::GetSkillProcEffects(CauserASC, Ability, RangeActor, Context, InitGEHandles, true, &ParentSpec);
 
-	RangeActor->InitializeEffectData(InitGEHandles, Instigator, this->CollisionRadius, this->bHitOncePerTarget, nullptr, HitTargetVfxCueParameters, HitTargetSoundCueParameters);
+	RangeActor->InitializeEffectData(InitGEHandles, Instigator, this->CollisionRadius, this->bHitOncePerTarget, const_cast<USummonRangeBaseGEC*>(this), HitTargetVfxCueParameters, HitTargetSoundCueParameters);
 	RangeActor->SetLifeSpan(this->LifeSpan);
 }
 

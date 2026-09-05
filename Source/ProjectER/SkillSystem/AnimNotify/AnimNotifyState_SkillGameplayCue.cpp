@@ -3,6 +3,7 @@
 
 #include "SkillSystem/AnimNotify/AnimNotifyState_SkillGameplayCue.h"
 #include "SkillSystem/GameplayCueNotify/Particle/SkillNiagaraSpawnConfig.h"
+#include "CharacterSystem/GAS/ProjectERASC.h"
 #include "NiagaraSystem.h"
 #include "NiagaraComponent.h"
 #if WITH_EDITOR
@@ -59,7 +60,7 @@ void UAnimNotifyState_SkillGameplayCue::NotifyBegin(USkeletalMeshComponent* Mesh
 				Parameters.AbilityLevel = Ability->GetAbilityLevel();
 			}
 		}
-		ASC->InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::Executed, Parameters);
+		ASC->InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::OnActive, Parameters);
 	}
 	else
 	{
@@ -157,22 +158,20 @@ void UAnimNotifyState_SkillGameplayCue::NotifyEnd(USkeletalMeshComponent* MeshCo
 
 	if (IsValid(OwnerActor))
 	{
-		UNiagaraSystem* const LoadedSystem = SpawnConfig->NiagaraSystem.LoadSynchronous();
-		if (IsValid(LoadedSystem))
+		if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(OwnerActor))
 		{
-			const FName UniqueTag = FName(*SpawnConfig->GetPathName());
-			TArray<UNiagaraComponent*> NCs;
-			OwnerActor->GetComponents<UNiagaraComponent>(NCs);
-			for (UNiagaraComponent* NC : NCs)
+			if (UProjectERASC* ERASC = Cast<UProjectERASC>(ASC))
 			{
-				if (IsValid(NC) && NC->GetAsset() == LoadedSystem)
-				{
-					if (NC->ComponentTags.Contains(UniqueTag))
-					{
-						NC->Deactivate();
-					}
-				}
+				ERASC->RemoveGameplayCueBySource(GameplayCueTag, SpawnConfig);
 			}
+			else
+			{
+				ASC->InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::Removed, Parameters);
+			}
+		}
+		else if (UGameplayCueManager* GCM = UAbilitySystemGlobals::Get().GetGameplayCueManager())
+		{
+			GCM->RemoveGameplayCue_NonReplicated(OwnerActor, GameplayCueTag, Parameters);
 		}
 	}
 

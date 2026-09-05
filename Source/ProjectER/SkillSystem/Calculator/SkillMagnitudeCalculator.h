@@ -97,9 +97,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Calculation")
 	float CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC) const;
 
-	// C++ 전용 오버로드 (UFUNCTION 없음, FGameplayEffectSpec 포인터 전달 가능)
+	// C++ 전용 오버로드 (UFUNCTION 없음, FGameplayEffectSpec 포인터 및 재귀 깊이 전달 가능)
 	float CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const struct FGameplayEffectSpec* Spec) const;
+	float CalculateValue(UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const struct FGameplayEffectSpec* Spec, int32 RecursionDepth) const;
 
 protected:
-	float GetOperandValue(const FCalcStep& Step, UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const struct FGameplayEffectSpec* Spec) const;
+	float GetOperandValue(const FCalcStep& Step, UAbilitySystemComponent* SourceASC, UAbilitySystemComponent* TargetASC, const struct FGameplayEffectSpec* Spec, int32 RecursionDepth = 0) const;
 };

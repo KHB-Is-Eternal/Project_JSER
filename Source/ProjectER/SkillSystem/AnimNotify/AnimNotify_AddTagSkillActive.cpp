@@ -1,13 +1,16 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "SkillSystem/AnimNotify/AnimNotify_AddTagSkillActive.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "NativeGameplayTags.h"
+
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Skill_Animation_Active, "Skill.Animation.Active");
 
 UAnimNotify_AddTagSkillActive::UAnimNotify_AddTagSkillActive()
 {
-	ActiveTag = FGameplayTag::RequestGameplayTag(FName("Skill.Animation.Active"));
+	ActiveTag = TAG_Skill_Animation_Active;
 }
 
 void UAnimNotify_AddTagSkillActive::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, const FAnimNotifyEventReference& EventReference)

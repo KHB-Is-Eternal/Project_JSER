@@ -52,6 +52,9 @@ public:
 protected:
   virtual void BeginPlay() override;
   virtual void PostNetInit() override;
+
+  /** Visual Handshake 시도 헬퍼 함수 */
+  bool TryPerformVfxHandshake();
   virtual void ApplyCollisionSize(const FVector &InCollisionSize);
   void SetCollisionComponent(UShapeComponent *InCollisionComponent);
 
@@ -67,7 +70,7 @@ protected:
 
   /** 타겟들에게 효과 적용 */
   void ApplyEffectsToTargets(const TArray<AActor*>& Targets);
-  void ApplyEffectsToTarget(AActor* TargetActor);
+  bool ApplyEffectsToTarget(AActor* TargetActor);
 
 public:
   UPROPERTY()
@@ -98,7 +101,7 @@ protected:
   UPROPERTY()
   TSet<TObjectPtr<AActor>> HitActors;
 
-  UPROPERTY()
+  UPROPERTY(Replicated)
   TObjectPtr<const UObject> HitTargetCueSourceObject;
 
   UPROPERTY()

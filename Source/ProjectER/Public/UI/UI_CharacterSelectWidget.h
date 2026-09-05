@@ -23,6 +23,10 @@ public:
 	UFUNCTION()
 	void OnPlayerStateCharacterChanged(TSoftObjectPtr<UCharacterData> NewCharacterData);
 
+	// 애니메이션 진행률(0.0 ~ 1.0)을 블루프린트로 전달하는 이벤트
+	UFUNCTION(BlueprintImplementableEvent, Category = "ProjectER|UI|Animation")
+	void OnCarouselTransitionUpdated(float InAlpha);
+
 protected:
 
 	UPROPERTY(meta = (BindWidget), BlueprintReadOnly, Category = "ProjectER|UI")
@@ -67,12 +71,6 @@ private:
 	// 애니메이션용 보간 변수
 	float TransitionAlpha = 1.0f;
 	const float TransitionSpeed = 10.0f;
-
-	// 원본 크기 저장을 위한 변수
-	FVector2D BaseCenterScale = FVector2D(1.0f, 1.0f);
-	float BaseCenterOpacity = 1.0f;
-	FVector2D BaseSideScale = FVector2D(1.0f, 1.0f);
-	float BaseSideOpacity = 1.0f;
 
 	void UpdateCarouselImages();
 	void SelectCharacter(int32 Index);
